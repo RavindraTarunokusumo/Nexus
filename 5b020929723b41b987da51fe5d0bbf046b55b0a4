@@ -1,0 +1,1 @@
+Summary: Wired GitNexus into the repo-local Codex workflow and onboarding docs.\nScope: Added repo-local MCP config and documented the GitNexus workflow in onboarding docs.\nTests: git diff --check.\nRisk: Low; docs/config-only change.\nDocs: docs/agent-harness.md, docs/commands.md.
