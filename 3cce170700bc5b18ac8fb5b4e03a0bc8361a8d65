@@ -1,0 +1,9 @@
+Summary: Add the onboarding, agent harness, and project documentation bundle to the repository.
+
+Scope: Commit repo-local Codex agents and skills, onboarding assets, AGENTS.md, GitHub templates, project docs, and the TODO entry for this publish task.
+
+Tests: git diff --cached --check before commit.
+
+Risk: Low; documentation and workflow assets only.
+
+Docs: AGENTS.md, Onboarding/, docs/, .codex/skills/, .codex/agents/, .github/.
