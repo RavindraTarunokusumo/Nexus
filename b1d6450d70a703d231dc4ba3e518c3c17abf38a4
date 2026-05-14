@@ -1,0 +1,9 @@
+Summary: Align the CI markdown workflow descriptions with the Nexus Lite project terminology.
+
+Scope: Updated docs/ci and Onboarding/CI workflow playbooks to remove legacy broker/flaskr/CLAUDE references and match the current app/db/intelligence/workers layout.
+
+Tests: git diff --cached --check.
+
+Risk: Low; documentation-only changes.
+
+Docs: docs/ci/*.md, Onboarding/CI/*.md, TODO.md.
