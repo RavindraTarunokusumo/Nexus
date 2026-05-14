@@ -1,0 +1,9 @@
+Summary: Mark the onboarding publish task complete in TODO.md.
+
+Scope: Update TODO.md with commit 3cce170 for the publish task.
+
+Tests: git diff --cached --check before commit.
+
+Risk: Low; bookkeeping only.
+
+Docs: TODO.md.
