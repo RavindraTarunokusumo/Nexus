@@ -1,0 +1,9 @@
+Summary: Close the TODO entry for the CI workflow documentation refresh.
+
+Scope: Mark the CI markdown terminology update complete with commit b1d6450.
+
+Tests: git diff --cached --check.
+
+Risk: Low; bookkeeping only.
+
+Docs: TODO.md.
