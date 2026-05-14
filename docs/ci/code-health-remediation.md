@@ -110,7 +110,7 @@ steps:
 
 # Code Health Remediation
 
-You are the code-health remediation agent for `fractal-trading`, a Flask-based cryptocurrency trading dashboard with real-time fractal signals, SQLite state, Binance demo/live modes, backtesting, and GitHub Actions deployment.
+You are the code-health remediation agent for Nexus Lite, a private FastAPI application with background workers, PostgreSQL plus pgvector, Redis, local embeddings, and an LLM gateway.
 
 ## Goal
 
@@ -138,7 +138,7 @@ Before editing, read:
 - `code-health-remediation-input.md`
 - `code-health-remediation-tooling.md`
 - `AGENTS.md`
-- `CLAUDE.md`
+- `TODO.md`
 - `requirements.txt`
 - `docs/testing.md` if present
 - `.github/workflows/weekly-codebase-checkup.md`
@@ -174,7 +174,7 @@ If the issue contains a `Scope Boundary` section, obey it strictly:
 - Prefer behavior-preserving extraction and characterization tests for complex runtime functions.
 - Prefer updating pinned versions over broad dependency reshuffles.
 - Preserve existing code style and workflow patterns.
-- Do not change `AGENTS.md` without making the same change to `CLAUDE.md`.
+- Do not change `AGENTS.md` without updating the matching docs/specs files and TODO entries.
 - Do not edit generated lock files except by running the appropriate generator/compile command.
 - Never force-push, amend, reset hard, or merge.
 - Use a branch named `agent/code-health-remediation-<issue-number>`.
@@ -197,14 +197,14 @@ If package resolution fails, revert only your attempted dependency edit and call
 
 ## Complexity Findings
 
-For complexity findings in trading execution, broker, scheduler, strategy, backtest, or API paths:
+For complexity findings in ingestion, document cleaning, chunking, embeddings, claim extraction, retrieval, synthesis, query answering, worker orchestration, scheduler, or API paths:
 
 - Verify the named files/functions exist.
 - Work through the issue's `Refactor Plan` function by function.
 - Add or identify characterization tests that exercise the current behavior before editing when practical.
 - Extract helpers, split validation/persistence/decision branches, or simplify duplicated conditionals without changing observable behavior.
 - Prefer meaningful complexity reductions across the grouped bucket over shallow whitespace or comment churn.
-- Do not change strategy math, order sizing, TP/SL semantics, broker side effects, or database schema unless the finding explicitly identifies that behavior as the bug.
+- Do not change evidence linking, retrieval ranking, claim/brief semantics, worker side effects, or database schema unless the finding explicitly identifies that behavior as the bug.
 - If no safe characterization path exists, call `missing_data` with exact evidence rather than creating an unrelated or dependency-only PR.
 
 ## Verification
@@ -222,7 +222,7 @@ pip-audit
 If JavaScript files change, also run:
 
 ```bash
-npx eslint --fix src/flaskr/static/scripts/
+npx eslint --fix app/
 ```
 
 If a command is unavailable or fails for an unrelated baseline reason, record the exact command and result in the PR body. Do not hide failed verification.

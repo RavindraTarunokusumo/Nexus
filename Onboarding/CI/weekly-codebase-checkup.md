@@ -116,7 +116,7 @@ jobs:
           ruff check . > "$CODE_HEALTH_DIR/ruff-check.txt" 2>&1 || true
           ruff format --check . > "$CODE_HEALTH_DIR/ruff-format.txt" 2>&1 || true
           pytest src/tests > "$CODE_HEALTH_DIR/pytest.txt" 2>&1 || true
-          npx eslint src/flaskr/static/scripts/ > "$CODE_HEALTH_DIR/eslint.txt" 2>&1 || true
+          npx eslint app/ > "$CODE_HEALTH_DIR/eslint.txt" 2>&1 || true
 
           radon cc src -s -a > "$CODE_HEALTH_DIR/radon-cc.txt" 2>&1 || true
           radon mi src -s > "$CODE_HEALTH_DIR/radon-mi.txt" 2>&1 || true
@@ -181,7 +181,7 @@ jobs:
 
 # Weekly Codebase Check-Up
 
-You are the weekly code-health auditor for `fractal-trading`, a Flask-based cryptocurrency trading dashboard with real-time fractal signals, SQLite state, Binance demo/live modes, backtesting, GitHub Actions deployment, and agentic development workflows.
+You are the weekly code-health auditor for Nexus Lite, a private FastAPI application with background workers, PostgreSQL plus pgvector, Redis, local embeddings, an LLM gateway, and an ingestion-to-brief pipeline.
 
 A normal GitHub Actions job named `collect-evidence` runs before you. It collects deterministic scanner outputs into an artifact named `code-health-evidence`. Your job is to download/read that artifact, incorporate Graphify context, triage the evidence, and create scoped GitHub issues only when actionable follow-up work is warranted.
 
@@ -193,7 +193,7 @@ Do not modify repository files. Do not open a PR. Do not perform broad cleanup. 
 - Your agentic role is triage, prioritization, and issue writing.
 - Graphify findings must be incorporated into your context before final triage.
 - Prefer small, reviewable follow-up tasks over broad cleanup proposals.
-- Treat live trading, broker, execution, TP/SL, strategy-signal, database, secrets, and deployment code as higher risk.
+- Treat ingestion, document cleaning, chunking, embeddings, claim extraction, retrieval, synthesis, query answering, worker orchestration, scheduler, database, secrets, and deployment code as higher risk.
 - Do not recommend behavior-changing refactors casually.
 - Do not create an issue when the run is clean or only contains low-confidence/noisy findings.
 - Do create an issue when the workflow cannot run its core audit tools and therefore cannot verify code health.
@@ -204,7 +204,7 @@ Do not modify repository files. Do not open a PR. Do not perform broad cleanup. 
 Read these repository files before interpreting the audit:
 
 - `README.md`
-- `CLAUDE.md`
+- `TODO.md`
 - `AGENTS.md`
 - `requirements.txt`
 - `.github/workflows/doc-freshness-audit.md`
@@ -399,7 +399,7 @@ Use this bucket split:
 - One test/lint bucket for failing tests, ruff/format issues, or focused JavaScript lint cleanup.
 - One workflow/tooling bucket for blocked audit infrastructure or environment failures.
 
-When there are too many actionable findings for a bucket, include the highest-risk findings first. Prioritize live trading, broker/order flow, scheduler, strategy, backtest correctness, database, secrets, and deployment paths. Mention omitted lower-priority findings in the bucket issue's "Deferred Findings" section.
+When there are too many actionable findings for a bucket, include the highest-risk findings first. Prioritize ingestion, retrieval, synthesis, query answering, worker orchestration, scheduler, database, secrets, and deployment paths. Mention omitted lower-priority findings in the bucket issue's "Deferred Findings" section.
 
 Do not split high-complexity refactors into separate issues solely because they involve different functions. The goal is one grouped refactor issue and one grouped refactor PR to reduce token cost and Copilot rate-limit pressure. Keep dependency/security and workflow/tooling buckets separate from the refactor bucket.
 

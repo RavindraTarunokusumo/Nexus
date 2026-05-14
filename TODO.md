@@ -2,6 +2,7 @@
 
 ## Active
 
+- [ ] Update CI markdown workflow descriptions to Nexus Lite terminology and remove legacy broker/flaskr references.
 - [x] Publish onboarding docs and repo-local Codex/GitNexus assets to `main`. (commit: 3cce170)
 - [x] Replace scaffold placeholders in `docs/*.md` with project-specific architecture, commands, and testing guidance.
 - [ ] Add the first real implementation plan for the main product slice.
