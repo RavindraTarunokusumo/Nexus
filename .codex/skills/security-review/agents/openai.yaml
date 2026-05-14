@@ -1,0 +1,4 @@
+interface:
+  display_name: "Security Review"
+  short_description: "Review diffs for high-confidence security issues"
+  default_prompt: "Use $security-review to inspect my current diff for newly introduced high-confidence security vulnerabilities."
