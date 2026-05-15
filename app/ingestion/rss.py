@@ -4,7 +4,13 @@ from datetime import datetime, timezone
 import feedparser
 
 from app.ingestion.cleaner import extract_text
-from app.ingestion.url_fetcher import fetch_and_clean
+from app.ingestion.url_fetcher import assert_public_host, fetch_and_clean, validate_url_scheme
+
+# Cap entries processed per feed to prevent unbounded asyncio.gather fan-out.
+_MAX_ENTRIES = 100
+
+# Limit concurrent URL fetches to avoid overwhelming the network or target servers.
+_FETCH_SEMAPHORE = asyncio.Semaphore(10)
 
 
 def _parse_date(entry) -> datetime | None:
@@ -44,10 +50,11 @@ async def _resolve_entry(entry) -> dict | None:
             "published_at": _parse_date(entry),
         }
 
-    try:
-        raw_text, clean_text = await fetch_and_clean(link)
-    except Exception:
-        return None
+    async with _FETCH_SEMAPHORE:
+        try:
+            raw_text, clean_text = await fetch_and_clean(link)
+        except Exception:
+            return None
 
     return {
         "url": link,
@@ -61,9 +68,15 @@ async def _resolve_entry(entry) -> dict | None:
 async def fetch_rss_entries(feed_url: str) -> list[dict]:
     """Parse an RSS/Atom feed and return a list of entry dicts.
 
+    Validates the feed URL for scheme and SSRF before fetching.
     Entries without a usable link or that fail to fetch are excluded.
-    URL fetches for entries without sufficient inline content run concurrently.
+    URL fetches for entries without sufficient inline content run concurrently
+    (bounded by _FETCH_SEMAPHORE).
     """
+    validate_url_scheme(feed_url)
+    await assert_public_host(feed_url)
+
     feed = feedparser.parse(feed_url)
-    results = await asyncio.gather(*[_resolve_entry(e) for e in feed.entries])
+    entries = feed.entries[:_MAX_ENTRIES]
+    results = await asyncio.gather(*[_resolve_entry(e) for e in entries])
     return [r for r in results if r is not None]

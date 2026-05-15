@@ -1,8 +1,9 @@
+import re
 import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,18 @@ from app.db.models import Document, Source
 from app.ingestion.cleaner import content_hash, normalize_url
 from app.ingestion.rss import fetch_rss_entries
 from app.ingestion.url_fetcher import fetch_and_clean
+
+# Allowlist for user-supplied identifier fields stored to the database.
+_IDENTIFIER_RE = re.compile(r"^[a-z0-9_\-]{1,64}$")
+_MAX_TEXT_BYTES = 512 * 1024  # 512 KB
+
+
+def _validate_identifier(value: str, field_name: str) -> str:
+    if not _IDENTIFIER_RE.match(value):
+        raise ValueError(
+            f"'{field_name}' must be 1–64 lowercase alphanumeric characters, hyphens, or underscores."
+        )
+    return value
 
 router = APIRouter(tags=["ingestion"])
 
@@ -155,9 +168,14 @@ async def ingest_rss(source_id: uuid.UUID, session: DbSession) -> IngestResult:
 # ---------------------------------------------------------------------------
 
 class IngestURLPayload(BaseModel):
-    url: str
+    url: str = Field(max_length=2048)
     domain_pack: str = "personal_ai_tech"
     source_name: str = "manual"
+
+    @field_validator("domain_pack", "source_name")
+    @classmethod
+    def _check_identifier(cls, v: str, info) -> str:
+        return _validate_identifier(v, info.field_name)
 
 
 @router.post("/ingest/url", response_model=IngestResult)
@@ -195,10 +213,15 @@ async def ingest_url(payload: IngestURLPayload, session: DbSession) -> IngestRes
 # ---------------------------------------------------------------------------
 
 class IngestTextPayload(BaseModel):
-    title: str
-    text: str
+    title: str = Field(max_length=1024)
+    text: str = Field(max_length=_MAX_TEXT_BYTES)
     source_name: str = "manual"
     domain_pack: str = "personal_ai_tech"
+
+    @field_validator("domain_pack", "source_name")
+    @classmethod
+    def _check_identifier(cls, v: str, info) -> str:
+        return _validate_identifier(v, info.field_name)
 
 
 @router.post("/ingest/text", response_model=IngestResult)
