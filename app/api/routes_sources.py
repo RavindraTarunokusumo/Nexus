@@ -1,14 +1,14 @@
 import uuid
 from datetime import datetime
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Annotated
 
+from app.api.deps import DbSession
 from app.db.models import Source
-from app.db.session import get_session
 
 router = APIRouter(prefix="/sources", tags=["sources"])
 
@@ -37,22 +37,8 @@ class SourceResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-def _get_session_factory(request: Request) -> async_sessionmaker[AsyncSession]:
-    return request.app.state.session_factory
-
-
-async def _db_session(
-    factory: Annotated[async_sessionmaker[AsyncSession], Depends(_get_session_factory)],
-) -> AsyncSession:
-    async with factory() as session:
-        yield session
-
-
 @router.post("", response_model=SourceResponse, status_code=status.HTTP_201_CREATED)
-async def create_source(
-    payload: SourceCreate,
-    session: Annotated[AsyncSession, Depends(_db_session)],
-) -> SourceResponse:
+async def create_source(payload: SourceCreate, session: DbSession) -> SourceResponse:
     if payload.source_type not in SUPPORTED_SOURCE_TYPES:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -83,19 +69,13 @@ async def create_source(
 
 
 @router.get("", response_model=list[SourceResponse])
-async def list_sources(
-    session: Annotated[AsyncSession, Depends(_db_session)],
-) -> list[SourceResponse]:
+async def list_sources(session: DbSession) -> list[SourceResponse]:
     result = await session.execute(select(Source).order_by(Source.created_at.desc()))
-    sources = result.scalars().all()
-    return [SourceResponse.model_validate(s) for s in sources]
+    return [SourceResponse.model_validate(s) for s in result.scalars().all()]
 
 
 @router.get("/{source_id}", response_model=SourceResponse)
-async def get_source(
-    source_id: uuid.UUID,
-    session: Annotated[AsyncSession, Depends(_db_session)],
-) -> SourceResponse:
+async def get_source(source_id: uuid.UUID, session: DbSession) -> SourceResponse:
     source = await session.get(Source, source_id)
     if source is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source not found.")

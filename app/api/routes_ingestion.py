@@ -1,35 +1,19 @@
 import uuid
 from datetime import datetime
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, HttpUrl
+from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import DbSession
 from app.db.models import Document, Source
-from app.db.session import get_session
 from app.ingestion.cleaner import content_hash, normalize_url
 from app.ingestion.rss import fetch_rss_entries
 from app.ingestion.url_fetcher import fetch_and_clean
 
 router = APIRouter(tags=["ingestion"])
-
-
-# ---------------------------------------------------------------------------
-# Dependency helpers (shared with routes_sources)
-# ---------------------------------------------------------------------------
-
-def _get_session_factory(request: Request) -> async_sessionmaker[AsyncSession]:
-    return request.app.state.session_factory
-
-
-async def _db_session(
-    factory: Annotated[async_sessionmaker[AsyncSession], Depends(_get_session_factory)],
-) -> AsyncSession:
-    async with factory() as session:
-        yield session
 
 
 # ---------------------------------------------------------------------------
@@ -55,7 +39,7 @@ class IngestResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Shared document persistence helper
+# Shared helpers
 # ---------------------------------------------------------------------------
 
 async def _persist_document(
@@ -68,20 +52,9 @@ async def _persist_document(
     clean_text: str,
     published_at: datetime | None,
 ) -> Document | None:
-    """Persist a document, returning None if it is a duplicate."""
+    """Persist a document; return None if it is a duplicate (URL or content hash)."""
     norm_url = normalize_url(url) if url else None
     chash = content_hash(clean_text)
-
-    # URL dedup
-    if norm_url:
-        existing = await session.scalar(select(Document).where(Document.url == norm_url))
-        if existing:
-            return None
-
-    # Content hash dedup
-    existing = await session.scalar(select(Document).where(Document.content_hash == chash))
-    if existing:
-        return None
 
     doc = Document(
         source_id=source_id,
@@ -103,15 +76,40 @@ async def _persist_document(
     return doc
 
 
+async def _get_or_create_manual_source(
+    session: AsyncSession, *, name: str, domain_pack: str
+) -> Source:
+    """Return an existing manual source matching (name, domain_pack), or create one."""
+    source = await session.scalar(
+        select(Source).where(
+            Source.source_type == "manual",
+            Source.name == name,
+            Source.domain_pack == domain_pack,
+        )
+    )
+    if source is None:
+        source = Source(name=name, source_type="manual", url=None, domain_pack=domain_pack)
+        session.add(source)
+        try:
+            await session.flush()
+        except IntegrityError:
+            await session.rollback()
+            source = await session.scalar(
+                select(Source).where(
+                    Source.source_type == "manual",
+                    Source.name == name,
+                    Source.domain_pack == domain_pack,
+                )
+            )
+    return source
+
+
 # ---------------------------------------------------------------------------
 # POST /ingest/rss/{source_id}
 # ---------------------------------------------------------------------------
 
 @router.post("/ingest/rss/{source_id}", response_model=IngestResult)
-async def ingest_rss(
-    source_id: uuid.UUID,
-    session: Annotated[AsyncSession, Depends(_db_session)],
-) -> IngestResult:
+async def ingest_rss(source_id: uuid.UUID, session: DbSession) -> IngestResult:
     source = await session.get(Source, source_id)
     if source is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source not found.")
@@ -130,7 +128,6 @@ async def ingest_rss(
 
     ingested: list[Document] = []
     skipped = 0
-
     for entry in entries:
         doc = await _persist_document(
             session,
@@ -164,27 +161,10 @@ class IngestURLPayload(BaseModel):
 
 
 @router.post("/ingest/url", response_model=IngestResult)
-async def ingest_url(
-    payload: IngestURLPayload,
-    session: Annotated[AsyncSession, Depends(_db_session)],
-) -> IngestResult:
-    # Find or create a manual source for this domain_pack
-    source = await session.scalar(
-        select(Source).where(
-            Source.source_type == "manual",
-            Source.name == payload.source_name,
-            Source.domain_pack == payload.domain_pack,
-        )
+async def ingest_url(payload: IngestURLPayload, session: DbSession) -> IngestResult:
+    source = await _get_or_create_manual_source(
+        session, name=payload.source_name, domain_pack=payload.domain_pack
     )
-    if source is None:
-        source = Source(
-            name=payload.source_name,
-            source_type="manual",
-            url=None,
-            domain_pack=payload.domain_pack,
-        )
-        session.add(source)
-        await session.flush()
 
     try:
         raw_text, clean_text = await fetch_and_clean(payload.url)
@@ -205,15 +185,9 @@ async def ingest_url(
         clean_text=clean_text,
         published_at=None,
     )
-
     if doc is None:
         return IngestResult(ingested=0, skipped=1, documents=[])
-
-    return IngestResult(
-        ingested=1,
-        skipped=0,
-        documents=[DocumentResponse.model_validate(doc)],
-    )
+    return IngestResult(ingested=1, skipped=0, documents=[DocumentResponse.model_validate(doc)])
 
 
 # ---------------------------------------------------------------------------
@@ -228,32 +202,16 @@ class IngestTextPayload(BaseModel):
 
 
 @router.post("/ingest/text", response_model=IngestResult)
-async def ingest_text(
-    payload: IngestTextPayload,
-    session: Annotated[AsyncSession, Depends(_db_session)],
-) -> IngestResult:
+async def ingest_text(payload: IngestTextPayload, session: DbSession) -> IngestResult:
     if not payload.text.strip():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Text payload is empty.",
         )
 
-    source = await session.scalar(
-        select(Source).where(
-            Source.source_type == "manual",
-            Source.name == payload.source_name,
-            Source.domain_pack == payload.domain_pack,
-        )
+    source = await _get_or_create_manual_source(
+        session, name=payload.source_name, domain_pack=payload.domain_pack
     )
-    if source is None:
-        source = Source(
-            name=payload.source_name,
-            source_type="manual",
-            url=None,
-            domain_pack=payload.domain_pack,
-        )
-        session.add(source)
-        await session.flush()
 
     doc = await _persist_document(
         session,
@@ -264,12 +222,6 @@ async def ingest_text(
         clean_text=payload.text,
         published_at=None,
     )
-
     if doc is None:
         return IngestResult(ingested=0, skipped=1, documents=[])
-
-    return IngestResult(
-        ingested=1,
-        skipped=0,
-        documents=[DocumentResponse.model_validate(doc)],
-    )
+    return IngestResult(ingested=1, skipped=0, documents=[DocumentResponse.model_validate(doc)])

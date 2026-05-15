@@ -26,5 +26,13 @@ def normalize_url(url: str) -> str:
 
 
 def clean_html(raw: str) -> str:
-    """Strip obvious HTML tags as a minimal fallback when trafilatura fails."""
+    """Strip HTML tags as a minimal fallback when trafilatura fails."""
     return re.sub(r"<[^>]+>", " ", raw)
+
+
+def extract_text(raw: str) -> str:
+    """Extract clean text from HTML using trafilatura; fall back to tag stripping."""
+    import trafilatura
+
+    clean = trafilatura.extract(raw, include_comments=False, include_tables=True)
+    return clean if clean else clean_html(raw)

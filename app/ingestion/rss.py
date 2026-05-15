@@ -1,7 +1,9 @@
+import asyncio
 from datetime import datetime, timezone
 
 import feedparser
 
+from app.ingestion.cleaner import extract_text
 from app.ingestion.url_fetcher import fetch_and_clean
 
 
@@ -17,52 +19,51 @@ def _parse_date(entry) -> datetime | None:
     return None
 
 
+def _inline_text(entry) -> str | None:
+    """Extract inline text from a feedparser entry's content or summary fields."""
+    if hasattr(entry, "content") and entry.content:
+        return entry.content[0].get("value", "")
+    if hasattr(entry, "summary"):
+        return entry.summary
+    return None
+
+
+async def _resolve_entry(entry) -> dict | None:
+    """Resolve one feedparser entry to a result dict, or None if it should be skipped."""
+    link = getattr(entry, "link", None) or getattr(entry, "id", None)
+    if not link:
+        return None
+
+    inline = _inline_text(entry)
+    if inline and len(inline) > 200:
+        return {
+            "url": link,
+            "title": getattr(entry, "title", None),
+            "raw_text": inline,
+            "clean_text": extract_text(inline),
+            "published_at": _parse_date(entry),
+        }
+
+    try:
+        raw_text, clean_text = await fetch_and_clean(link)
+    except Exception:
+        return None
+
+    return {
+        "url": link,
+        "title": getattr(entry, "title", None),
+        "raw_text": raw_text,
+        "clean_text": clean_text,
+        "published_at": _parse_date(entry),
+    }
+
+
 async def fetch_rss_entries(feed_url: str) -> list[dict]:
     """Parse an RSS/Atom feed and return a list of entry dicts.
 
-    Each dict contains: url, title, raw_text, clean_text, published_at.
-    Entries without a usable link are skipped.
+    Entries without a usable link or that fail to fetch are excluded.
+    URL fetches for entries without sufficient inline content run concurrently.
     """
     feed = feedparser.parse(feed_url)
-    results = []
-
-    for entry in feed.entries:
-        link = getattr(entry, "link", None) or getattr(entry, "id", None)
-        if not link:
-            continue
-
-        title = getattr(entry, "title", None)
-        published_at = _parse_date(entry)
-
-        # Prefer full-text from entry summary/content; fall back to fetching the URL.
-        inline_text = None
-        if hasattr(entry, "content") and entry.content:
-            inline_text = entry.content[0].get("value", "")
-        elif hasattr(entry, "summary"):
-            inline_text = entry.summary
-
-        if inline_text and len(inline_text) > 200:
-            import trafilatura
-            clean = trafilatura.extract(inline_text, include_comments=False)
-            if not clean:
-                from app.ingestion.cleaner import clean_html
-                clean = clean_html(inline_text)
-            raw_text = inline_text
-        else:
-            try:
-                raw_text, clean = await fetch_and_clean(link)
-            except Exception:
-                # Skip entries we cannot fetch
-                continue
-
-        results.append(
-            {
-                "url": link,
-                "title": title,
-                "raw_text": raw_text,
-                "clean_text": clean,
-                "published_at": published_at,
-            }
-        )
-
-    return results
+    results = await asyncio.gather(*[_resolve_entry(e) for e in feed.entries])
+    return [r for r in results if r is not None]
