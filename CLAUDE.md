@@ -16,14 +16,16 @@ Follow the 7-Step Workflow strictly for feature implementation. Do not start imp
 
 ## Code Graph / Repo Map
 
-If a code graph, dependency map, or architecture index exists, use it before touching unfamiliar code.
+This repo is indexed by **GitNexus** (see the GitNexus section below). Use it before touching unfamiliar code.
 
 Rules:
 
-- Do not rebuild the graph while files are being modified.
-- Only rebuild on a clean working tree.
-- Use the graph as a snapshot, not a live source of truth.
-- Query the graph first, then read files directly.
+- Read `gitnexus://repo/Nexus/context` first to confirm the index is fresh.
+- Use `gitnexus_query` and `gitnexus_context` instead of Grep/Glob for exploration.
+- Run `gitnexus_impact` before editing any symbol.
+- Run `gitnexus_detect_changes` before every commit.
+- Do not rebuild the graph while files are being modified — only on a clean working tree.
+- If the index is stale, run `npx gitnexus analyze` before querying.
 
 ## 7-Step Workflow
 
@@ -33,8 +35,9 @@ Rules:
    - Confirm repo status before editing.
 
 2. **Repo Map**
-   - Run or query the available code graph/index if present.
-   - Use docs and graph output to understand the relevant area.
+   - Read `gitnexus://repo/Nexus/context` — confirms index freshness and shows clusters/flows.
+   - Use `gitnexus_query({query: "concept"})` to find relevant execution flows.
+   - Use docs and graph output to understand the relevant area before reading files.
 
 3. **Planning**
    - Read `CLAUDE.md`, `docs/index.md`, and relevant technical docs.
