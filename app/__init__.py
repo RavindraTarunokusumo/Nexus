@@ -1,1 +1,1 @@
-"""app/__init__.py"""
+"""Nexus Lite application package."""

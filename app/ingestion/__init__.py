@@ -1,1 +1,1 @@
-"""app/ingestion/__init__.py"""
+"""Document ingestion pipeline."""

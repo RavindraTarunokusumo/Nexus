@@ -1,1 +1,1 @@
-"""app/db/migrations/versions/__init__.py"""
+"""Alembic migration versions."""
