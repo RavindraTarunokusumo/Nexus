@@ -1,4 +1,4 @@
-# AGENTS.md
+# CLAUDE.md
 
 Project: `Nexus`
 
@@ -37,7 +37,7 @@ Rules:
    - Use docs and graph output to understand the relevant area.
 
 3. **Planning**
-   - Read `AGENTS.md`, `docs/index.md`, and relevant technical docs.
+   - Read `CLAUDE.md`, `docs/index.md`, and relevant technical docs.
    - Use the `brainstorming` skill for implementation planning if available.
    - Produce a concise plan and scope.
    - Do not edit until the plan is accepted unless the user explicitly granted autonomous execution.
