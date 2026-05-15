@@ -1,0 +1,37 @@
+id: personal_ai_tech
+name: Personal AI Technology Analyst
+
+topics:
+  - AI agents
+  - LLM releases
+  - open-source models
+  - inference infrastructure
+  - coding agents
+  - AI tooling
+  - research papers
+  - benchmarks
+  - product announcements
+  - AI regulation and policy
+
+claim_types:
+  - model_release
+  - benchmark_result
+  - product_launch
+  - pricing_change
+  - research_finding
+  - infrastructure_update
+  - security_issue
+  - funding_event
+  - regulation
+  - forecast
+  - other
+
+brief_sections:
+  - top_developments
+  - research_updates
+  - tools_and_repos
+  - watch_next
+
+models:
+  t2: openai/gpt-4o-mini
+  t3: openai/gpt-4o
