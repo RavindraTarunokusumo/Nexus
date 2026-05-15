@@ -78,11 +78,9 @@ def upgrade() -> None:
         sa.Column("span_index", sa.Integer, nullable=False),
         sa.Column("text", sa.Text, nullable=False),
         sa.Column("token_count", sa.Integer, nullable=True),
-        sa.Column("embedding", sa.Text, nullable=True),  # placeholder; vector added below
         sa.Column("metadata_json", postgresql.JSONB, nullable=True),
     )
-    # Replace TEXT placeholder with actual vector column
-    op.execute("ALTER TABLE spans DROP COLUMN embedding")
+    # vector extension is already created above; add the column directly.
     op.execute("ALTER TABLE spans ADD COLUMN embedding vector(384)")
     op.create_index("ix_spans_document_id", "spans", ["document_id"])
     op.create_index("ix_spans_span_index", "spans", ["document_id", "span_index"])

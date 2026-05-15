@@ -1,3 +1,4 @@
+from collections.abc import AsyncGenerator
 from typing import Annotated
 
 from fastapi import Depends, Request
@@ -10,7 +11,7 @@ def _get_session_factory(request: Request) -> async_sessionmaker[AsyncSession]:
 
 async def db_session(
     factory: Annotated[async_sessionmaker[AsyncSession], Depends(_get_session_factory)],
-) -> AsyncSession:
+) -> AsyncGenerator[AsyncSession, None]:
     async with factory() as session:
         yield session
 

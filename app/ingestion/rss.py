@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import feedparser
 
 from app.ingestion.cleaner import extract_text
-from app.ingestion.url_fetcher import assert_public_host, fetch_and_clean, validate_url_scheme
+from app.ingestion.url_fetcher import assert_public_host, fetch_and_clean, fetch_bytes, validate_url_scheme
 
 # Cap entries processed per feed to prevent unbounded asyncio.gather fan-out.
 _MAX_ENTRIES = 100
@@ -76,7 +76,10 @@ async def fetch_rss_entries(feed_url: str) -> list[dict]:
     validate_url_scheme(feed_url)
     await assert_public_host(feed_url)
 
-    feed = feedparser.parse(feed_url)
+    # Fetch via the validated httpx client (SSRF-safe, size-capped) then parse
+    # in a thread to avoid blocking the event loop for the full parse step.
+    feed_bytes = await fetch_bytes(feed_url)
+    feed = await asyncio.to_thread(feedparser.parse, feed_bytes)
     entries = feed.entries[:_MAX_ENTRIES]
     results = await asyncio.gather(*[_resolve_entry(e) for e in entries])
     return [r for r in results if r is not None]

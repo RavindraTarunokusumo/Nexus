@@ -81,11 +81,10 @@ async def _persist_document(
     )
     session.add(doc)
     try:
-        await session.commit()
+        async with session.begin_nested():
+            await session.flush()
     except IntegrityError:
-        await session.rollback()
         return None
-    await session.refresh(doc)
     return doc
 
 
@@ -104,9 +103,9 @@ async def _get_or_create_manual_source(
         source = Source(name=name, source_type="manual", url=None, domain_pack=domain_pack)
         session.add(source)
         try:
-            await session.flush()
+            async with session.begin_nested():
+                await session.flush()
         except IntegrityError:
-            await session.rollback()
             source = await session.scalar(
                 select(Source).where(
                     Source.source_type == "manual",
@@ -156,6 +155,10 @@ async def ingest_rss(source_id: uuid.UUID, session: DbSession) -> IngestResult:
         else:
             skipped += 1
 
+    await session.commit()
+    for doc in ingested:
+        await session.refresh(doc)
+
     return IngestResult(
         ingested=len(ingested),
         skipped=skipped,
@@ -203,8 +206,10 @@ async def ingest_url(payload: IngestURLPayload, session: DbSession) -> IngestRes
         clean_text=clean_text,
         published_at=None,
     )
+    await session.commit()
     if doc is None:
         return IngestResult(ingested=0, skipped=1, documents=[])
+    await session.refresh(doc)
     return IngestResult(ingested=1, skipped=0, documents=[DocumentResponse.model_validate(doc)])
 
 
@@ -245,6 +250,8 @@ async def ingest_text(payload: IngestTextPayload, session: DbSession) -> IngestR
         clean_text=payload.text,
         published_at=None,
     )
+    await session.commit()
     if doc is None:
         return IngestResult(ingested=0, skipped=1, documents=[])
+    await session.refresh(doc)
     return IngestResult(ingested=1, skipped=0, documents=[DocumentResponse.model_validate(doc)])
