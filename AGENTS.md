@@ -61,16 +61,24 @@ This repo is indexed by **GitNexus** — see the GitNexus section below for all 
    - Address automated review with the `receiving-code-review` skill if available.
    - Notify the user when all steps are complete.
 
+*Once everything is done: Do [Post-PR](#post-pr)*
+
 ## Workflow Rules
 
 1. Every TODO sub-item should land as its own commit.
 2. Any extension or modification to the task must be logged in `TODO.md`.
 3. Use specific staging, never `git add -A`.
 
+## Post-PR
+
+- `TODO.md` contains **active or future** work only.
+- Archive completed TODO items from `TODO.md` into `docs/iterations/archive/`.
+- Each subitem in the TODO must be tagged with the commmit hash and each session must be tagged with the merge ID.
+
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **Nexus** (1387 symbols, 1744 relationships, 16 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **Nexus** (1401 symbols, 1758 relationships, 16 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
