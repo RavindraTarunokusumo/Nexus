@@ -32,7 +32,7 @@ def db_url(pg_container):
 
 @pytest.fixture(scope="session", autouse=True)
 def run_migrations(db_url):
-    """Run Alembic migrations in a subprocess to avoid event-loop conflicts."""
+    """Run Alembic migrations once per session via subprocess (avoids event-loop conflicts)."""
     env = {**os.environ, "DATABASE_URL": db_url}
     result = subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", "head"],
@@ -46,21 +46,23 @@ def run_migrations(db_url):
     )
 
 
-@pytest_asyncio.fixture(scope="session")
+# Function-scoped engine: each test gets a fresh asyncpg pool in its own event loop.
+# This avoids "Future attached to a different loop" errors from session-scoped pools.
+@pytest_asyncio.fixture
 async def async_engine(db_url):
     engine = create_async_engine(db_url, echo=False)
     yield engine
     await engine.dispose()
 
 
-@pytest_asyncio.fixture(scope="session")
-async def session_factory(async_engine):
+@pytest.fixture
+def session_factory(async_engine):
     return async_sessionmaker(async_engine, expire_on_commit=False)
 
 
 @pytest_asyncio.fixture(autouse=True)
 async def clean_db(async_engine):
-    """Delete all rows (children first) before each test."""
+    """Truncate all tables (children first) before each test."""
     async with async_engine.begin() as conn:
         for table in reversed(Base.metadata.sorted_tables):
             await conn.execute(table.delete())
@@ -68,7 +70,7 @@ async def clean_db(async_engine):
 
 @pytest_asyncio.fixture
 async def client(async_engine, session_factory):
-    """FastAPI test client wired to the test database (no lifespan side-effects)."""
+    """FastAPI test client wired to the test DB; no production lifespan side-effects."""
     test_app = FastAPI()
     test_app.state.engine = async_engine
     test_app.state.session_factory = session_factory
