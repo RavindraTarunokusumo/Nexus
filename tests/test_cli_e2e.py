@@ -83,3 +83,32 @@ def test_status_help_works():
     result = runner.invoke(app, ["status", "--help"])
     assert result.exit_code == 0
     assert "Pipeline" in result.stdout or "status" in result.stdout.lower()
+
+
+@pytest.mark.asyncio
+async def test_search_command_calls_http_with_correct_payload(monkeypatch, db_url):
+    captured = {}
+
+    async def fake_search(base_url, query, top_k, domain_pack):
+        captured["base_url"] = base_url
+        captured["query"] = query
+        captured["top_k"] = top_k
+        captured["domain_pack"] = domain_pack
+        return [
+            {"span_id": str(uuid.uuid4()), "document_id": str(uuid.uuid4()),
+             "score": 0.91, "text": "matched span", "metadata": {"title": "Doc", "source_name": "Feed"}}
+        ]
+
+    monkeypatch.setattr("app.cli.main.http_search_spans", fake_search)
+
+    result = runner.invoke(
+        app,
+        ["search", "open-source LLMs", "--top-k", "5", "--json",
+         "--api-url", "http://test.example", "--db-url", db_url],
+    )
+    assert result.exit_code == 0, result.stdout
+    assert captured["query"] == "open-source LLMs"
+    assert captured["top_k"] == 5
+    assert captured["base_url"] == "http://test.example"
+    data = json.loads(result.stdout)
+    assert data[0]["score"] == 0.91

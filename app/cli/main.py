@@ -22,6 +22,7 @@ from app.cli.render import (
     render_sources_table,
     render_status,
 )
+from app.cli.http import search_spans as http_search_spans
 
 app = typer.Typer(help="Nexus Lite — operator CLI for monitoring the system.")
 ingest_app = typer.Typer(help="Trigger ingestion via the running server.")
@@ -123,3 +124,20 @@ def document(
         typer.echo(f"Document {document_id} not found.", err=True)
         raise typer.Exit(code=1)
     render_document_detail(detail, json_output=json_output)
+
+
+@app.command()
+def search(
+    query: str = typer.Argument(..., help="Natural language search query."),
+    top_k: int = typer.Option(10, "--top-k"),
+    domain_pack: Optional[str] = typer.Option(None, "--domain-pack"),
+    json_output: bool = typer.Option(False, "--json"),
+    db_url: Optional[str] = typer.Option(None, "--db-url"),
+    api_url: Optional[str] = typer.Option(None, "--api-url"),
+) -> None:
+    """Semantic search over embedded spans."""
+    cfg = _settings(db_url, api_url)
+    results = _run(
+        http_search_spans(cfg.api_base_url, query, top_k, domain_pack)
+    )
+    render_search_results(results, json_output=json_output)
