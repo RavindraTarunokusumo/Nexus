@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
-import json
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
+import httpx
 import typer
 
 from app.cli.config import CLISettings
@@ -17,6 +18,13 @@ from app.cli.db import (
     list_documents,
     list_sources,
 )
+from app.cli.http import (
+    CLIHttpError,
+    ingest_rss as http_ingest_rss,
+    ingest_text as http_ingest_text,
+    ingest_url as http_ingest_url,
+    search_spans as http_search_spans,
+)
 from app.cli.render import (
     print_ingest_result,
     render_document_detail,
@@ -24,12 +32,6 @@ from app.cli.render import (
     render_search_results,
     render_sources_table,
     render_status,
-)
-from app.cli.http import (
-    ingest_rss as http_ingest_rss,
-    ingest_text as http_ingest_text,
-    ingest_url as http_ingest_url,
-    search_spans as http_search_spans,
 )
 
 app = typer.Typer(help="Nexus Lite — operator CLI for monitoring the system.")
@@ -52,11 +54,21 @@ def _run(coro):
     if loop is None:
         return asyncio.run(coro)
 
-    # There is already a running loop (e.g. inside an async test).  Spin up a
-    # worker thread that has no event loop so asyncio.run() works normally there.
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(asyncio.run, coro)
         return future.result()
+
+
+def _run_http(coro):
+    """Run an HTTP coroutine and surface network/API errors as clean Typer exits."""
+    try:
+        return _run(coro)
+    except CLIHttpError as exc:
+        typer.echo(f"API error: {exc}", err=True)
+        raise typer.Exit(code=1)
+    except httpx.HTTPError as exc:
+        typer.echo(f"Network error: {exc}", err=True)
+        raise typer.Exit(code=1)
 
 
 def _settings(db_url: Optional[str], api_url: Optional[str]) -> CLISettings:
@@ -68,6 +80,25 @@ def _settings(db_url: Optional[str], api_url: Optional[str]) -> CLISettings:
     return CLISettings(**overrides) if overrides else CLISettings()
 
 
+def _require_db_url(cfg: CLISettings) -> str:
+    """Enforce database_url for commands that read from Postgres directly."""
+    if not cfg.database_url:
+        typer.echo(
+            "DATABASE_URL is not set. Set it in .env or pass --db-url.", err=True
+        )
+        raise typer.Exit(code=1)
+    return cfg.database_url
+
+
+def _parse_since(value: Optional[str]) -> Optional[datetime]:
+    if value is None:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise typer.BadParameter(f"Invalid --since value '{value}': {exc}")
+
+
 @app.command()
 def status(
     json_output: bool = typer.Option(False, "--json", help="Output JSON instead of a table."),
@@ -76,7 +107,8 @@ def status(
 ) -> None:
     """Show pipeline health: counts by status, totals, last ingest."""
     cfg = _settings(db_url, api_url)
-    snapshot = _run(get_status_snapshot(cfg.database_url))
+    database_url = _require_db_url(cfg)
+    snapshot = _run(get_status_snapshot(database_url))
     render_status(snapshot, json_output=json_output)
 
 
@@ -91,7 +123,8 @@ def sources(
 ) -> None:
     """List configured sources."""
     cfg = _settings(db_url, api_url)
-    result = _run(list_sources(cfg.database_url, enabled=enabled))
+    database_url = _require_db_url(cfg)
+    result = _run(list_sources(database_url, enabled=enabled))
     render_sources_table(result, json_output=json_output)
 
 
@@ -106,11 +139,12 @@ def documents(
     api_url: Optional[str] = typer.Option(None, "--api-url"),
 ) -> None:
     """List documents with optional filters."""
-    since_dt = datetime.fromisoformat(since) if since else None
+    since_dt = _parse_since(since)
     cfg = _settings(db_url, api_url)
+    database_url = _require_db_url(cfg)
     docs = _run(
         list_documents(
-            cfg.database_url,
+            database_url,
             status=status, source_id=source_id, since=since_dt, limit=limit,
         )
     )
@@ -126,7 +160,8 @@ def document(
 ) -> None:
     """Show one document and all its spans."""
     cfg = _settings(db_url, api_url)
-    detail = _run(get_document_with_spans(cfg.database_url, document_id))
+    database_url = _require_db_url(cfg)
+    detail = _run(get_document_with_spans(database_url, document_id))
     if detail is None:
         typer.echo(f"Document {document_id} not found.", err=True)
         raise typer.Exit(code=1)
@@ -137,16 +172,13 @@ def document(
 def search(
     query: str = typer.Argument(..., help="Natural language search query."),
     top_k: int = typer.Option(10, "--top-k"),
-    domain_pack: Optional[str] = typer.Option(None, "--domain-pack"),
     json_output: bool = typer.Option(False, "--json"),
     db_url: Optional[str] = typer.Option(None, "--db-url"),
     api_url: Optional[str] = typer.Option(None, "--api-url"),
 ) -> None:
     """Semantic search over embedded spans."""
     cfg = _settings(db_url, api_url)
-    results = _run(
-        http_search_spans(cfg.api_base_url, query, top_k, domain_pack)
-    )
+    results = _run_http(http_search_spans(cfg.api_base_url, query, top_k))
     render_search_results(results, json_output=json_output)
 
 
@@ -161,7 +193,7 @@ def ingest_url_cmd(
 ) -> None:
     """Fetch one URL and ingest its content."""
     cfg = _settings(db_url, api_url)
-    result = _run(http_ingest_url(cfg.api_base_url, url, source_name, domain_pack))
+    result = _run_http(http_ingest_url(cfg.api_base_url, url, source_name, domain_pack))
     print_ingest_result(result, json_output=json_output)
 
 
@@ -176,10 +208,9 @@ def ingest_text_cmd(
     api_url: Optional[str] = typer.Option(None, "--api-url"),
 ) -> None:
     """Ingest the contents of a local text file."""
-    from pathlib import Path
     text = Path(file).read_text(encoding="utf-8")
     cfg = _settings(db_url, api_url)
-    result = _run(
+    result = _run_http(
         http_ingest_text(
             cfg.api_base_url,
             title=title, text=text, source_name=source_name, domain_pack=domain_pack,
@@ -197,5 +228,5 @@ def ingest_rss_cmd(
 ) -> None:
     """Trigger RSS ingestion for a configured source."""
     cfg = _settings(db_url, api_url)
-    result = _run(http_ingest_rss(cfg.api_base_url, source_id))
+    result = _run_http(http_ingest_rss(cfg.api_base_url, source_id))
     print_ingest_result(result, json_output=json_output)

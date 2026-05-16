@@ -16,7 +16,7 @@ class CLIHttpError(Exception):
 async def _request(method: str, base_url: str, path: str, **kwargs) -> Any:
     async with httpx.AsyncClient(base_url=base_url, timeout=_TIMEOUT) as client:
         response = await client.request(method, path, **kwargs)
-        if response.status_code >= 400:
+        if not response.is_success:
             try:
                 detail = response.json()
             except Exception:
@@ -45,10 +45,8 @@ async def ingest_rss(base_url: str, source_id: uuid.UUID) -> dict:
     return await _request("POST", base_url, f"/ingest/rss/{source_id}")
 
 
-async def search_spans(
-    base_url: str, query: str, top_k: int, domain_pack: str | None
-) -> list[dict]:
-    payload: dict[str, Any] = {"query": query, "top_k": top_k}
-    if domain_pack:
-        payload["domain_pack"] = domain_pack
-    return await _request("POST", base_url, "/search/spans", json=payload)
+async def search_spans(base_url: str, query: str, top_k: int) -> list[dict]:
+    return await _request(
+        "POST", base_url, "/search/spans",
+        json={"query": query, "top_k": top_k},
+    )

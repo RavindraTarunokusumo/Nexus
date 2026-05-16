@@ -1,7 +1,7 @@
 """Unit tests for app/cli/render.py — pure formatters, no DB."""
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import pytest
 
@@ -135,21 +135,32 @@ def test_render_search_results_shows_score_and_text(capsys):
         {
             "span_id": str(uuid.uuid4()),
             "document_id": str(uuid.uuid4()),
+            "span_index": 0,
             "score": 0.87,
             "text": "Open-source LLM Llama released today",
-            "metadata": {"title": "Article 1", "source_name": "Feed A"},
+            "document_title": "Article 1",
+            "document_status": "embedded",
         }
     ]
     render_search_results(results, json_output=False)
     out = capsys.readouterr().out
     assert "0.87" in out
     assert "Open-source LLM" in out
+    assert "Article 1" in out
+    assert "embedded" in out
 
 
 def test_render_search_results_json(capsys):
     results = [
-        {"span_id": str(uuid.uuid4()), "document_id": str(uuid.uuid4()),
-         "score": 0.5, "text": "t", "metadata": None}
+        {
+            "span_id": str(uuid.uuid4()),
+            "document_id": str(uuid.uuid4()),
+            "span_index": 0,
+            "score": 0.5,
+            "text": "t",
+            "document_title": None,
+            "document_status": "embedded",
+        }
     ]
     render_search_results(results, json_output=True)
     out = capsys.readouterr().out

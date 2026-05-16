@@ -183,19 +183,20 @@ def render_search_results(results: list[dict[str, Any]], *, json_output: bool) -
     table = Table(title="Search Results", show_header=True, header_style="bold")
     table.add_column("Rank", justify="right")
     table.add_column("Score", justify="right")
-    table.add_column("Source")
+    table.add_column("Doc Status")
     table.add_column("Title")
     table.add_column("Preview")
 
     for rank, r in enumerate(results, start=1):
         score = r.get("score", 0.0)
         score_color = "green" if score >= 0.7 else "yellow" if score >= 0.5 else "white"
-        meta = r.get("metadata") or {}
+        doc_status = r.get("document_status") or ""
+        status_color = _status_color(doc_status) if doc_status else "white"
         table.add_row(
             str(rank),
             f"[{score_color}]{score:.3f}[/{score_color}]",
-            _short(meta.get("source_name") or "", 20),
-            _short(meta.get("title") or "", 30),
+            f"[{status_color}]{doc_status}[/{status_color}]" if doc_status else "",
+            _short(r.get("document_title") or "", 30),
             _short(r.get("text") or "", 100),
         )
     console.print(table)

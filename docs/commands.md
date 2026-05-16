@@ -105,7 +105,7 @@ Lists all registered sources. Filter by enabled/disabled state.
 
 ```sh
 nexus documents
-nexus documents --status processed
+nexus documents --status embedded
 nexus documents --source <uuid>
 nexus documents --since 2026-05-01T00:00:00
 nexus documents --limit 50
@@ -126,10 +126,9 @@ Shows a single document with all its spans. Reads Postgres directly.
 ```sh
 nexus search "query text"
 nexus search "query text" --top-k 20
-nexus search "query text" --domain-pack personal_ai_tech
 ```
 
-Semantic span search via `GET /search/spans` on the FastAPI server.
+Semantic span search via `POST /search/spans` on the FastAPI server.
 
 ### Ingest
 

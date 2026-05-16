@@ -89,14 +89,20 @@ def test_status_help_works():
 async def test_search_command_calls_http_with_correct_payload(monkeypatch, db_url):
     captured = {}
 
-    async def fake_search(base_url, query, top_k, domain_pack):
+    async def fake_search(base_url, query, top_k):
         captured["base_url"] = base_url
         captured["query"] = query
         captured["top_k"] = top_k
-        captured["domain_pack"] = domain_pack
         return [
-            {"span_id": str(uuid.uuid4()), "document_id": str(uuid.uuid4()),
-             "score": 0.91, "text": "matched span", "metadata": {"title": "Doc", "source_name": "Feed"}}
+            {
+                "span_id": str(uuid.uuid4()),
+                "document_id": str(uuid.uuid4()),
+                "span_index": 0,
+                "score": 0.91,
+                "text": "matched span",
+                "document_title": "Doc",
+                "document_status": "embedded",
+            }
         ]
 
     monkeypatch.setattr("app.cli.main.http_search_spans", fake_search)
@@ -104,7 +110,7 @@ async def test_search_command_calls_http_with_correct_payload(monkeypatch, db_ur
     result = runner.invoke(
         app,
         ["search", "open-source LLMs", "--top-k", "5", "--json",
-         "--api-url", "http://test.example", "--db-url", db_url],
+         "--api-url", "http://test.example"],
     )
     assert result.exit_code == 0, result.stdout
     assert captured["query"] == "open-source LLMs"

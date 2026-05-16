@@ -1,6 +1,5 @@
 """Integration tests for app/cli/db.py against testcontainers Postgres."""
 import uuid
-from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker

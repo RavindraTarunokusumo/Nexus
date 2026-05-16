@@ -85,7 +85,7 @@ The `nexus` CLI uses a hybrid access strategy:
 - **Reads** (status, sources, documents, document detail) go **direct to Postgres** via short-lived asyncpg sessions — no server required.
 - **Ingest and search** go **through the FastAPI server** over HTTP.
 
-`CLISettings` resolves `--api-url` and `--db-url` from flags, `NEXUS_API_URL` / `DATABASE_URL` env vars, or `.env` defaults. Every command accepts `--json` for machine-readable output and `--api-url` / `--db-url` overrides.
+`CLISettings` resolves `--api-url` and `--db-url` from flags, `API_BASE_URL` / `DATABASE_URL` env vars, or `.env` defaults. `DATABASE_URL` is required only for commands that read directly from Postgres (status, sources, documents, document); HTTP-only commands (search, ingest) work without it. Every command accepts `--json` for machine-readable output and `--api-url` / `--db-url` overrides.
 
 ## API Endpoints (Phase 1)
 
@@ -98,7 +98,7 @@ The `nexus` CLI uses a hybrid access strategy:
 | POST | /ingest/rss/{source_id} | Fetch and ingest RSS feed entries |
 | POST | /ingest/url | Fetch and ingest a single URL |
 | POST | /ingest/text | Ingest raw text directly |
-| GET | /search/spans | Semantic span search (query, top_k, domain_pack) |
+| POST | /search/spans | Semantic span search (query, top_k) |
 
 Supported `source_type` values: `rss`, `manual`, `api`.
 
