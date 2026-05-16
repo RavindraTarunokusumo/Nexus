@@ -3,6 +3,7 @@
 Run separately: pytest tests/test_embedder.py
 Excluded from the standard CI run: pytest tests/ --ignore=tests/test_embedder.py
 """
+
 import math
 
 import pytest

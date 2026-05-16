@@ -1,6 +1,6 @@
 # Architecture
 
-> **Phase 1 Status: Implemented**
+> **Phase 2.5 Status: CLI implemented**
 
 Nexus Lite is a private FastAPI application backed by PostgreSQL + pgvector, Redis, and local embeddings. The Phase 1 foundation covers source registration, document ingestion, and the full persistence schema.
 
@@ -15,6 +15,7 @@ Read [docs/specs/architecture.md](specs/architecture.md) for the full architectu
 | Vector store | pgvector 0.2+, BAAI/bge-small-en-v1.5 (384 dims) |
 | Migrations | Alembic |
 | Config | pydantic-settings v2 |
+| CLI | Typer >= 0.12, Rich >= 13.7 |
 | RSS fetching | feedparser |
 | URL fetching / cleaning | httpx + trafilatura |
 | Cache / queue | Redis 7 |
@@ -43,10 +44,20 @@ app/
     url_fetcher.py         # fetch_and_clean (httpx + trafilatura)
   domain_packs/
     personal_ai_tech.yaml  # Default domain pack definition
+  cli/
+    __init__.py
+    config.py              # CLISettings (API_URL, DB_URL, rich/json output flags)
+    db.py                  # 5 direct-Postgres readers (asyncpg, short-lived sessions)
+    http.py                # 4 HTTP wrappers for ingest/search (FastAPI server)
+    render.py              # 5 Rich+JSON formatters + print_ingest_result
+    main.py                # Typer app — nexus console-script entry point
 tests/
   conftest.py              # testcontainers fixtures, Alembic migration, per-test DB clean
   test_sources.py          # Source CRUD integration tests (8 tests)
   test_ingestion.py        # Ingestion integration tests (12 tests)
+  test_cli_db.py           # CLI DB reader unit tests (8 tests)
+  test_cli_render.py       # CLI render/formatter tests (10 tests)
+  test_cli_e2e.py          # CLI end-to-end integration tests (10 tests)
 docker-compose.yml         # postgres (pgvector/pgvector:pg16), redis:7-alpine, app
 alembic.ini
 pyproject.toml
@@ -67,6 +78,15 @@ external source
 -> [future] query answering
 ```
 
+## CLI Access Model
+
+The `nexus` CLI uses a hybrid access strategy:
+
+- **Reads** (status, sources, documents, document detail) go **direct to Postgres** via short-lived asyncpg sessions — no server required.
+- **Ingest and search** go **through the FastAPI server** over HTTP.
+
+`CLISettings` resolves `--api-url` and `--db-url` from flags, `API_BASE_URL` / `DATABASE_URL` env vars, or `.env` defaults. `DATABASE_URL` is required only for commands that read directly from Postgres (status, sources, documents, document); HTTP-only commands (search, ingest) work without it. Every command accepts `--json` for machine-readable output and `--api-url` / `--db-url` overrides.
+
 ## API Endpoints (Phase 1)
 
 | Method | Path | Description |
@@ -78,6 +98,7 @@ external source
 | POST | /ingest/rss/{source_id} | Fetch and ingest RSS feed entries |
 | POST | /ingest/url | Fetch and ingest a single URL |
 | POST | /ingest/text | Ingest raw text directly |
+| POST | /search/spans | Semantic span search (query, top_k) |
 
 Supported `source_type` values: `rss`, `manual`, `api`.
 

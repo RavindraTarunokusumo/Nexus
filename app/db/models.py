@@ -8,7 +8,6 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     Text,
-    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship

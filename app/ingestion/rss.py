@@ -4,7 +4,12 @@ from datetime import datetime, timezone
 import feedparser
 
 from app.ingestion.cleaner import extract_text
-from app.ingestion.url_fetcher import assert_public_host, fetch_and_clean, fetch_bytes, validate_url_scheme
+from app.ingestion.url_fetcher import (
+    assert_public_host,
+    fetch_and_clean,
+    fetch_bytes,
+    validate_url_scheme,
+)
 
 # Cap entries processed per feed to prevent unbounded asyncio.gather fan-out.
 _MAX_ENTRIES = 100

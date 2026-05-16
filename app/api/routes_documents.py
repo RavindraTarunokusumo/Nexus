@@ -1,7 +1,7 @@
 """Document listing, detail, and vector search endpoints."""
+
 import uuid
 from datetime import datetime
-from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -94,9 +94,7 @@ async def list_documents(
 @router.get("/documents/{document_id}", response_model=DocumentDetail)
 async def get_document(document_id: uuid.UUID, session: DbSession) -> DocumentDetail:
     doc = await session.scalar(
-        select(Document)
-        .where(Document.id == document_id)
-        .options(selectinload(Document.spans))
+        select(Document).where(Document.id == document_id).options(selectinload(Document.spans))
     )
     if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
@@ -122,9 +120,7 @@ async def search_spans(
         )
 
     # Return empty results when the index has no embedded spans yet.
-    sentinel = await session.scalar(
-        select(Span).where(Span.embedding.isnot(None)).limit(1)
-    )
+    sentinel = await session.scalar(select(Span).where(Span.embedding.isnot(None)).limit(1))
     if sentinel is None:
         return []
 

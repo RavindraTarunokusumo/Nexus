@@ -3,6 +3,7 @@
 feedparser 6.0.x requires sgmllib3k which fails to build on this platform.
 We inject a compatible stub before any test module triggers the import.
 """
+
 import re
 import sys
 import types

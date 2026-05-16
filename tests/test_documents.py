@@ -1,4 +1,5 @@
 """Integration tests for GET /documents and GET /documents/{id}."""
+
 import uuid
 
 import pytest
@@ -6,7 +7,6 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.db.models import Document, Source, Span
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -108,9 +108,7 @@ async def test_list_documents_filter_by_source_id(
 
 
 @pytest.mark.asyncio
-async def test_list_documents_pagination(
-    client: AsyncClient, session_factory: async_sessionmaker
-):
+async def test_list_documents_pagination(client: AsyncClient, session_factory: async_sessionmaker):
     source_id = await _create_source(session_factory)
     for i in range(5):
         await _create_doc(session_factory, source_id, content_hash=f"p{i}")
@@ -127,9 +125,7 @@ async def test_list_documents_pagination(
 
 
 @pytest.mark.asyncio
-async def test_get_document_with_spans(
-    client: AsyncClient, session_factory: async_sessionmaker
-):
+async def test_get_document_with_spans(client: AsyncClient, session_factory: async_sessionmaker):
     source_id = await _create_source(session_factory)
     doc_id = await _create_doc(session_factory, source_id, status="embedded", content_hash="e1")
 

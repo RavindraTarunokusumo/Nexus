@@ -27,6 +27,7 @@ def _validate_identifier(value: str, field_name: str) -> str:
         )
     return value
 
+
 router = APIRouter(tags=["ingestion"])
 
 
@@ -79,12 +80,14 @@ async def _chunk_and_embed(
 
     async with session_factory() as session:
         spans = (
-            await session.execute(
-                select(Span)
-                .where(Span.document_id == doc_id)
-                .order_by(Span.span_index)
+            (
+                await session.execute(
+                    select(Span).where(Span.document_id == doc_id).order_by(Span.span_index)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         vectors = embedder.embed([s.text for s in spans])
         for span, vec in zip(spans, vectors):
@@ -100,6 +103,7 @@ async def _chunk_and_embed(
 # ---------------------------------------------------------------------------
 # Response models
 # ---------------------------------------------------------------------------
+
 
 class DocumentResponse(BaseModel):
     id: uuid.UUID
@@ -122,6 +126,7 @@ class IngestResult(BaseModel):
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
+
 
 async def _persist_document(
     session: AsyncSession,
@@ -190,6 +195,7 @@ async def _get_or_create_manual_source(
 # POST /ingest/rss/{source_id}
 # ---------------------------------------------------------------------------
 
+
 @router.post("/ingest/rss/{source_id}", response_model=IngestResult)
 async def ingest_rss(
     source_id: uuid.UUID,
@@ -249,6 +255,7 @@ async def ingest_rss(
 # ---------------------------------------------------------------------------
 # POST /ingest/url
 # ---------------------------------------------------------------------------
+
 
 class IngestURLPayload(BaseModel):
     url: str = Field(max_length=2048)
@@ -310,6 +317,7 @@ async def ingest_url(
 # ---------------------------------------------------------------------------
 # POST /ingest/text
 # ---------------------------------------------------------------------------
+
 
 class IngestTextPayload(BaseModel):
     title: str = Field(max_length=1024)

@@ -1,0 +1,41 @@
+# Pre-commit hooks for quality control and technical-debt prevention.
+#
+# Install once:  pre-commit install
+# Run manually:  pre-commit run --all-files
+#
+# What this enforces:
+#  - ruff lint (E, W, F, I, C90 — including cyclomatic complexity ≤ 10)
+#  - ruff format (consistent formatting, replaces black/isort)
+#  - whitespace/EOF/YAML/TOML/large-file hygiene
+#  - fast unit tests (chunker + cli renderer) — no Docker required
+#
+# Pytest integration tests (testcontainers) run in CI only — too slow for commit.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1000"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: pytest-fast
+        name: pytest (fast unit tests only)
+        entry: python -m pytest tests/test_chunker.py tests/test_cli_render.py -q
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [pre-commit]

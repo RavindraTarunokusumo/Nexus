@@ -1,4 +1,5 @@
 """Tests for the _chunk_and_embed background task."""
+
 import uuid
 
 import pytest
@@ -7,7 +8,6 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.api.routes_ingestion import _chunk_and_embed
 from app.db.models import Document, Source, Span
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -58,8 +58,8 @@ async def test_chunk_embed_happy_path(session_factory: async_sessionmaker, mock_
         assert doc.status == "embedded"
 
         spans = (
-            await session.execute(select(Span).where(Span.document_id == doc_id))
-        ).scalars().all()
+            (await session.execute(select(Span).where(Span.document_id == doc_id))).scalars().all()
+        )
         assert len(spans) > 0
         assert all(s.embedding is not None for s in spans)
 
@@ -76,8 +76,8 @@ async def test_chunk_embed_idempotency(session_factory: async_sessionmaker, mock
 
     async with session_factory() as session:
         spans = (
-            await session.execute(select(Span).where(Span.document_id == doc_id))
-        ).scalars().all()
+            (await session.execute(select(Span).where(Span.document_id == doc_id))).scalars().all()
+        )
         indices = [s.span_index for s in spans]
         assert len(indices) == len(set(indices)), "Duplicate span_index found"
 
@@ -91,8 +91,8 @@ async def test_chunk_embed_empty_text(session_factory: async_sessionmaker, mock_
     async with session_factory() as session:
         doc = await session.get(Document, doc_id)
         spans = (
-            await session.execute(select(Span).where(Span.document_id == doc_id))
-        ).scalars().all()
+            (await session.execute(select(Span).where(Span.document_id == doc_id))).scalars().all()
+        )
         assert len(spans) == 0
         # Status is "chunked" since the chunking phase completed (zero spans produced).
         assert doc.status == "chunked"

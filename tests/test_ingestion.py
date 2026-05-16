@@ -1,21 +1,23 @@
 """Integration tests for ingestion layer: RSS, URL, text, deduplication, provenance."""
+
 import uuid
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.db.models import Document, Source
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-async def _create_rss_source(client: AsyncClient, url: str = "https://example.com/feed.xml") -> dict:
+
+async def _create_rss_source(
+    client: AsyncClient, url: str = "https://example.com/feed.xml"
+) -> dict:
     r = await client.post(
         "/sources",
         json={"name": "Test Feed", "source_type": "rss", "url": url},
@@ -27,6 +29,7 @@ async def _create_rss_source(client: AsyncClient, url: str = "https://example.co
 # ---------------------------------------------------------------------------
 # Text ingestion tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_ingest_text_success(client: AsyncClient, session_factory: async_sessionmaker):
@@ -63,7 +66,12 @@ async def test_ingest_text_success(client: AsyncClient, session_factory: async_s
 async def test_ingest_text_empty_rejected(client: AsyncClient):
     response = await client.post(
         "/ingest/text",
-        json={"title": "Empty", "text": "   ", "source_name": "manual", "domain_pack": "personal_ai_tech"},
+        json={
+            "title": "Empty",
+            "text": "   ",
+            "source_name": "manual",
+            "domain_pack": "personal_ai_tech",
+        },
     )
     assert response.status_code == 422
 
@@ -111,6 +119,7 @@ async def test_ingest_text_provenance(client: AsyncClient, session_factory: asyn
 # ---------------------------------------------------------------------------
 # URL ingestion tests (mock network)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_ingest_url_success(client: AsyncClient):
@@ -173,6 +182,7 @@ async def test_ingest_url_blocked_scheme(client: AsyncClient):
 # ---------------------------------------------------------------------------
 # RSS ingestion tests (mock network)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_ingest_rss_success(client: AsyncClient, session_factory: async_sessionmaker):

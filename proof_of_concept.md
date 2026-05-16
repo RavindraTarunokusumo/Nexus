@@ -1,9 +1,9 @@
 # NEXUS — Agentic AI Environment
 ## Proof of Concept Architecture Document
 
-**Version:** 0.6 — Multimodal Processing, Knowledge Integrity & Five-Tier Triage  
-**Date:** April 2026  
-**Author:** Arthur  
+**Version:** 0.6 — Multimodal Processing, Knowledge Integrity & Five-Tier Triage
+**Date:** April 2026
+**Author:** Arthur
 
 ---
 
@@ -457,8 +457,8 @@ CREATE TABLE agent_log (
 
 **Claim/signal embedding text:**
 ```
-{claim_text} | entities: {subject_entities}, {object_entities} | 
-predicate: {normalised_predicate} | conditions: {conditions} | 
+{claim_text} | entities: {subject_entities}, {object_entities} |
+predicate: {normalised_predicate} | conditions: {conditions} |
 domain: {domain_pack}
 ```
 

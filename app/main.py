@@ -19,6 +19,7 @@ async def lifespan(app: FastAPI):
 
     try:
         from app.intelligence.embedder import Embedder
+
         app.state.embedder = Embedder()
         logger.info("Embedder loaded: BAAI/bge-small-en-v1.5")
     except Exception as exc:  # noqa: BLE001
@@ -37,9 +38,9 @@ async def health():
     return JSONResponse({"status": "ok"})
 
 
-from app.api.routes_sources import router as sources_router  # noqa: E402
-from app.api.routes_ingestion import router as ingestion_router  # noqa: E402
 from app.api.routes_documents import router as documents_router  # noqa: E402
+from app.api.routes_ingestion import router as ingestion_router  # noqa: E402
+from app.api.routes_sources import router as sources_router  # noqa: E402
 
 app.include_router(sources_router)
 app.include_router(ingestion_router)
