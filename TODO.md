@@ -33,6 +33,17 @@
 - [x] T7: Test suite — 41 tests, MockEmbedder, local-Postgres fallback, sgmllib stub (commit: 2cf0e20)
 - [x] Review fixes — chunker trailing-span bug, 422→200 empty search, status param shadow, unused imports, race-condition handling (commit: 402b035)
 
+### Phase 2.5 — Monitoring CLI (branch: wt/phase2.5-cli)
+
+- [x] T1: CLI scaffold — pyproject.toml deps (typer, rich), app/cli/__init__.py, app/cli/config.py (commit: f64c1f5)
+- [x] T2: DB reader — app/cli/db.py: count_by_status, list_sources, list_documents, get_document_with_spans, get_status_snapshot (commit: c72b1bb)
+- [x] T3: Renderers — app/cli/render.py: rich tables + --json for all 5 output shapes (commit: d1d00f9)
+- [x] T4: HTTP client — app/cli/http.py: ingest_url/text/rss, search_spans wrappers (commit: d71ed64)
+- [x] T5: Main app — app/cli/main.py: status, sources, documents, document commands; _run() helper (commit: b7bd5a9)
+- [x] T6: search command — POST /search/spans via http_search_spans alias (commit: 5bce81c)
+- [x] T7: ingest commands — ingest url/text/rss on ingest_app sub-typer (commit: 62555fe)
+- [x] Review fixes — timeout 10s, top-level imports, datetime/timedelta cleanup (commit: acb3fa0)
+
 ## Future
 
 ### Phase 3 — Claim Extraction + LLM Gateway
