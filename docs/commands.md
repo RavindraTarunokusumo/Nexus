@@ -15,6 +15,35 @@ APP_SECRET=changeme
 
 Copy `.env.example` as a starting point.
 
+## Local Environment Setup
+
+Create and activate a virtual environment at the project root (`.venv/` is git-ignored):
+
+```sh
+# Create (once)
+python -m venv .venv
+
+# Activate — Windows (PowerShell)
+.venv\Scripts\Activate.ps1
+
+# Activate — Windows (Git Bash / WSL)
+source .venv/Scripts/activate
+
+# Activate — macOS / Linux
+source .venv/bin/activate
+
+# Install the project + all dev deps
+pip install -e ".[dev]"
+```
+
+After install, both `nexus` (the CLI) and `uvicorn`, `alembic`, `ruff`, `pytest`, `pre-commit` are on your PATH inside the venv.
+
+**Wire pre-commit to the repo** (once per clone, after activating the venv):
+
+```sh
+pre-commit install
+```
+
 ## Start the Application
 
 **With Docker Compose (recommended):**
