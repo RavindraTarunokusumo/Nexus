@@ -6,17 +6,17 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import selectinload
 
 from app.db.models import Document, Source, Span
+from app.db.session import make_engine, make_session_factory
 
 
 async def _with_session(database_url: str, fn):
     """Run `fn(session)` against a fresh engine and dispose afterwards."""
-    engine = create_async_engine(database_url, echo=False)
+    engine = make_engine(database_url)
     try:
-        factory = async_sessionmaker(engine, expire_on_commit=False)
+        factory = make_session_factory(engine)
         async with factory() as session:
             return await fn(session)
     finally:
@@ -134,7 +134,7 @@ async def get_status_snapshot(database_url: str) -> dict[str, Any]:
         ).all()
         docs_by_status = {row[0]: row[1] for row in status_rows}
 
-        total_documents = await session.scalar(select(func.count(Document.id))) or 0
+        total_documents = sum(docs_by_status.values())
         total_spans = await session.scalar(select(func.count(Span.id))) or 0
         total_sources = await session.scalar(select(func.count(Source.id))) or 0
         enabled_sources = (

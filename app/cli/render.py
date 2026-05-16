@@ -55,9 +55,7 @@ def render_status(snapshot: dict[str, Any], *, json_output: bool) -> None:
     stuck = snapshot.get("stuck_count", 0) > 0
     for stage in ("fetched", "chunked", "embedded"):
         count = by_status.get(stage, 0)
-        color = _status_color(stage)
-        if stage in {"fetched", "chunked"} and stuck:
-            color = "yellow"
+        color = "yellow" if (stage in {"fetched", "chunked"} and stuck) else _status_color(stage)
         table.add_row(f"[{color}]{stage}[/{color}]", str(count))
 
     table.add_section()
@@ -201,3 +199,12 @@ def render_search_results(results: list[dict[str, Any]], *, json_output: bool) -
             _short(r.get("text") or "", 100),
         )
     console.print(table)
+
+
+def print_ingest_result(result: dict[str, Any], *, json_output: bool) -> None:
+    """Print the result of an ingest command (url/text/rss)."""
+    if json_output:
+        _print_json(result)
+    else:
+        import typer
+        typer.echo(f"Ingested: {result['ingested']}, Skipped: {result['skipped']}")

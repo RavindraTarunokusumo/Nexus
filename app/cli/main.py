@@ -5,6 +5,7 @@ import asyncio
 import concurrent.futures
 import json
 import uuid
+from datetime import datetime
 from typing import Optional
 
 import typer
@@ -17,6 +18,7 @@ from app.cli.db import (
     list_sources,
 )
 from app.cli.render import (
+    print_ingest_result,
     render_document_detail,
     render_documents_table,
     render_search_results,
@@ -104,7 +106,6 @@ def documents(
     api_url: Optional[str] = typer.Option(None, "--api-url"),
 ) -> None:
     """List documents with optional filters."""
-    from datetime import datetime
     since_dt = datetime.fromisoformat(since) if since else None
     cfg = _settings(db_url, api_url)
     docs = _run(
@@ -161,10 +162,7 @@ def ingest_url_cmd(
     """Fetch one URL and ingest its content."""
     cfg = _settings(db_url, api_url)
     result = _run(http_ingest_url(cfg.api_base_url, url, source_name, domain_pack))
-    if json_output:
-        typer.echo(json.dumps(result, indent=2, default=str))
-    else:
-        typer.echo(f"Ingested: {result['ingested']}, Skipped: {result['skipped']}")
+    print_ingest_result(result, json_output=json_output)
 
 
 @ingest_app.command("text")
@@ -187,10 +185,7 @@ def ingest_text_cmd(
             title=title, text=text, source_name=source_name, domain_pack=domain_pack,
         )
     )
-    if json_output:
-        typer.echo(json.dumps(result, indent=2, default=str))
-    else:
-        typer.echo(f"Ingested: {result['ingested']}, Skipped: {result['skipped']}")
+    print_ingest_result(result, json_output=json_output)
 
 
 @ingest_app.command("rss")
@@ -203,7 +198,4 @@ def ingest_rss_cmd(
     """Trigger RSS ingestion for a configured source."""
     cfg = _settings(db_url, api_url)
     result = _run(http_ingest_rss(cfg.api_base_url, source_id))
-    if json_output:
-        typer.echo(json.dumps(result, indent=2, default=str))
-    else:
-        typer.echo(f"Ingested: {result['ingested']}, Skipped: {result['skipped']}")
+    print_ingest_result(result, json_output=json_output)
