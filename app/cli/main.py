@@ -22,7 +22,12 @@ from app.cli.render import (
     render_sources_table,
     render_status,
 )
-from app.cli.http import search_spans as http_search_spans
+from app.cli.http import (
+    ingest_rss as http_ingest_rss,
+    ingest_text as http_ingest_text,
+    ingest_url as http_ingest_url,
+    search_spans as http_search_spans,
+)
 
 app = typer.Typer(help="Nexus Lite — operator CLI for monitoring the system.")
 ingest_app = typer.Typer(help="Trigger ingestion via the running server.")
@@ -141,3 +146,66 @@ def search(
         http_search_spans(cfg.api_base_url, query, top_k, domain_pack)
     )
     render_search_results(results, json_output=json_output)
+
+
+@ingest_app.command("url")
+def ingest_url_cmd(
+    url: str = typer.Argument(..., help="URL to fetch and ingest."),
+    source_name: str = typer.Option("manual", "--source-name"),
+    domain_pack: str = typer.Option("personal_ai_tech", "--domain-pack"),
+    json_output: bool = typer.Option(False, "--json"),
+    db_url: Optional[str] = typer.Option(None, "--db-url"),
+    api_url: Optional[str] = typer.Option(None, "--api-url"),
+) -> None:
+    """Fetch one URL and ingest its content."""
+    cfg = _settings(db_url, api_url)
+    result = _run(http_ingest_url(cfg.api_base_url, url, source_name, domain_pack))
+    if json_output:
+        import json as _json
+        typer.echo(_json.dumps(result, indent=2, default=str))
+    else:
+        typer.echo(f"Ingested: {result['ingested']}, Skipped: {result['skipped']}")
+
+
+@ingest_app.command("text")
+def ingest_text_cmd(
+    title: str = typer.Option(..., "--title", help="Document title."),
+    file: str = typer.Option(..., "--file", help="Path to text/markdown file."),
+    source_name: str = typer.Option("manual", "--source-name"),
+    domain_pack: str = typer.Option("personal_ai_tech", "--domain-pack"),
+    json_output: bool = typer.Option(False, "--json"),
+    db_url: Optional[str] = typer.Option(None, "--db-url"),
+    api_url: Optional[str] = typer.Option(None, "--api-url"),
+) -> None:
+    """Ingest the contents of a local text file."""
+    from pathlib import Path
+    text = Path(file).read_text(encoding="utf-8")
+    cfg = _settings(db_url, api_url)
+    result = _run(
+        http_ingest_text(
+            cfg.api_base_url,
+            title=title, text=text, source_name=source_name, domain_pack=domain_pack,
+        )
+    )
+    if json_output:
+        import json as _json
+        typer.echo(_json.dumps(result, indent=2, default=str))
+    else:
+        typer.echo(f"Ingested: {result['ingested']}, Skipped: {result['skipped']}")
+
+
+@ingest_app.command("rss")
+def ingest_rss_cmd(
+    source_id: uuid.UUID = typer.Argument(..., help="Source UUID (must be source_type=rss)."),
+    json_output: bool = typer.Option(False, "--json"),
+    db_url: Optional[str] = typer.Option(None, "--db-url"),
+    api_url: Optional[str] = typer.Option(None, "--api-url"),
+) -> None:
+    """Trigger RSS ingestion for a configured source."""
+    cfg = _settings(db_url, api_url)
+    result = _run(http_ingest_rss(cfg.api_base_url, source_id))
+    if json_output:
+        import json as _json
+        typer.echo(_json.dumps(result, indent=2, default=str))
+    else:
+        typer.echo(f"Ingested: {result['ingested']}, Skipped: {result['skipped']}")

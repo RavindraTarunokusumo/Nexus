@@ -112,3 +112,61 @@ async def test_search_command_calls_http_with_correct_payload(monkeypatch, db_ur
     assert captured["base_url"] == "http://test.example"
     data = json.loads(result.stdout)
     assert data[0]["score"] == 0.91
+
+
+@pytest.mark.asyncio
+async def test_ingest_url_command(monkeypatch, db_url):
+    captured = {}
+
+    async def fake_ingest_url(base_url, url, source_name, domain_pack):
+        captured.update(base_url=base_url, url=url, source_name=source_name, domain_pack=domain_pack)
+        return {"ingested": 1, "skipped": 0, "documents": [{"id": str(uuid.uuid4()), "title": None}]}
+
+    monkeypatch.setattr("app.cli.main.http_ingest_url", fake_ingest_url)
+
+    result = runner.invoke(
+        app, ["ingest", "url", "https://example.com/article",
+              "--db-url", db_url, "--api-url", "http://test.example"]
+    )
+    assert result.exit_code == 0, result.stdout
+    assert captured["url"] == "https://example.com/article"
+    assert "ingested" in result.stdout.lower() or "1" in result.stdout
+
+
+@pytest.mark.asyncio
+async def test_ingest_text_command_reads_file(monkeypatch, db_url, tmp_path):
+    text_file = tmp_path / "article.md"
+    text_file.write_text("Article body content here.", encoding="utf-8")
+    captured = {}
+
+    async def fake_ingest_text(base_url, *, title, text, source_name, domain_pack):
+        captured.update(title=title, text=text, source_name=source_name)
+        return {"ingested": 1, "skipped": 0, "documents": []}
+
+    monkeypatch.setattr("app.cli.main.http_ingest_text", fake_ingest_text)
+
+    result = runner.invoke(
+        app, ["ingest", "text", "--title", "My Article",
+              "--file", str(text_file), "--db-url", db_url]
+    )
+    assert result.exit_code == 0, result.stdout
+    assert captured["title"] == "My Article"
+    assert captured["text"] == "Article body content here."
+
+
+@pytest.mark.asyncio
+async def test_ingest_rss_command(monkeypatch, db_url):
+    source_id = uuid.uuid4()
+    captured = {}
+
+    async def fake_ingest_rss(base_url, sid):
+        captured["source_id"] = sid
+        return {"ingested": 3, "skipped": 1, "documents": []}
+
+    monkeypatch.setattr("app.cli.main.http_ingest_rss", fake_ingest_rss)
+
+    result = runner.invoke(
+        app, ["ingest", "rss", str(source_id), "--db-url", db_url]
+    )
+    assert result.exit_code == 0, result.stdout
+    assert captured["source_id"] == source_id
