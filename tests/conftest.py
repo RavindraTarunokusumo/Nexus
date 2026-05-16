@@ -1,33 +1,78 @@
+import hashlib
 import os
 import subprocess
 import sys
 
+import numpy as np
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from testcontainers.postgres import PostgresContainer
 
+from app.api.routes_documents import router as documents_router
 from app.api.routes_ingestion import router as ingestion_router
 from app.api.routes_sources import router as sources_router
 from app.db.models import Base
 
 
-@pytest.fixture(scope="session")
-def pg_container():
-    with PostgresContainer(image="pgvector/pgvector:pg16") as container:
-        yield container
+# ---------------------------------------------------------------------------
+# Mock embedder (no real model required)
+# ---------------------------------------------------------------------------
+
+_EMBED_DIM = 384
+
+
+class MockEmbedder:
+    """Deterministic unit-norm mock embedder for tests."""
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        result = []
+        for text in texts:
+            seed = int(hashlib.md5(text.encode()).hexdigest(), 16) % (2**32)
+            rng = np.random.default_rng(seed)
+            vec = rng.standard_normal(_EMBED_DIM).astype(np.float64)
+            vec = vec / np.linalg.norm(vec)
+            result.append(vec.tolist())
+        return result
+
+    def embed_one(self, text: str) -> list[float]:
+        return self.embed([text])[0]
+
+
+# ---------------------------------------------------------------------------
+# Database URL — testcontainers if Docker is available, else local Postgres
+# ---------------------------------------------------------------------------
+
+_LOCAL_DB_URL = "postgresql+asyncpg://nexus:nexus@localhost:5432/nexus"
+
+
+def _docker_available() -> bool:
+    try:
+        import docker
+
+        docker.from_env().ping()
+        return True
+    except Exception:
+        return False
 
 
 @pytest.fixture(scope="session")
-def db_url(pg_container):
-    host = pg_container.get_container_host_ip()
-    port = pg_container.get_exposed_port(5432)
-    return (
-        f"postgresql+asyncpg://{pg_container.username}:{pg_container.password}"
-        f"@{host}:{port}/{pg_container.dbname}"
-    )
+def db_url():
+    """Return an asyncpg DB URL; uses local Postgres when Docker is unavailable."""
+    if _docker_available():
+        from testcontainers.postgres import PostgresContainer
+
+        with PostgresContainer(image="pgvector/pgvector:pg16") as container:
+            host = container.get_container_host_ip()
+            port = container.get_exposed_port(5432)
+            yield (
+                f"postgresql+asyncpg://{container.username}:{container.password}"
+                f"@{host}:{port}/{container.dbname}"
+            )
+    else:
+        # Local Postgres (started in CI or dev env)
+        yield _LOCAL_DB_URL
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -45,6 +90,10 @@ def run_migrations(db_url):
         f"Alembic migration failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
     )
 
+
+# ---------------------------------------------------------------------------
+# Per-test engine / session
+# ---------------------------------------------------------------------------
 
 # Function-scoped engine: each test gets a fresh asyncpg pool in its own event loop.
 # This avoids "Future attached to a different loop" errors from session-scoped pools.
@@ -68,16 +117,38 @@ async def clean_db(async_engine):
             await conn.execute(table.delete())
 
 
-@pytest_asyncio.fixture
-async def client(async_engine, session_factory):
-    """FastAPI test client wired to the test DB; no production lifespan side-effects."""
+# ---------------------------------------------------------------------------
+# HTTP clients
+# ---------------------------------------------------------------------------
+
+
+def _build_app(async_engine, session_factory, embedder=None) -> FastAPI:
     test_app = FastAPI()
     test_app.state.engine = async_engine
     test_app.state.session_factory = session_factory
+    test_app.state.embedder = embedder
     test_app.include_router(sources_router)
     test_app.include_router(ingestion_router)
+    test_app.include_router(documents_router)
+    return test_app
 
-    async with AsyncClient(
-        transport=ASGITransport(app=test_app), base_url="http://test"
-    ) as c:
+
+@pytest_asyncio.fixture
+async def client(async_engine, session_factory):
+    """Test client without an embedder (search disabled, background tasks no-op embed)."""
+    test_app = _build_app(async_engine, session_factory, embedder=None)
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as c:
         yield c
+
+
+@pytest_asyncio.fixture
+async def client_with_embedder(async_engine, session_factory):
+    """Test client wired with MockEmbedder for search and chunk-embed tests."""
+    test_app = _build_app(async_engine, session_factory, embedder=MockEmbedder())
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as c:
+        yield c
+
+
+@pytest.fixture
+def mock_embedder():
+    return MockEmbedder()
