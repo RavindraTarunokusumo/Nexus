@@ -21,9 +21,17 @@ from app.cli.db import (
 )
 from app.cli.http import (
     CLIHttpError,
+)
+from app.cli.http import (
     ingest_rss as http_ingest_rss,
+)
+from app.cli.http import (
     ingest_text as http_ingest_text,
+)
+from app.cli.http import (
     ingest_url as http_ingest_url,
+)
+from app.cli.http import (
     search_spans as http_search_spans,
 )
 from app.cli.render import (

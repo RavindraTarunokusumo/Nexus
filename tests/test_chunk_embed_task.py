@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from app.api.routes_ingestion import _chunk_and_embed
 from app.db.models import Document, Source, Span
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

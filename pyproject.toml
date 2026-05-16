@@ -33,6 +33,8 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "anyio>=4.0.0",
     "testcontainers[postgres]>=4.4.0",
+    "ruff>=0.6.0",
+    "pre-commit>=3.5.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -45,3 +47,21 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
+# E/W: pycodestyle errors and warnings
+# F:   pyflakes (unused imports/variables, undefined names)
+# I:   isort (import ordering)
+# C90: mccabe cyclomatic complexity (technical debt gate)
+select = ["E", "W", "F", "I", "C90"]
+# E501: line-too-long is already covered by line-length above; accept
+# occasional overruns in docstrings/comments without breaking the build.
+ignore = ["E501"]
+
+[tool.ruff.lint.mccabe]
+# Functions with cyclomatic complexity above this are flagged as technical debt.
+max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+# Tests can have longer fixture/seed functions and more local variables.
+"tests/**" = ["C901"]

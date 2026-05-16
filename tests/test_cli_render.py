@@ -4,7 +4,6 @@ import json
 import uuid
 from datetime import datetime, timezone
 
-
 from app.cli.render import (
     render_document_detail,
     render_documents_table,

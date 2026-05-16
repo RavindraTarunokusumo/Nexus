@@ -1,8 +1,8 @@
 # Phase 2 — Retrieval Foundation
 
-**Date:** 2026-05-16  
-**Branch:** `feat/phase2-retrieval`  
-**PR:** [#3](https://github.com/RavindraTarunokusumo/Nexus/pull/3)  
+**Date:** 2026-05-16
+**Branch:** `feat/phase2-retrieval`
+**PR:** [#3](https://github.com/RavindraTarunokusumo/Nexus/pull/3)
 **Merge commit:** `7633d13`
 
 ---

@@ -63,7 +63,31 @@ ruff check .
 ruff format --check .
 ```
 
-Line length is set to 100 in `pyproject.toml`.
+Line length is set to 100 in `pyproject.toml`. Enabled lint groups: `E`, `W`, `F`, `I`, `C90` (cyclomatic complexity ≤ 10).
+
+## Pre-Commit Hooks
+
+Install once after cloning:
+
+```sh
+pip install -e ".[dev]"
+pre-commit install
+```
+
+Each `git commit` then runs (locally, before the commit is written):
+
+- `ruff check --fix` — lint + imports + cyclomatic complexity (C90, max 10)
+- `ruff format` — code formatting
+- trailing-whitespace, end-of-file-fixer, yaml/toml/merge-conflict/large-file checks
+- `pytest tests/test_chunker.py tests/test_cli_render.py` — fast unit tests, no Docker needed
+
+Run against the whole tree on demand:
+
+```sh
+pre-commit run --all-files
+```
+
+Integration tests (testcontainers) are intentionally not part of the pre-commit gate — they need Docker and take longer than a commit should. CI runs the full suite.
 
 ## Nexus CLI (Operator)
 

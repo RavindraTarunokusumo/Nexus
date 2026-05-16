@@ -9,7 +9,6 @@ from typer.testing import CliRunner
 from app.cli.main import app
 from app.db.models import Document, Source
 
-
 runner = CliRunner()
 
 

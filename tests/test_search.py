@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.db.models import Document, Source, Span
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
