@@ -24,5 +24,4 @@ This repository is bootstrapped with an agent harness and supporting docs. Use t
 
 ## Source Drafts
 
-- [Nexus Lite MVP source draft](../nexus_full_mvp_spec_markdown.md)
 - [Nexus PoC source draft](../proof_of_concept.md)

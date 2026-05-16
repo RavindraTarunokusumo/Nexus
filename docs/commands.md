@@ -1,6 +1,6 @@
 # Commands
 
-> **Phase 1 Status: Implemented**
+> **Phase 2.5 Status: CLI implemented**
 
 ## Prerequisites
 
@@ -64,6 +64,87 @@ ruff format --check .
 ```
 
 Line length is set to 100 in `pyproject.toml`.
+
+## Nexus CLI (Operator)
+
+Install the CLI once (requires `pip install -e .` or equivalent):
+
+```sh
+pip install -e .
+```
+
+This registers the `nexus` console-script from `app.cli.main:app`.
+
+Every command accepts three universal flags:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--json` | off | Machine-readable JSON output |
+| `--api-url` | `http://localhost:8000` | FastAPI server base URL |
+| `--db-url` | `$DATABASE_URL` | Postgres connection string for direct reads |
+
+### Pipeline Status
+
+```sh
+nexus status
+```
+
+Shows document counts by status, totals, and last ingest timestamp. Reads Postgres directly.
+
+### Sources
+
+```sh
+nexus sources
+nexus sources --enabled
+nexus sources --disabled
+```
+
+Lists all registered sources. Filter by enabled/disabled state.
+
+### Documents
+
+```sh
+nexus documents
+nexus documents --status processed
+nexus documents --source <uuid>
+nexus documents --since 2026-05-01T00:00:00
+nexus documents --limit 50
+```
+
+Lists documents with optional filters. Reads Postgres directly.
+
+### Document Detail
+
+```sh
+nexus document <id>
+```
+
+Shows a single document with all its spans. Reads Postgres directly.
+
+### Semantic Search
+
+```sh
+nexus search "query text"
+nexus search "query text" --top-k 20
+nexus search "query text" --domain-pack personal_ai_tech
+```
+
+Semantic span search via `GET /search/spans` on the FastAPI server.
+
+### Ingest
+
+```sh
+# Ingest a URL
+nexus ingest url https://example.com/article
+
+# Ingest local text
+nexus ingest text --title "My Note" --file ./note.txt
+
+# Trigger RSS ingest for a registered source
+nexus ingest rss <source_id>
+```
+
+All ingest commands go through the FastAPI server (`POST /ingest/*`).
 
 ## GitNexus Workflow
 
