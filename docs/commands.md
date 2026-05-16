@@ -4,7 +4,7 @@
 
 ## Prerequisites
 
-- Docker (required for both local stack and tests)
+- Docker (required for the full local stack and integration tests)
 - Python 3.11+
 - A `.env` file with at minimum:
 
@@ -15,12 +15,14 @@ APP_SECRET=changeme
 
 Copy `.env.example` as a starting point.
 
+---
+
 ## Local Environment Setup
 
 Create and activate a virtual environment at the project root (`.venv/` is git-ignored):
 
 ```sh
-# Create (once)
+# Create once
 python -m venv .venv
 
 # Activate — Windows (PowerShell)
@@ -32,17 +34,17 @@ source .venv/Scripts/activate
 # Activate — macOS / Linux
 source .venv/bin/activate
 
-# Install the project + all dev deps
+# Install the project + all dev deps (includes nexus CLI, ruff, pytest, pre-commit)
 pip install -e ".[dev]"
 ```
 
-After install, both `nexus` (the CLI) and `uvicorn`, `alembic`, `ruff`, `pytest`, `pre-commit` are on your PATH inside the venv.
-
-**Wire pre-commit to the repo** (once per clone, after activating the venv):
+Wire pre-commit hooks once per clone (after activating the venv):
 
 ```sh
 pre-commit install
 ```
+
+---
 
 ## Start the Application
 
@@ -52,7 +54,9 @@ pre-commit install
 docker compose up
 ```
 
-Starts PostgreSQL (pgvector/pgvector:pg16), Redis (redis:7-alpine), and the app on port 8000. The app container mounts the local directory and runs with `--reload`.
+Starts PostgreSQL (`pgvector/pgvector:pg16`), Redis (`redis:7-alpine`), and the FastAPI app on port 8000. The app mounts the local directory and runs with `--reload`.
+
+The HuggingFace model cache (`BAAI/bge-small-en-v1.5`, ~130 MB) is persisted in the `hf_cache` Docker volume — it downloads once and is reused on subsequent starts.
 
 **Directly (requires a running Postgres):**
 
@@ -60,7 +64,7 @@ Starts PostgreSQL (pgvector/pgvector:pg16), Redis (redis:7-alpine), and the app 
 uvicorn app.main:app --reload
 ```
 
-The app reads `DATABASE_URL` from `.env` or the environment.
+---
 
 ## Run Migrations
 
@@ -68,146 +72,304 @@ The app reads `DATABASE_URL` from `.env` or the environment.
 alembic upgrade head
 ```
 
-Requires `DATABASE_URL` to be set in the environment or `.env`. Creates the `vector` extension and all 8 tables. Migration 0001 is idempotent — safe to re-run.
+Creates the `vector` extension and all 8 tables (`sources`, `documents`, `spans`, `claims`, `claim_evidence`, `briefs`, `brief_items`, `agent_runs`). Migration `0001` is idempotent — safe to re-run.
+
+---
 
 ## Run Tests
+
+**Full integration suite** (requires Docker):
 
 ```sh
 python -m pytest tests/ -v
 ```
 
-Requires Docker (testcontainers spins up a real `pgvector/pgvector:pg16` container) and a `.env` file with `DATABASE_URL` and `APP_SECRET` present (values don't need to point at a running DB — the test container overrides the URL at runtime).
+testcontainers spins up a fresh `pgvector/pgvector:pg16` container per session. `DATABASE_URL` and `APP_SECRET` must be present in `.env` (the test container overrides the URL at runtime).
 
-Run a specific file:
+**Fast unit tests** (no Docker, < 15s):
 
 ```sh
-python -m pytest tests/test_sources.py -v
-python -m pytest tests/test_ingestion.py -v
+python -m pytest tests/test_chunker.py tests/test_cli_render.py -v
 ```
+
+**Useful flags:**
+
+```sh
+# Run a single file
+python -m pytest tests/test_ingestion.py -v
+
+# Run tests matching a keyword
+python -m pytest -k "dedup" -v
+
+# Stop on first failure
+python -m pytest -x -v
+
+# Skip the slow embedder test (downloads model)
+python -m pytest --ignore=tests/test_embedder.py -v
+```
+
+---
 
 ## Linting / Formatting
 
 ```sh
+# Lint (reports issues)
 ruff check .
+
+# Lint and auto-fix
+ruff check --fix .
+
+# Format check (dry run)
 ruff format --check .
+
+# Format in place
+ruff format .
 ```
 
-Line length is set to 100 in `pyproject.toml`. Enabled lint groups: `E`, `W`, `F`, `I`, `C90` (cyclomatic complexity ≤ 10).
+Rules active: `E`, `W`, `F` (pyflakes), `I` (isort), `C90` (mccabe, max complexity 10).
+Line length: 100. Configuration in `[tool.ruff]` in `pyproject.toml`.
+
+---
 
 ## Pre-Commit Hooks
 
-Install once after cloning:
+Each `git commit` automatically runs:
 
-```sh
-pip install -e ".[dev]"
-pre-commit install
-```
+| Hook | What it checks |
+|---|---|
+| `ruff check --fix` | Lint, imports, cyclomatic complexity ≤ 10 |
+| `ruff format` | Consistent formatting |
+| `trailing-whitespace` | No trailing spaces |
+| `end-of-file-fixer` | Files end with a newline |
+| `check-yaml` / `check-toml` | Config syntax |
+| `check-merge-conflict` | No leftover conflict markers |
+| `check-added-large-files` | Files under 1 MB |
+| `pytest` (fast) | `test_chunker.py` + `test_cli_render.py` — no Docker |
 
-Each `git commit` then runs (locally, before the commit is written):
-
-- `ruff check --fix` — lint + imports + cyclomatic complexity (C90, max 10)
-- `ruff format` — code formatting
-- trailing-whitespace, end-of-file-fixer, yaml/toml/merge-conflict/large-file checks
-- `pytest tests/test_chunker.py tests/test_cli_render.py` — fast unit tests, no Docker needed
-
-Run against the whole tree on demand:
+Run on demand against the full tree:
 
 ```sh
 pre-commit run --all-files
 ```
 
-Integration tests (testcontainers) are intentionally not part of the pre-commit gate — they need Docker and take longer than a commit should. CI runs the full suite.
+---
 
 ## Nexus CLI (Operator)
 
-Install the CLI once (requires `pip install -e .` or equivalent):
+The `nexus` command is installed as a console script by `pip install -e .`.
 
-```sh
-pip install -e .
-```
+**Access model:**
 
-This registers the `nexus` console-script from `app.cli.main:app`.
+| Command group | Access path | Server required? |
+|---|---|---|
+| `status`, `sources`, `documents`, `document` | Direct Postgres | No |
+| `search` | HTTP → FastAPI | Yes |
+| `ingest url / text / rss` | HTTP → FastAPI | Yes |
 
-Every command accepts three universal flags:
+**Universal flags** available on every command:
 
 | Flag | Default | Description |
 |---|---|---|
-| `--json` | off | Machine-readable JSON output |
-| `--api-url` | `http://localhost:8000` | FastAPI server base URL |
-| `--db-url` | `$DATABASE_URL` | Postgres connection string for direct reads |
+| `--json` | off | Machine-readable JSON output instead of a rich table |
+| `--api-url <url>` | `http://localhost:8000` | Override the FastAPI server address |
+| `--db-url <url>` | `$DATABASE_URL` | Override the Postgres connection string |
 
-### Pipeline Status
+---
+
+### `nexus status`
+
+Pipeline health snapshot — reads Postgres directly, no server required.
 
 ```sh
 nexus status
+nexus status --json
 ```
 
-Shows document counts by status, totals, and last ingest timestamp. Reads Postgres directly.
+Shows document counts by status (`fetched` / `chunked` / `embedded`), total spans, source count, and timestamp of the last ingestion. Documents stuck in `fetched` or `chunked` for more than one hour are highlighted yellow.
 
-### Sources
+**JSON output keys:**
+
+```json
+{
+  "docs_by_status": {"fetched": 0, "chunked": 0, "embedded": 245},
+  "total_documents": 245,
+  "total_spans": 1843,
+  "total_sources": 8,
+  "enabled_sources": 7,
+  "last_ingest_at": "2026-05-16T14:23:00+00:00",
+  "stuck_count": 0
+}
+```
+
+---
+
+### `nexus sources`
+
+List configured sources — reads Postgres directly.
 
 ```sh
 nexus sources
-nexus sources --enabled
-nexus sources --disabled
+nexus sources --enabled          # enabled sources only
+nexus sources --disabled         # disabled sources only
+nexus sources --json             # machine-readable
 ```
 
-Lists all registered sources. Filter by enabled/disabled state.
+Columns: ID (short), Name, Type, URL, Domain pack, Enabled, Credibility score.
 
-### Documents
+---
+
+### `nexus documents`
+
+List documents with optional filters — reads Postgres directly.
 
 ```sh
 nexus documents
 nexus documents --status embedded
+nexus documents --status fetched
 nexus documents --source <uuid>
 nexus documents --since 2026-05-01T00:00:00
-nexus documents --limit 50
+nexus documents --limit 100
+nexus documents --status embedded --json | jq '.[].title'
 ```
 
-Lists documents with optional filters. Reads Postgres directly.
+| Flag | Description |
+|---|---|
+| `--status` | Filter by pipeline status (`fetched`, `chunked`, `embedded`) |
+| `--source <uuid>` | Filter by source ID |
+| `--since <ISO timestamp>` | Only documents fetched after this time |
+| `--limit N` | Maximum rows returned (default: 50) |
 
-### Document Detail
+Columns: ID (short), Title, Source, Status (colour-coded), Fetched At.
+
+---
+
+### `nexus document <id>`
+
+Show one document and all its spans — reads Postgres directly.
 
 ```sh
-nexus document <id>
+nexus document 3f8a2c1d-7e4b-4a9f-b2d5-1c6e8f3a9b7d
+nexus document <id> --json
 ```
 
-Shows a single document with all its spans. Reads Postgres directly.
+Prints two tables: document metadata (title, URL, source, status, content hash, timestamps) and a span table (index, token count, embedding presence, 80-char text preview). The raw embedding vectors are never shown.
 
-### Semantic Search
+---
+
+### `nexus search`
+
+Semantic span search — POSTs to `/search/spans` on the running FastAPI server.
 
 ```sh
-nexus search "query text"
-nexus search "query text" --top-k 20
+nexus search "open-source LLM releases"
+nexus search "Claude API tool use" --top-k 5
+nexus search "infrastructure benchmark" --json
 ```
 
-Semantic span search via `POST /search/spans` on the FastAPI server.
+| Flag | Default | Description |
+|---|---|---|
+| `--top-k N` | 10 | Maximum results returned |
 
-### Ingest
+Results are ranked by cosine similarity (score 0–1). Score is colour-coded: ≥ 0.7 green, 0.5–0.7 yellow, < 0.5 white.
+
+The server must be running and at least one document must have `status = embedded` before results are returned. Returns an empty table (not an error) if the index has no embedded spans.
+
+---
+
+### `nexus ingest`
+
+Trigger ingestion — POSTs to the FastAPI server.
+
+**Ingest a URL:**
 
 ```sh
-# Ingest a URL
-nexus ingest url https://example.com/article
+nexus ingest url https://arxiv.org/abs/2605.12345
+nexus ingest url https://example.com/post --source-name research --domain-pack personal_ai_tech
+```
 
-# Ingest local text
-nexus ingest text --title "My Note" --file ./note.txt
+Calls `POST /ingest/url`. The server fetches, cleans, deduplicates, stores, and triggers background chunk+embed.
 
-# Trigger RSS ingest for a registered source
+**Ingest a local text file:**
+
+```sh
+nexus ingest text --title "Meeting notes" --file ./notes.md
+nexus ingest text --title "Paper summary" --file ./summary.txt --source-name papers
+```
+
+Reads the file from disk and calls `POST /ingest/text`.
+
+**Trigger RSS feed ingestion:**
+
+```sh
+nexus ingest rss 9e343479-f9d1-1f54-52b0-eb9e9cbf2c8c
+nexus ingest rss <source_id> --json
+```
+
+Calls `POST /ingest/rss/{source_id}`. The source must already be registered (via `POST /sources`) with `source_type=rss`.
+
+**Ingest flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--source-name` | `manual` | Name for auto-created manual source |
+| `--domain-pack` | `personal_ai_tech` | Domain pack for the ingested document |
+
+---
+
+### Typical operator workflow
+
+```sh
+# 1. Check pipeline state
+nexus status
+
+# 2. List sources
+nexus sources --enabled
+
+# 3. Trigger a feed
 nexus ingest rss <source_id>
+
+# 4. Watch documents land
+nexus documents --status fetched
+nexus documents --status embedded
+
+# 5. Inspect a document
+nexus document <doc_id>
+
+# 6. Test retrieval
+nexus search "your query here" --top-k 5
 ```
 
-All ingest commands go through the FastAPI server (`POST /ingest/*`).
+---
+
+### Error handling
+
+| Situation | Output |
+|---|---|
+| `DATABASE_URL` not set for a DB-read command | `API error: DATABASE_URL is not set` + exit 1 |
+| FastAPI server not running | `Network error: ...` + exit 1 |
+| API returns 4xx/5xx | `API error: POST /ingest/url → 422: ...` + exit 1 |
+| Document not found | `Document <id> not found.` + exit 1 |
+| No embedded documents for search | Empty results table (not an error) |
+| Invalid `--since` format | `Invalid --since value '...': ...` (Typer validation error) |
+
+---
 
 ## GitNexus Workflow
 
-Use GitNexus when you need repo context:
+Use GitNexus when you need repo intelligence:
 
 ```sh
-gitnexus status
-gitnexus analyze
-gitnexus query "search concept"
-gitnexus context <symbol>
-gitnexus impact <symbol>
-gitnexus detect-changes
-gitnexus mcp
+npx gitnexus status           # freshness check
+npx gitnexus analyze          # rebuild index (incremental)
+npx gitnexus analyze --force  # full rebuild
+```
+
+Via MCP tools in Claude Code:
+
+```
+gitnexus://repo/Nexus/context   → codebase overview
+gitnexus_query({query: "..."})  → find execution flows
+gitnexus_context({name: "..."}) → 360° symbol view
+gitnexus_impact({target: "..."})→ blast radius
+gitnexus_detect_changes()       → what do my edits affect
 ```
