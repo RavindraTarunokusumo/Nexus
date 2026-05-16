@@ -1,15 +1,16 @@
 import re
 import uuid
 from datetime import datetime
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.deps import DbSession
-from app.db.models import Document, Source
+from app.db.models import Document, Source, Span
 from app.ingestion.cleaner import content_hash, normalize_url
 from app.ingestion.rss import fetch_rss_entries
 from app.ingestion.url_fetcher import fetch_and_clean
@@ -27,6 +28,66 @@ def _validate_identifier(value: str, field_name: str) -> str:
     return value
 
 router = APIRouter(tags=["ingestion"])
+
+
+# ---------------------------------------------------------------------------
+# Background task: chunk and embed a persisted document
+# ---------------------------------------------------------------------------
+
+
+async def _chunk_and_embed(
+    doc_id: uuid.UUID,
+    session_factory: async_sessionmaker,
+    embedder: Any,
+) -> None:
+    """Chunk a document's clean_text into spans and embed them; updates document status."""
+    from app.ingestion.chunker import chunk_document
+
+    async with session_factory() as session:
+        doc = await session.get(Document, doc_id)
+        if doc is None:
+            return
+
+        # Idempotency: skip if already processed.
+        if doc.status == "embedded":
+            return
+
+        spans_data = chunk_document(doc.clean_text or "")
+
+        doc.status = "chunked"
+        for s in spans_data:
+            session.add(
+                Span(
+                    document_id=doc_id,
+                    span_index=s["span_index"],
+                    text=s["text"],
+                    token_count=s["token_count"],
+                    metadata_json=s["metadata_json"],
+                )
+            )
+        await session.commit()
+
+    if not spans_data or embedder is None:
+        return
+
+    async with session_factory() as session:
+        spans = (
+            await session.execute(
+                select(Span)
+                .where(Span.document_id == doc_id)
+                .order_by(Span.span_index)
+            )
+        ).scalars().all()
+
+        vectors = embedder.embed([s.text for s in spans])
+        for span, vec in zip(spans, vectors):
+            span.embedding = vec
+
+        doc = await session.get(Document, doc_id)
+        if doc:
+            doc.status = "embedded"
+
+        await session.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -65,9 +126,24 @@ async def _persist_document(
     clean_text: str,
     published_at: datetime | None,
 ) -> Document | None:
-    """Persist a document; return None if it is a duplicate (URL or content hash)."""
+    """Persist a document; return None if it is a duplicate (URL or content hash).
+
+    Uses select-before-insert rather than savepoints: asyncpg 0.29+ marks the
+    outer transaction as deactive when a savepoint rolls back on a constraint
+    violation, making subsequent commits fail with PendingRollbackError.
+    """
+    from sqlalchemy import or_
+
     norm_url = normalize_url(url) if url else None
     chash = content_hash(clean_text)
+
+    where_clauses = [Document.content_hash == chash]
+    if norm_url:
+        where_clauses.append(Document.url == norm_url)
+
+    existing = await session.scalar(select(Document.id).where(or_(*where_clauses)))
+    if existing is not None:
+        return None
 
     doc = Document(
         source_id=source_id,
@@ -80,11 +156,6 @@ async def _persist_document(
         status="fetched",
     )
     session.add(doc)
-    try:
-        async with session.begin_nested():
-            await session.flush()
-    except IntegrityError:
-        return None
     return doc
 
 
@@ -102,17 +173,9 @@ async def _get_or_create_manual_source(
     if source is None:
         source = Source(name=name, source_type="manual", url=None, domain_pack=domain_pack)
         session.add(source)
-        try:
-            async with session.begin_nested():
-                await session.flush()
-        except IntegrityError:
-            source = await session.scalar(
-                select(Source).where(
-                    Source.source_type == "manual",
-                    Source.name == name,
-                    Source.domain_pack == domain_pack,
-                )
-            )
+        # Flush immediately so source.id is available for document foreign keys.
+        # Manual sources have no unique URL, so no IntegrityError risk here.
+        await session.flush()
     return source
 
 
@@ -121,7 +184,12 @@ async def _get_or_create_manual_source(
 # ---------------------------------------------------------------------------
 
 @router.post("/ingest/rss/{source_id}", response_model=IngestResult)
-async def ingest_rss(source_id: uuid.UUID, session: DbSession) -> IngestResult:
+async def ingest_rss(
+    source_id: uuid.UUID,
+    session: DbSession,
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> IngestResult:
     source = await session.get(Source, source_id)
     if source is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source not found.")
@@ -159,6 +227,11 @@ async def ingest_rss(source_id: uuid.UUID, session: DbSession) -> IngestResult:
     for doc in ingested:
         await session.refresh(doc)
 
+    session_factory = request.app.state.session_factory
+    embedder = getattr(request.app.state, "embedder", None)
+    for doc in ingested:
+        background_tasks.add_task(_chunk_and_embed, doc.id, session_factory, embedder)
+
     return IngestResult(
         ingested=len(ingested),
         skipped=skipped,
@@ -182,7 +255,12 @@ class IngestURLPayload(BaseModel):
 
 
 @router.post("/ingest/url", response_model=IngestResult)
-async def ingest_url(payload: IngestURLPayload, session: DbSession) -> IngestResult:
+async def ingest_url(
+    payload: IngestURLPayload,
+    session: DbSession,
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> IngestResult:
     source = await _get_or_create_manual_source(
         session, name=payload.source_name, domain_pack=payload.domain_pack
     )
@@ -210,6 +288,11 @@ async def ingest_url(payload: IngestURLPayload, session: DbSession) -> IngestRes
     if doc is None:
         return IngestResult(ingested=0, skipped=1, documents=[])
     await session.refresh(doc)
+
+    session_factory = request.app.state.session_factory
+    embedder = getattr(request.app.state, "embedder", None)
+    background_tasks.add_task(_chunk_and_embed, doc.id, session_factory, embedder)
+
     return IngestResult(ingested=1, skipped=0, documents=[DocumentResponse.model_validate(doc)])
 
 
@@ -230,7 +313,12 @@ class IngestTextPayload(BaseModel):
 
 
 @router.post("/ingest/text", response_model=IngestResult)
-async def ingest_text(payload: IngestTextPayload, session: DbSession) -> IngestResult:
+async def ingest_text(
+    payload: IngestTextPayload,
+    session: DbSession,
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> IngestResult:
     if not payload.text.strip():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -254,4 +342,9 @@ async def ingest_text(payload: IngestTextPayload, session: DbSession) -> IngestR
     if doc is None:
         return IngestResult(ingested=0, skipped=1, documents=[])
     await session.refresh(doc)
+
+    session_factory = request.app.state.session_factory
+    embedder = getattr(request.app.state, "embedder", None)
+    background_tasks.add_task(_chunk_and_embed, doc.id, session_factory, embedder)
+
     return IngestResult(ingested=1, skipped=0, documents=[DocumentResponse.model_validate(doc)])
