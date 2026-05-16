@@ -1,4 +1,5 @@
 """CLI settings — reads the same .env as the server."""
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 

@@ -1,4 +1,5 @@
 """CLI database readers — short-lived asyncpg connections per call."""
+
 from __future__ import annotations
 
 import uuid
@@ -27,6 +28,7 @@ async def count_documents_by_status(database_url: str) -> dict[str, int]:
     async def _q(session):
         stmt = select(Document.status, func.count(Document.id)).group_by(Document.status)
         return {row[0]: row[1] for row in (await session.execute(stmt)).all()}
+
     return await _with_session(database_url, _q)
 
 
@@ -48,6 +50,7 @@ async def list_sources(database_url: str, enabled: bool | None) -> list[dict[str
             }
             for s in rows
         ]
+
     return await _with_session(database_url, _q)
 
 
@@ -84,6 +87,7 @@ async def list_documents(
             }
             for doc, source_name in rows
         ]
+
     return await _with_session(database_url, _q)
 
 
@@ -122,6 +126,7 @@ async def get_document_with_spans(
                 for s in spans_sorted
             ],
         }
+
     return await _with_session(database_url, _q)
 
 
@@ -143,12 +148,15 @@ async def get_status_snapshot(database_url: str) -> dict[str, Any]:
         last_ingest_at = await session.scalar(select(func.max(Document.fetched_at)))
 
         cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
-        stuck = await session.scalar(
-            select(func.count(Document.id)).where(
-                Document.status.in_(["fetched", "chunked"]),
-                Document.fetched_at < cutoff,
+        stuck = (
+            await session.scalar(
+                select(func.count(Document.id)).where(
+                    Document.status.in_(["fetched", "chunked"]),
+                    Document.fetched_at < cutoff,
+                )
             )
-        ) or 0
+            or 0
+        )
 
         return {
             "docs_by_status": docs_by_status,
@@ -159,4 +167,5 @@ async def get_status_snapshot(database_url: str) -> dict[str, Any]:
             "last_ingest_at": last_ingest_at,
             "stuck_count": stuck,
         }
+
     return await _with_session(database_url, _q)

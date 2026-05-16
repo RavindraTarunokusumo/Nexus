@@ -1,4 +1,5 @@
 """CLI HTTP client wrappers. Each function calls the FastAPI server."""
+
 from __future__ import annotations
 
 import uuid
@@ -27,7 +28,9 @@ async def _request(method: str, base_url: str, path: str, **kwargs) -> Any:
 
 async def ingest_url(base_url: str, url: str, source_name: str, domain_pack: str) -> dict:
     return await _request(
-        "POST", base_url, "/ingest/url",
+        "POST",
+        base_url,
+        "/ingest/url",
         json={"url": url, "source_name": source_name, "domain_pack": domain_pack},
     )
 
@@ -36,7 +39,9 @@ async def ingest_text(
     base_url: str, *, title: str, text: str, source_name: str, domain_pack: str
 ) -> dict:
     return await _request(
-        "POST", base_url, "/ingest/text",
+        "POST",
+        base_url,
+        "/ingest/text",
         json={"title": title, "text": text, "source_name": source_name, "domain_pack": domain_pack},
     )
 
@@ -47,6 +52,8 @@ async def ingest_rss(base_url: str, source_id: uuid.UUID) -> dict:
 
 async def search_spans(base_url: str, query: str, top_k: int) -> list[dict]:
     return await _request(
-        "POST", base_url, "/search/spans",
+        "POST",
+        base_url,
+        "/search/spans",
         json={"query": query, "top_k": top_k},
     )

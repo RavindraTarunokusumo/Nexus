@@ -1,9 +1,9 @@
 """Unit tests for app/cli/render.py — pure formatters, no DB."""
+
 import json
 import uuid
 from datetime import datetime, timezone
 
-import pytest
 
 from app.cli.render import (
     render_document_detail,
@@ -49,8 +49,12 @@ def test_render_status_json_is_parseable(capsys):
 
 def test_render_status_handles_empty_db(capsys):
     snap = _make_status_snapshot(
-        docs_by_status={}, total_documents=0, total_spans=0,
-        total_sources=0, enabled_sources=0, last_ingest_at=None,
+        docs_by_status={},
+        total_documents=0,
+        total_spans=0,
+        total_sources=0,
+        enabled_sources=0,
+        last_ingest_at=None,
     )
     render_status(snap, json_output=False)
     out = capsys.readouterr().out
@@ -118,8 +122,20 @@ def test_render_document_detail_shows_spans(capsys):
         "fetched_at": datetime(2026, 5, 16, 12, 0, tzinfo=timezone.utc),
         "published_at": None,
         "spans": [
-            {"id": uuid.uuid4(), "span_index": 0, "text": "First span text here", "token_count": 4, "has_embedding": True},
-            {"id": uuid.uuid4(), "span_index": 1, "text": "Second span text here", "token_count": 4, "has_embedding": False},
+            {
+                "id": uuid.uuid4(),
+                "span_index": 0,
+                "text": "First span text here",
+                "token_count": 4,
+                "has_embedding": True,
+            },
+            {
+                "id": uuid.uuid4(),
+                "span_index": 1,
+                "text": "Second span text here",
+                "token_count": 4,
+                "has_embedding": False,
+            },
         ],
     }
     render_document_detail(detail, json_output=False)

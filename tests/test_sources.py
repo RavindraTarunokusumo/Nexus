@@ -1,4 +1,5 @@
 """Integration tests for source management API."""
+
 import pytest
 from httpx import AsyncClient
 
@@ -72,8 +73,12 @@ async def test_list_sources_empty(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_list_sources(client: AsyncClient):
-    await client.post("/sources", json={"name": "Feed 1", "source_type": "rss", "url": "https://a.example.com/f"})
-    await client.post("/sources", json={"name": "Feed 2", "source_type": "rss", "url": "https://b.example.com/f"})
+    await client.post(
+        "/sources", json={"name": "Feed 1", "source_type": "rss", "url": "https://a.example.com/f"}
+    )
+    await client.post(
+        "/sources", json={"name": "Feed 2", "source_type": "rss", "url": "https://b.example.com/f"}
+    )
     response = await client.get("/sources")
     assert response.status_code == 200
     assert len(response.json()) == 2

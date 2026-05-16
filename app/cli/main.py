@@ -1,4 +1,5 @@
 """Nexus CLI — typer App entry point."""
+
 from __future__ import annotations
 
 import asyncio
@@ -83,9 +84,7 @@ def _settings(db_url: Optional[str], api_url: Optional[str]) -> CLISettings:
 def _require_db_url(cfg: CLISettings) -> str:
     """Enforce database_url for commands that read from Postgres directly."""
     if not cfg.database_url:
-        typer.echo(
-            "DATABASE_URL is not set. Set it in .env or pass --db-url.", err=True
-        )
+        typer.echo("DATABASE_URL is not set. Set it in .env or pass --db-url.", err=True)
         raise typer.Exit(code=1)
     return cfg.database_url
 
@@ -132,7 +131,9 @@ def sources(
 def documents(
     status: Optional[str] = typer.Option(None, "--status", help="Filter by document status."),
     source_id: Optional[uuid.UUID] = typer.Option(None, "--source", help="Filter by source ID."),
-    since: Optional[str] = typer.Option(None, "--since", help="Only docs fetched after ISO timestamp."),
+    since: Optional[str] = typer.Option(
+        None, "--since", help="Only docs fetched after ISO timestamp."
+    ),
     limit: int = typer.Option(50, "--limit"),
     json_output: bool = typer.Option(False, "--json"),
     db_url: Optional[str] = typer.Option(None, "--db-url"),
@@ -145,7 +146,10 @@ def documents(
     docs = _run(
         list_documents(
             database_url,
-            status=status, source_id=source_id, since=since_dt, limit=limit,
+            status=status,
+            source_id=source_id,
+            since=since_dt,
+            limit=limit,
         )
     )
     render_documents_table(docs, json_output=json_output)
@@ -213,7 +217,10 @@ def ingest_text_cmd(
     result = _run_http(
         http_ingest_text(
             cfg.api_base_url,
-            title=title, text=text, source_name=source_name, domain_pack=domain_pack,
+            title=title,
+            text=text,
+            source_name=source_name,
+            domain_pack=domain_pack,
         )
     )
     print_ingest_result(result, json_output=json_output)

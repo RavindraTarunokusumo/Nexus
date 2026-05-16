@@ -73,11 +73,15 @@ async def fetch_bytes(url: str) -> bytes:
     """
     validate_url_scheme(url)
     await assert_public_host(url)
-    async with httpx.AsyncClient(timeout=_TIMEOUT, headers=_HEADERS, follow_redirects=False) as client:
+    async with httpx.AsyncClient(
+        timeout=_TIMEOUT, headers=_HEADERS, follow_redirects=False
+    ) as client:
         r = await _validated_get(client, url)
         r.raise_for_status()
         if len(r.content) > _MAX_RESPONSE_BYTES:
-            raise ValueError(f"Response exceeds maximum allowed size ({_MAX_RESPONSE_BYTES} bytes).")
+            raise ValueError(
+                f"Response exceeds maximum allowed size ({_MAX_RESPONSE_BYTES} bytes)."
+            )
         return r.content
 
 
@@ -89,10 +93,14 @@ async def fetch_and_clean(url: str) -> tuple[str, str]:
     """
     validate_url_scheme(url)
     await assert_public_host(url)
-    async with httpx.AsyncClient(timeout=_TIMEOUT, headers=_HEADERS, follow_redirects=False) as client:
+    async with httpx.AsyncClient(
+        timeout=_TIMEOUT, headers=_HEADERS, follow_redirects=False
+    ) as client:
         r = await _validated_get(client, url)
         r.raise_for_status()
         if len(r.content) > _MAX_RESPONSE_BYTES:
-            raise ValueError(f"Response exceeds maximum allowed size ({_MAX_RESPONSE_BYTES} bytes).")
+            raise ValueError(
+                f"Response exceeds maximum allowed size ({_MAX_RESPONSE_BYTES} bytes)."
+            )
         raw_html = r.text
     return raw_html, extract_text(raw_html)

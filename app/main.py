@@ -19,6 +19,7 @@ async def lifespan(app: FastAPI):
 
     try:
         from app.intelligence.embedder import Embedder
+
         app.state.embedder = Embedder()
         logger.info("Embedder loaded: BAAI/bge-small-en-v1.5")
     except Exception as exc:  # noqa: BLE001

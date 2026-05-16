@@ -95,6 +95,7 @@ def run_migrations(db_url):
 # Per-test engine / session
 # ---------------------------------------------------------------------------
 
+
 # Function-scoped engine: each test gets a fresh asyncpg pool in its own event loop.
 # This avoids "Future attached to a different loop" errors from session-scoped pools.
 @pytest_asyncio.fixture

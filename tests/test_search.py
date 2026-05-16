@@ -1,4 +1,5 @@
 """Integration tests for POST /search/spans."""
+
 import uuid
 
 import pytest
@@ -22,7 +23,9 @@ async def _seed_span(
 ) -> tuple[uuid.UUID, uuid.UUID]:
     """Insert a source, document, and one span with a known embedding; return (doc_id, span_id)."""
     async with session_factory() as session:
-        source = Source(name=uuid.uuid4().hex[:8], source_type="manual", domain_pack="personal_ai_tech")
+        source = Source(
+            name=uuid.uuid4().hex[:8], source_type="manual", domain_pack="personal_ai_tech"
+        )
         session.add(source)
         await session.flush()
 
@@ -145,12 +148,8 @@ async def test_search_semantic_ranking(async_engine, session_factory: async_sess
         session_factory, text="span B", embedding=_unit_vec(dim, 1)
     )
 
-    async with AsyncClient(
-        transport=ASGITransport(app=test_app), base_url="http://test"
-    ) as client:
-        response = await client.post(
-            "/search/spans", json={"query": "any query", "top_k": 2}
-        )
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
+        response = await client.post("/search/spans", json={"query": "any query", "top_k": 2})
 
     assert response.status_code == 200
     results = response.json()

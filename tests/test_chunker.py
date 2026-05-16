@@ -1,5 +1,4 @@
 """Unit tests for chunk_document."""
-import pytest
 
 from app.ingestion.chunker import _CHUNK_TOKENS, _OVERLAP_TOKENS, chunk_document
 

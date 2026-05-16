@@ -1,4 +1,5 @@
 """Integration tests for app/cli/db.py against testcontainers Postgres."""
+
 import uuid
 
 import pytest
@@ -18,14 +19,40 @@ async def _seed_basic(session_factory: async_sessionmaker) -> dict:
     """Seed two sources and four documents in different statuses."""
     async with session_factory() as session:
         src_a = Source(name="Feed A", source_type="rss", url="https://a.example/feed", enabled=True)
-        src_b = Source(name="Feed B", source_type="rss", url="https://b.example/feed", enabled=False)
+        src_b = Source(
+            name="Feed B", source_type="rss", url="https://b.example/feed", enabled=False
+        )
         session.add_all([src_a, src_b])
         await session.flush()
         docs = [
-            Document(source_id=src_a.id, title="D1", clean_text="x", content_hash=f"h{uuid.uuid4()}", status="fetched"),
-            Document(source_id=src_a.id, title="D2", clean_text="y", content_hash=f"h{uuid.uuid4()}", status="chunked"),
-            Document(source_id=src_a.id, title="D3", clean_text="z", content_hash=f"h{uuid.uuid4()}", status="embedded"),
-            Document(source_id=src_b.id, title="D4", clean_text="w", content_hash=f"h{uuid.uuid4()}", status="embedded"),
+            Document(
+                source_id=src_a.id,
+                title="D1",
+                clean_text="x",
+                content_hash=f"h{uuid.uuid4()}",
+                status="fetched",
+            ),
+            Document(
+                source_id=src_a.id,
+                title="D2",
+                clean_text="y",
+                content_hash=f"h{uuid.uuid4()}",
+                status="chunked",
+            ),
+            Document(
+                source_id=src_a.id,
+                title="D3",
+                clean_text="z",
+                content_hash=f"h{uuid.uuid4()}",
+                status="embedded",
+            ),
+            Document(
+                source_id=src_b.id,
+                title="D4",
+                clean_text="w",
+                content_hash=f"h{uuid.uuid4()}",
+                status="embedded",
+            ),
         ]
         session.add_all(docs)
         await session.commit()
@@ -43,7 +70,7 @@ async def test_count_documents_by_status(session_factory, db_url):
 
 @pytest.mark.asyncio
 async def test_list_sources_all(session_factory, db_url):
-    ids = await _seed_basic(session_factory)
+    await _seed_basic(session_factory)
     sources = await list_sources(db_url, enabled=None)
     assert len(sources) == 2
     assert {s["name"] for s in sources} == {"Feed A", "Feed B"}
@@ -78,11 +105,13 @@ async def test_get_document_with_spans_includes_spans_sorted(session_factory, db
     ids = await _seed_basic(session_factory)
     doc_id = ids["docs"][2]  # D3, status=embedded
     async with session_factory() as session:
-        session.add_all([
-            Span(document_id=doc_id, span_index=2, text="span2", token_count=10),
-            Span(document_id=doc_id, span_index=0, text="span0", token_count=10),
-            Span(document_id=doc_id, span_index=1, text="span1", token_count=10),
-        ])
+        session.add_all(
+            [
+                Span(document_id=doc_id, span_index=2, text="span2", token_count=10),
+                Span(document_id=doc_id, span_index=0, text="span0", token_count=10),
+                Span(document_id=doc_id, span_index=1, text="span1", token_count=10),
+            ]
+        )
         await session.commit()
 
     detail = await get_document_with_spans(db_url, doc_id)

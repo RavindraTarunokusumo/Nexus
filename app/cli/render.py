@@ -1,4 +1,5 @@
 """Rich + JSON formatters for CLI output. All functions print to stdout."""
+
 from __future__ import annotations
 
 import json
@@ -61,7 +62,9 @@ def render_status(snapshot: dict[str, Any], *, json_output: bool) -> None:
     table.add_section()
     table.add_row("Total docs", str(snapshot.get("total_documents", 0)))
     table.add_row("Total spans", str(snapshot.get("total_spans", 0)))
-    sources_line = f"{snapshot.get('total_sources', 0)} ({snapshot.get('enabled_sources', 0)} enabled)"
+    sources_line = (
+        f"{snapshot.get('total_sources', 0)} ({snapshot.get('enabled_sources', 0)} enabled)"
+    )
     table.add_row("Sources", sources_line)
 
     last = snapshot.get("last_ingest_at")
@@ -208,4 +211,5 @@ def print_ingest_result(result: dict[str, Any], *, json_output: bool) -> None:
         _print_json(result)
     else:
         import typer
+
         typer.echo(f"Ingested: {result['ingested']}, Skipped: {result['skipped']}")

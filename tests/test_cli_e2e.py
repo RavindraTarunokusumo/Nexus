@@ -1,4 +1,5 @@
 """End-to-end CLI tests via typer.testing.CliRunner."""
+
 import json
 import uuid
 
@@ -17,10 +18,20 @@ async def _seed_two_docs(session_factory):
         src = Source(name="Test Feed", source_type="rss", url="https://t.example/feed")
         session.add(src)
         await session.flush()
-        d1 = Document(source_id=src.id, title="Doc One", clean_text="x",
-                      content_hash=f"h-{uuid.uuid4()}", status="embedded")
-        d2 = Document(source_id=src.id, title="Doc Two", clean_text="y",
-                      content_hash=f"h-{uuid.uuid4()}", status="fetched")
+        d1 = Document(
+            source_id=src.id,
+            title="Doc One",
+            clean_text="x",
+            content_hash=f"h-{uuid.uuid4()}",
+            status="embedded",
+        )
+        d2 = Document(
+            source_id=src.id,
+            title="Doc Two",
+            clean_text="y",
+            content_hash=f"h-{uuid.uuid4()}",
+            status="fetched",
+        )
         session.add_all([d1, d2])
         await session.commit()
         return src.id, d1.id, d2.id
@@ -50,9 +61,7 @@ async def test_sources_command_json(session_factory, db_url):
 @pytest.mark.asyncio
 async def test_documents_command_filters_by_status(session_factory, db_url):
     await _seed_two_docs(session_factory)
-    result = runner.invoke(
-        app, ["documents", "--status", "embedded", "--json", "--db-url", db_url]
-    )
+    result = runner.invoke(app, ["documents", "--status", "embedded", "--json", "--db-url", db_url])
     assert result.exit_code == 0, result.stdout
     data = json.loads(result.stdout)
     assert len(data) == 1
@@ -62,9 +71,7 @@ async def test_documents_command_filters_by_status(session_factory, db_url):
 @pytest.mark.asyncio
 async def test_document_detail_command(session_factory, db_url):
     _, doc_id, _ = await _seed_two_docs(session_factory)
-    result = runner.invoke(
-        app, ["document", str(doc_id), "--json", "--db-url", db_url]
-    )
+    result = runner.invoke(app, ["document", str(doc_id), "--json", "--db-url", db_url])
     assert result.exit_code == 0, result.stdout
     data = json.loads(result.stdout)
     assert data["title"] == "Doc One"
@@ -73,9 +80,7 @@ async def test_document_detail_command(session_factory, db_url):
 
 @pytest.mark.asyncio
 async def test_document_not_found_exits_nonzero(db_url):
-    result = runner.invoke(
-        app, ["document", str(uuid.uuid4()), "--db-url", db_url]
-    )
+    result = runner.invoke(app, ["document", str(uuid.uuid4()), "--db-url", db_url])
     assert result.exit_code != 0
 
 
@@ -109,8 +114,15 @@ async def test_search_command_calls_http_with_correct_payload(monkeypatch, db_ur
 
     result = runner.invoke(
         app,
-        ["search", "open-source LLMs", "--top-k", "5", "--json",
-         "--api-url", "http://test.example"],
+        [
+            "search",
+            "open-source LLMs",
+            "--top-k",
+            "5",
+            "--json",
+            "--api-url",
+            "http://test.example",
+        ],
     )
     assert result.exit_code == 0, result.stdout
     assert captured["query"] == "open-source LLMs"
@@ -125,14 +137,28 @@ async def test_ingest_url_command(monkeypatch, db_url):
     captured = {}
 
     async def fake_ingest_url(base_url, url, source_name, domain_pack):
-        captured.update(base_url=base_url, url=url, source_name=source_name, domain_pack=domain_pack)
-        return {"ingested": 1, "skipped": 0, "documents": [{"id": str(uuid.uuid4()), "title": None}]}
+        captured.update(
+            base_url=base_url, url=url, source_name=source_name, domain_pack=domain_pack
+        )
+        return {
+            "ingested": 1,
+            "skipped": 0,
+            "documents": [{"id": str(uuid.uuid4()), "title": None}],
+        }
 
     monkeypatch.setattr("app.cli.main.http_ingest_url", fake_ingest_url)
 
     result = runner.invoke(
-        app, ["ingest", "url", "https://example.com/article",
-              "--db-url", db_url, "--api-url", "http://test.example"]
+        app,
+        [
+            "ingest",
+            "url",
+            "https://example.com/article",
+            "--db-url",
+            db_url,
+            "--api-url",
+            "http://test.example",
+        ],
     )
     assert result.exit_code == 0, result.stdout
     assert captured["url"] == "https://example.com/article"
@@ -152,8 +178,8 @@ async def test_ingest_text_command_reads_file(monkeypatch, db_url, tmp_path):
     monkeypatch.setattr("app.cli.main.http_ingest_text", fake_ingest_text)
 
     result = runner.invoke(
-        app, ["ingest", "text", "--title", "My Article",
-              "--file", str(text_file), "--db-url", db_url]
+        app,
+        ["ingest", "text", "--title", "My Article", "--file", str(text_file), "--db-url", db_url],
     )
     assert result.exit_code == 0, result.stdout
     assert captured["title"] == "My Article"
@@ -171,8 +197,6 @@ async def test_ingest_rss_command(monkeypatch, db_url):
 
     monkeypatch.setattr("app.cli.main.http_ingest_rss", fake_ingest_rss)
 
-    result = runner.invoke(
-        app, ["ingest", "rss", str(source_id), "--db-url", db_url]
-    )
+    result = runner.invoke(app, ["ingest", "rss", str(source_id), "--db-url", db_url])
     assert result.exit_code == 0, result.stdout
     assert captured["source_id"] == source_id
