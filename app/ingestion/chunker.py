@@ -23,6 +23,10 @@ def chunk_document(text: str, metadata: dict | None = None) -> list[dict]:
     spans: list[dict] = []
 
     for i, start in enumerate(range(0, len(words), _STEP)):
+        # Skip trailing windows whose content is entirely within the overlap of the
+        # previous span (i.e., no new content beyond the overlap boundary).
+        if start > 0 and len(words) - start <= _OVERLAP_TOKENS:
+            break
         window = words[start : start + _CHUNK_TOKENS]
         if not window:
             break

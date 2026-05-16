@@ -71,14 +71,14 @@ class SpanSearchResult(BaseModel):
 @router.get("/documents", response_model=list[DocumentListItem])
 async def list_documents(
     session: DbSession,
-    status: str | None = None,
+    doc_status: str | None = None,
     source_id: uuid.UUID | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[DocumentListItem]:
     q = select(Document)
-    if status is not None:
-        q = q.where(Document.status == status)
+    if doc_status is not None:
+        q = q.where(Document.status == doc_status)
     if source_id is not None:
         q = q.where(Document.source_id == source_id)
     q = q.order_by(Document.fetched_at.desc()).limit(limit).offset(offset)
@@ -121,15 +121,12 @@ async def search_spans(
             detail="Embedder not initialised.",
         )
 
-    # Reject searches when no embedded spans exist yet.
+    # Return empty results when the index has no embedded spans yet.
     sentinel = await session.scalar(
         select(Span).where(Span.embedding.isnot(None)).limit(1)
     )
     if sentinel is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="No embedded spans in index. Ingest and embed documents first.",
-        )
+        return []
 
     query_vec = embedder.embed_one(payload.query)
 

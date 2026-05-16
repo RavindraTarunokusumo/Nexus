@@ -40,7 +40,14 @@ async def _chunk_and_embed(
     session_factory: async_sessionmaker,
     embedder: Any,
 ) -> None:
-    """Chunk a document's clean_text into spans and embed them; updates document status."""
+    """Chunk a document's clean_text into spans and embed them; updates document status.
+
+    This task is scheduled via FastAPI BackgroundTasks, which guarantees it runs
+    after the response (and therefore after the route's session.commit()) has been
+    sent.  Do not call this synchronously before the outer session commits — the
+    document row won't exist yet and the early-exit on line 'if doc is None' will
+    silently skip processing.
+    """
     from app.ingestion.chunker import chunk_document
 
     async with session_factory() as session:
@@ -284,7 +291,11 @@ async def ingest_url(
         clean_text=clean_text,
         published_at=None,
     )
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        return IngestResult(ingested=0, skipped=1, documents=[])
     if doc is None:
         return IngestResult(ingested=0, skipped=1, documents=[])
     await session.refresh(doc)
@@ -338,7 +349,11 @@ async def ingest_text(
         clean_text=payload.text,
         published_at=None,
     )
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        return IngestResult(ingested=0, skipped=1, documents=[])
     if doc is None:
         return IngestResult(ingested=0, skipped=1, documents=[])
     await session.refresh(doc)

@@ -5,7 +5,6 @@ Excluded from the standard CI run: pytest tests/ --ignore=tests/test_embedder.py
 """
 import math
 
-import numpy as np
 import pytest
 
 from app.intelligence.embedder import Embedder

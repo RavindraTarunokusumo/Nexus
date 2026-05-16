@@ -1,11 +1,8 @@
 """Integration tests for GET /documents and GET /documents/{id}."""
 import uuid
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.db.models import Document, Source, Span
@@ -83,7 +80,7 @@ async def test_list_documents_filter_by_status(
     await _create_doc(session_factory, source_id, status="fetched", content_hash="c1")
     await _create_doc(session_factory, source_id, status="embedded", content_hash="c2")
 
-    response = await client.get("/documents?status=embedded")
+    response = await client.get("/documents?doc_status=embedded")
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 1

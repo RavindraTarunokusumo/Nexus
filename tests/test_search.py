@@ -1,7 +1,6 @@
 """Integration tests for POST /search/spans."""
 import uuid
 
-import numpy as np
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -64,11 +63,12 @@ def _unit_vec(dim: int, index: int) -> list[float]:
 
 
 @pytest.mark.asyncio
-async def test_search_empty_index_returns_422(client_with_embedder: AsyncClient):
+async def test_search_empty_index_returns_empty_list(client_with_embedder: AsyncClient):
     response = await client_with_embedder.post(
         "/search/spans", json={"query": "anything", "top_k": 5}
     )
-    assert response.status_code == 422
+    assert response.status_code == 200
+    assert response.json() == []
 
 
 @pytest.mark.asyncio
