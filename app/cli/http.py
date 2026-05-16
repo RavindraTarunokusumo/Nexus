@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-_TIMEOUT = httpx.Timeout(30.0)
+_TIMEOUT = httpx.Timeout(10.0)
 
 
 class CLIHttpError(Exception):

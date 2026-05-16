@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import func, select
@@ -142,8 +142,7 @@ async def get_status_snapshot(database_url: str) -> dict[str, Any]:
         ) or 0
         last_ingest_at = await session.scalar(select(func.max(Document.fetched_at)))
 
-        from datetime import timedelta, timezone as tz
-        cutoff = datetime.now(tz.utc) - timedelta(hours=1)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
         stuck = await session.scalar(
             select(func.count(Document.id)).where(
                 Document.status.in_(["fetched", "chunked"]),

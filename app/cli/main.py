@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import json
 import uuid
 from typing import Optional
 
@@ -161,8 +162,7 @@ def ingest_url_cmd(
     cfg = _settings(db_url, api_url)
     result = _run(http_ingest_url(cfg.api_base_url, url, source_name, domain_pack))
     if json_output:
-        import json as _json
-        typer.echo(_json.dumps(result, indent=2, default=str))
+        typer.echo(json.dumps(result, indent=2, default=str))
     else:
         typer.echo(f"Ingested: {result['ingested']}, Skipped: {result['skipped']}")
 
@@ -188,8 +188,7 @@ def ingest_text_cmd(
         )
     )
     if json_output:
-        import json as _json
-        typer.echo(_json.dumps(result, indent=2, default=str))
+        typer.echo(json.dumps(result, indent=2, default=str))
     else:
         typer.echo(f"Ingested: {result['ingested']}, Skipped: {result['skipped']}")
 
@@ -205,7 +204,6 @@ def ingest_rss_cmd(
     cfg = _settings(db_url, api_url)
     result = _run(http_ingest_rss(cfg.api_base_url, source_id))
     if json_output:
-        import json as _json
-        typer.echo(_json.dumps(result, indent=2, default=str))
+        typer.echo(json.dumps(result, indent=2, default=str))
     else:
         typer.echo(f"Ingested: {result['ingested']}, Skipped: {result['skipped']}")
