@@ -1,0 +1,5 @@
+Summary: Add typer+rich deps and app/cli/ package
+Scope: pyproject.toml, app/cli/__init__.py, app/cli/config.py
+Tests: import verification
+Risk: low — new package, no existing code touched
+Docs: none
