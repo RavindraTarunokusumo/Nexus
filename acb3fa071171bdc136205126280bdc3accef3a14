@@ -1,0 +1,5 @@
+Summary: Reviewer fixes — timeout 10s, top-level json/datetime imports
+Scope: app/cli/http.py, app/cli/main.py, app/cli/db.py
+Tests: 28 CLI tests passing
+Risk: low — cleanup only
+Docs: none
