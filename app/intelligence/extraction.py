@@ -25,12 +25,27 @@ from app.intelligence.prompts.extract_claims import (
 
 _MAX_RETRIES = 2
 
+# Document status lifecycle constants (extends the ingestion statuses with the
+# extraction outcomes; centralised here so routes_claims and tests can import them).
+STATUS_EMBEDDED = "embedded"
+STATUS_CLAIMS_EXTRACTED = "claims_extracted"
+STATUS_EXTRACTION_PARTIAL = "extraction_partial"
+STATUS_EXTRACTION_FAILED = "extraction_failed"
+
+POST_EXTRACTION_STATUSES = (
+    STATUS_EMBEDDED,
+    STATUS_CLAIMS_EXTRACTED,
+    STATUS_EXTRACTION_PARTIAL,
+    STATUS_EXTRACTION_FAILED,
+)
+
 
 class ExtractionState(TypedDict):
     document_id: uuid.UUID
     model: str
     spans: list[dict]
     results: list[dict]  # {span_id, claims, tokens, error}
+    stored_claim_ids: list[uuid.UUID]
     total_tokens: int
     error: str | None
 
@@ -93,7 +108,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
             doc = await session.get(Document, state["document_id"])
             if doc is None:
                 return {"error": f"Document {state['document_id']} not found"}
-            if doc.status != "embedded":
+            if doc.status != STATUS_EMBEDDED:
                 return {"error": f"Document status is '{doc.status}'; must be 'embedded'"}
             rows = (
                 (
@@ -137,47 +152,61 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
 
     async def store_claims(state: ExtractionState) -> dict:
         async with session_factory() as session:
+            claims_to_add: list[Claim] = []
+            evidence_to_add: list[ClaimEvidence] = []
+            stored_ids: list[uuid.UUID] = []
+
             for result in state.get("results", []):
                 if result.get("error"):
                     continue
+                span_id = uuid.UUID(result["span_id"])
                 for claim_data in result.get("claims", []):
-                    claim = Claim(
-                        document_id=state["document_id"],
-                        claim_text=claim_data["claim_text"],
-                        claim_type=claim_data["claim_type"],
-                        entities_json=claim_data.get("entities"),
-                        topics_json=claim_data.get("topics"),
-                        confidence=claim_data.get("confidence"),
-                        status="active",
+                    # Pre-assign UUIDs so we can build ClaimEvidence rows without
+                    # an extra flush per claim.
+                    claim_id = uuid.uuid4()
+                    claims_to_add.append(
+                        Claim(
+                            id=claim_id,
+                            document_id=state["document_id"],
+                            claim_text=claim_data["claim_text"],
+                            claim_type=claim_data["claim_type"],
+                            entities_json=claim_data.get("entities"),
+                            topics_json=claim_data.get("topics"),
+                            confidence=claim_data.get("confidence"),
+                            status="active",
+                        )
                     )
-                    session.add(claim)
-                    await session.flush()
-                    session.add(
+                    evidence_to_add.append(
                         ClaimEvidence(
-                            claim_id=claim.id,
-                            span_id=uuid.UUID(result["span_id"]),
+                            claim_id=claim_id,
+                            span_id=span_id,
                             evidence_role="support",
                             confidence=claim_data.get("confidence"),
                         )
                     )
-            await session.commit()
-        return {}
+                    stored_ids.append(claim_id)
+
+            if claims_to_add:
+                session.add_all(claims_to_add)
+                session.add_all(evidence_to_add)
+                await session.commit()
+        return {"stored_claim_ids": stored_ids}
 
     async def update_status(state: ExtractionState) -> dict:
         if state.get("error"):
-            new_status = "extraction_failed"
+            new_status = STATUS_EXTRACTION_FAILED
         else:
             results = state.get("results", [])
             if not results:
-                new_status = "extraction_failed"
+                new_status = STATUS_EXTRACTION_FAILED
             else:
                 failed = sum(1 for r in results if r.get("error"))
                 if failed == 0:
-                    new_status = "claims_extracted"
+                    new_status = STATUS_CLAIMS_EXTRACTED
                 elif failed < len(results):
-                    new_status = "extraction_partial"
+                    new_status = STATUS_EXTRACTION_PARTIAL
                 else:
-                    new_status = "extraction_failed"
+                    new_status = STATUS_EXTRACTION_FAILED
 
         async with session_factory() as session:
             doc = await session.get(Document, state["document_id"])

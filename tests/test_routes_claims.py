@@ -82,11 +82,13 @@ async def test_extract_claims_success(
     # endpoint's "count claims after ainvoke" query returns 1. The graph's storage
     # logic is verified separately in test_extraction_graph.
     mock_graph = MagicMock()
+    claim_id = uuid.uuid4()
 
     async def fake_ainvoke(state):
         async with session_factory() as session:
             session.add(
                 Claim(
+                    id=claim_id,
                     document_id=doc_id,
                     claim_text="GPT-5 was released.",
                     claim_type="model_release",
@@ -97,7 +99,9 @@ async def test_extract_claims_success(
                 )
             )
             await session.commit()
-        return _fake_graph_final_state(doc_id, span_id)
+        state_out = _fake_graph_final_state(doc_id, span_id)
+        state_out["stored_claim_ids"] = [claim_id]
+        return state_out
 
     mock_graph.ainvoke = fake_ainvoke
     monkeypatch.setattr("app.api.routes_claims.make_extraction_graph", lambda *_: mock_graph)

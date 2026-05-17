@@ -11,12 +11,14 @@ from sqlalchemy import delete, select
 
 from app.api.deps import DbSession
 from app.db.models import Claim, Document
-from app.intelligence.extraction import make_extraction_graph
-from app.intelligence.llm_client import LLMClient
+from app.intelligence.extraction import (
+    POST_EXTRACTION_STATUSES,
+    STATUS_EMBEDDED,
+    make_extraction_graph,
+)
+from app.intelligence.llm_client import _COST_PER_TOKEN_USD, LLMClient
 
 router = APIRouter(tags=["claims"])
-
-_COST_PER_TOKEN_USD = 0.30 / 1_000_000
 
 
 class ClaimResponse(BaseModel):
@@ -60,12 +62,7 @@ async def extract_claims(
     # accepted here so that re-runs (with ?force=true) can succeed on documents that
     # have already been processed once. The 409 check below blocks accidental re-runs
     # without ?force.
-    if doc.status not in (
-        "embedded",
-        "claims_extracted",
-        "extraction_partial",
-        "extraction_failed",
-    ):
+    if doc.status not in POST_EXTRACTION_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Document status is '{doc.status}'; must be 'embedded' to extract claims.",
@@ -82,7 +79,7 @@ async def extract_claims(
 
     if existing_claim_id is not None and force:
         await session.execute(delete(Claim).where(Claim.document_id == document_id))
-        doc.status = "embedded"
+        doc.status = STATUS_EMBEDDED
         await session.commit()
 
     llm_client = LLMClient(
@@ -97,6 +94,7 @@ async def extract_claims(
             "model": settings.openrouter_t2_model,
             "spans": [],
             "results": [],
+            "stored_claim_ids": [],
             "total_tokens": 0,
             "error": None,
         }
@@ -110,10 +108,8 @@ async def extract_claims(
 
     results = final.get("results", [])
     spans_failed = sum(1 for r in results if r.get("error"))
-
-    claim_ids = list(
-        await session.scalars(select(Claim.id).where(Claim.document_id == document_id))
-    )
+    # Read claim_ids directly from the graph state — avoids a redundant SELECT.
+    claim_ids = list(final.get("stored_claim_ids") or [])
     total_tokens = final.get("total_tokens", 0)
 
     return ExtractionSummary(
