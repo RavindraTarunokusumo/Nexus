@@ -1,4 +1,5 @@
 """OpenRouter HTTP client with per-call AgentRun logging."""
+
 from __future__ import annotations
 
 from typing import Any, Literal, TypeVar

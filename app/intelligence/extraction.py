@@ -1,4 +1,5 @@
 """LangGraph extraction graph for per-span concurrent claim extraction."""
+
 from __future__ import annotations
 
 import asyncio
@@ -69,8 +70,13 @@ async def _extract_one_span(span: dict, client: Any, model: str) -> dict:
     return {"span_id": span["id"], "claims": [], "tokens": 0, "error": "max retries exceeded"}
 
 
-def make_extraction_graph(session_factory: async_sessionmaker, client: Any):
-    """Build and compile the LangGraph extraction graph bound to session_factory and client."""
+def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # noqa: C901
+    """Build and compile the LangGraph extraction graph bound to session_factory and client.
+
+    Cyclomatic complexity is C90-flagged because the factory defines four nested node
+    functions; each is simple individually but the count aggregates in the outer scope.
+    Keeping them nested preserves the closure over `session_factory` and `client`.
+    """
 
     async def load_spans(state: ExtractionState) -> dict:
         async with session_factory() as session:
@@ -80,12 +86,16 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):
             if doc.status != "embedded":
                 return {"error": f"Document status is '{doc.status}'; must be 'embedded'"}
             rows = (
-                await session.execute(
-                    select(Span)
-                    .where(Span.document_id == state["document_id"])
-                    .order_by(Span.span_index)
+                (
+                    await session.execute(
+                        select(Span)
+                        .where(Span.document_id == state["document_id"])
+                        .order_by(Span.span_index)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             spans = [
                 {
                     "id": str(s.id),

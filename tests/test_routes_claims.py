@@ -1,6 +1,7 @@
 """Integration tests for claim extraction endpoints."""
+
 import uuid
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from httpx import AsyncClient

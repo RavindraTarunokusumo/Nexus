@@ -1,4 +1,5 @@
 """Unit tests for LLMClient — httpx mocked, no real OpenRouter calls."""
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

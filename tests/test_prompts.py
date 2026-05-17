@@ -1,4 +1,5 @@
 """Unit tests for extraction prompt builders."""
+
 from app.intelligence.prompts.extract_claims import (
     SYSTEM_PROMPT,
     build_correction_prompt,

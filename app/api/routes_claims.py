@@ -1,4 +1,5 @@
 """Claim extraction endpoint and claims listing."""
+
 from __future__ import annotations
 
 import uuid
