@@ -76,27 +76,29 @@ async def test_extract_claims_success(
 ):
     doc_id, span_id = await _seed_embedded_doc(session_factory)
 
-    # Pre-seed the claim that the real graph would have written, then mock the graph
-    # so its ainvoke returns the matching final state. This verifies the HTTP layer
-    # (counts, response shape, status codes) without re-running the storage logic
-    # which is already covered by test_extraction_graph.
-    async with session_factory() as session:
-        claim = Claim(
-            document_id=doc_id,
-            claim_text="GPT-5 was released.",
-            claim_type="model_release",
-            entities_json=["OpenAI"],
-            topics_json=["LLM"],
-            confidence=0.9,
-            status="active",
-        )
-        session.add(claim)
-        doc = await session.get(Document, doc_id)
-        doc.status = "claims_extracted"
-        await session.commit()
-
+    # Mock the graph so it returns a known final state without making real LLM calls.
+    # We also pre-seed the claim that the real graph would have written so the
+    # endpoint's "count claims after ainvoke" query returns 1. The graph's storage
+    # logic is verified separately in test_extraction_graph.
     mock_graph = MagicMock()
-    mock_graph.ainvoke = AsyncMock(return_value=_fake_graph_final_state(doc_id, span_id))
+
+    async def fake_ainvoke(state):
+        async with session_factory() as session:
+            session.add(
+                Claim(
+                    document_id=doc_id,
+                    claim_text="GPT-5 was released.",
+                    claim_type="model_release",
+                    entities_json=["OpenAI"],
+                    topics_json=["LLM"],
+                    confidence=0.9,
+                    status="active",
+                )
+            )
+            await session.commit()
+        return _fake_graph_final_state(doc_id, span_id)
+
+    mock_graph.ainvoke = fake_ainvoke
     monkeypatch.setattr("app.api.routes_claims.make_extraction_graph", lambda *_: mock_graph)
 
     resp = await client.post(f"/documents/{doc_id}/extract-claims")

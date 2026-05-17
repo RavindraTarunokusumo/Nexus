@@ -69,9 +69,7 @@ async def extract_claims(
     existing_claim_id = await session.scalar(
         select(Claim.id).where(Claim.document_id == document_id).limit(1)
     )
-    # 409 only when claims unexpectedly exist on a doc not yet marked claims_extracted,
-    # and the caller hasn't asked to force a re-extraction.
-    if existing_claim_id is not None and not force and doc.status == "embedded":
+    if existing_claim_id is not None and not force:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Claims already exist. Use ?force=true to re-extract.",
