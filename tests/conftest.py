@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.api.routes_claims import router as claims_router
 from app.api.routes_documents import router as documents_router
 from app.api.routes_ingestion import router as ingestion_router
 from app.api.routes_sources import router as sources_router
@@ -130,6 +131,7 @@ def _build_app(async_engine, session_factory, embedder=None) -> FastAPI:
     test_app.include_router(sources_router)
     test_app.include_router(ingestion_router)
     test_app.include_router(documents_router)
+    test_app.include_router(claims_router)
     return test_app
 
 
