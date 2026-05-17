@@ -26,7 +26,15 @@ class LLMNetworkError(LLMError):
 
 
 class LLMSchemaError(LLMError):
-    """Response arrived but failed Pydantic validation — caller may retry with correction."""
+    """Response arrived but failed Pydantic validation — caller may retry with correction.
+
+    The raw model output is preserved on `raw_output` so callers can include it in a
+    correction prompt to help the model see what it produced.
+    """
+
+    def __init__(self, message: str, raw_output: str = "") -> None:
+        super().__init__(message)
+        self.raw_output = raw_output
 
 
 class LLMClient:
@@ -88,10 +96,15 @@ class LLMClient:
                 raise LLMError(f"OpenRouter {resp.status_code}: {resp.text[:300]}")
 
             data = resp.json()
-            raw_output = data["choices"][0]["message"]["content"]
+            try:
+                raw_output = data["choices"][0]["message"]["content"]
+            except (KeyError, IndexError, TypeError) as exc:
+                # Malformed 200 response — recoverable per-span, not a pipeline abort.
+                call_status = "malformed_response"
+                raise LLMError(f"Malformed OpenRouter response: {exc}") from exc
             total_tokens = data.get("usage", {}).get("total_tokens", 0)
 
-        except (httpx.HTTPError, KeyError) as exc:
+        except httpx.HTTPError as exc:
             call_status = "network_error"
             raise LLMNetworkError(str(exc)) from exc
 
@@ -108,7 +121,8 @@ class LLMClient:
             validated = response_model.model_validate_json(raw_output)
         except (ValueError, ValidationError) as exc:
             raise LLMSchemaError(
-                f"Schema validation failed: {exc}. Raw: {raw_output[:200]}"
+                f"Schema validation failed: {exc}. Raw: {raw_output[:200]}",
+                raw_output=raw_output or "",
             ) from exc
 
         return validated, total_tokens

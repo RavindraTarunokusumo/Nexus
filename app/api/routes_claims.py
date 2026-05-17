@@ -56,6 +56,10 @@ async def extract_claims(
     if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
 
+    # Spec requires "embedded" status to extract. The post-extraction statuses are also
+    # accepted here so that re-runs (with ?force=true) can succeed on documents that
+    # have already been processed once. The 409 check below blocks accidental re-runs
+    # without ?force.
     if doc.status not in (
         "embedded",
         "claims_extracted",

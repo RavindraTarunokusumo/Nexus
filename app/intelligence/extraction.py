@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from app.db.models import Claim, ClaimEvidence, Document, Span
 from app.intelligence.llm_client import (
     ExtractionOutput,
+    LLMError,
     LLMNetworkError,
     LLMSchemaError,
 )
@@ -58,7 +59,7 @@ async def _extract_one_span(span: dict, client: Any, model: str) -> dict:
             raise  # abort the entire graph
         except LLMSchemaError as exc:
             if attempt < _MAX_RETRIES:
-                user = build_correction_prompt(user, "", str(exc))
+                user = build_correction_prompt(user, exc.raw_output, str(exc))
                 continue
             return {
                 "span_id": span["id"],
@@ -66,8 +67,17 @@ async def _extract_one_span(span: dict, client: Any, model: str) -> dict:
                 "tokens": total_tokens,
                 "error": str(exc),
             }
+        except LLMError as exc:
+            # 4xx or malformed response — span-level failure, don't retry, don't abort graph.
+            return {
+                "span_id": span["id"],
+                "claims": [],
+                "tokens": total_tokens,
+                "error": str(exc),
+            }
 
-    return {"span_id": span["id"], "claims": [], "tokens": 0, "error": "max retries exceeded"}
+    # Unreachable: the loop returns from every branch above. Kept for type-checker comfort.
+    return {"span_id": span["id"], "claims": [], "tokens": total_tokens, "error": "unreachable"}
 
 
 def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # noqa: C901

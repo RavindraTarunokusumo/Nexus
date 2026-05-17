@@ -36,7 +36,7 @@ def client(fake_session_factory):
 
 
 @pytest.mark.asyncio
-async def test_complete_json_happy_path(client):
+async def test_complete_json_happy_path(client, fake_session_factory):
     openrouter_response = {
         "choices": [{"message": {"content": '{"value": "hello"}'}}],
         "usage": {"total_tokens": 50},
@@ -55,6 +55,13 @@ async def test_complete_json_happy_path(client):
         )
     assert result.value == "hello"
     assert tokens == 50
+    # AC4: every call must write an AgentRun row.
+    session = fake_session_factory.return_value
+    assert session.add.called
+    agent_run = session.add.call_args[0][0]
+    assert agent_run.run_type == "claim_extraction"
+    assert agent_run.model == "openai/gpt-4o-mini"
+    assert agent_run.status == "success"
 
 
 @pytest.mark.asyncio

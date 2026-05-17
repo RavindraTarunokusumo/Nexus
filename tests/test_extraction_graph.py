@@ -221,3 +221,46 @@ async def test_all_retries_exhausted_marks_failed(session_factory: async_session
             .all()
         )
         assert len(claims) == 0
+
+
+@pytest.mark.asyncio
+async def test_partial_extraction_status(session_factory: async_sessionmaker):
+    """Two spans: first exhausts all retries (schema errors), second succeeds → extraction_partial.
+
+    Deterministic ordering: FakeLLMClient.complete_json has no internal awaits, so when
+    asyncio.gather runs both bounded(span_0) and bounded(span_1), span_0's retry loop
+    consumes its responses before span_1 starts. The semaphore acquire is also non-yielding
+    when capacity is available.
+    """
+    doc_id, _ = await _seed_doc_with_spans(session_factory, n_spans=2)
+    client = FakeLLMClient(
+        responses=[
+            LLMSchemaError("e1"),
+            LLMSchemaError("e2"),
+            LLMSchemaError("e3"),
+            _make_claim_response("Second span succeeded."),
+        ]
+    )
+    graph = make_extraction_graph(session_factory, client)
+
+    final = await graph.ainvoke(
+        {
+            "document_id": doc_id,
+            "model": "openai/gpt-4o-mini",
+            "spans": [],
+            "results": [],
+            "total_tokens": 0,
+            "error": None,
+        }
+    )
+
+    assert final.get("error") is None
+    async with session_factory() as session:
+        doc = await session.get(Document, doc_id)
+        assert doc.status == "extraction_partial"
+        claims = (
+            (await session.execute(select(Claim).where(Claim.document_id == doc_id)))
+            .scalars()
+            .all()
+        )
+        assert len(claims) == 1
