@@ -1,6 +1,6 @@
 # Database / Persistence
 
-> **Phase 1 Status: Implemented** — all 8 tables created by migration 0001; `sources` and `documents` are actively populated by the ingestion API.
+> **Phase 3 Status: Implemented** — all 8 tables created by migration 0001; `sources`, `documents`, `spans`, `claims`, `claim_evidence`, and `agent_runs` are actively populated by the pipeline.
 
 The persistence layer is PostgreSQL 16 with the `pgvector` extension. SQLAlchemy 2.x async ORM + asyncpg is used throughout. Alembic manages migrations.
 
@@ -62,7 +62,7 @@ One row per fetched article/page/paste. Deduplication enforced on both `url` (un
 | content_hash | TEXT | SHA-256 of `normalize_text(clean_text)`, unique |
 | published_at | TIMESTAMPTZ | Nullable |
 | fetched_at | TIMESTAMPTZ | Auto-set |
-| status | TEXT | Default: `fetched` |
+| status | TEXT | Pipeline stage: `fetched`, `chunked`, `embedded`, `claims_extracted`, `extraction_partial`, `extraction_failed` |
 
 Indexes: `source_id`, `status`, `fetched_at`.
 
@@ -84,25 +84,25 @@ Indexes: `document_id`, `(document_id, span_index)`.
 
 ### `claims`
 
-Extracted factual claims linked to a document.
+Extracted factual claims linked to a document. Populated by Phase 3 claim extraction.
 
 | Column | Type | Notes |
 |---|---|---|
 | id | UUID | Primary key |
 | document_id | UUID | FK → documents (CASCADE) |
 | claim_text | TEXT | |
-| claim_type | TEXT | |
+| claim_type | TEXT | One of the 11 taxonomy values (`model_release`, `benchmark_result`, `product_launch`, `pricing_change`, `research_finding`, `infrastructure_update`, `security_issue`, `funding_event`, `regulation`, `forecast`, `other`) |
 | entities_json | JSONB | Nullable |
 | topics_json | JSONB | Nullable |
 | confidence | FLOAT | Nullable |
-| status | TEXT | Default: `active` |
+| status | TEXT | Default: `active`; may be `rejected` |
 | created_at | TIMESTAMPTZ | Auto-set |
 
 Indexes: `document_id`, `status`, `claim_type`.
 
 ### `claim_evidence`
 
-Links a claim to supporting span(s).
+Links a claim to supporting span(s). Populated by Phase 3 alongside `claims`.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -148,7 +148,7 @@ Index: `brief_id`.
 
 ### `agent_runs`
 
-Audit log for LLM/agent invocations with cost tracking.
+Audit log for LLM/agent invocations with cost tracking. Phase 3 writes one row per LLM call made during claim extraction.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -157,7 +157,7 @@ Audit log for LLM/agent invocations with cost tracking.
 | model | TEXT | Nullable |
 | input_json | JSONB | Nullable |
 | output_json | JSONB | Nullable |
-| cost_estimate | FLOAT | Nullable |
+| cost_estimate | FLOAT | Approximate USD cost (`0.30 / 1_000_000 * total_tokens`) |
 | status | TEXT | |
 | created_at | TIMESTAMPTZ | Auto-set |
 

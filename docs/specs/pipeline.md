@@ -83,6 +83,8 @@ Deferred retrieval features:
 
 ## Claim Extraction
 
+> **Phase 3 Status: Implemented** — `app/intelligence/extraction.py` (LangGraph `StateGraph`), `app/intelligence/llm_client.py` (OpenRouter T2), `app/api/routes_claims.py`.
+
 Claim extraction converts spans into atomic evidence-grounded propositions.
 
 Structured output:

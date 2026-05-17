@@ -9,6 +9,23 @@ Track meaningful repository-level changes here.
 - Why it changed
 - Any follow-up work or migration notes
 
+## 2026-05-17 — Phase 3: Claim Extraction
+
+Added the `app/intelligence/` module and claim extraction API.
+
+**What changed:**
+
+- `app/intelligence/llm_client.py`: `LLMClient.complete_json` — calls OpenRouter, validates responses with Pydantic, logs every invocation to `agent_runs` (model, tokens, cost estimate, status). Error hierarchy: `LLMError` → `LLMNetworkError`, `LLMSchemaError` (with `raw_output` attribute). Exports `ExtractedClaim` and `ExtractionOutput` Pydantic schemas.
+- `app/intelligence/extraction.py`: LangGraph `StateGraph` with 4 nodes: `load_spans` → `extract_spans` → `store_claims` → `update_status`. Per-span concurrent extraction via `asyncio.gather` + `Semaphore(5)`. Correction-prompt retry (max 2 per span). Exports status constants: `STATUS_EMBEDDED`, `STATUS_CLAIMS_EXTRACTED`, `STATUS_EXTRACTION_PARTIAL`, `STATUS_EXTRACTION_FAILED`, `POST_EXTRACTION_STATUSES`.
+- `app/intelligence/prompts/extract_claims.py`: `SYSTEM_PROMPT`, `build_user_prompt`, `build_correction_prompt`.
+- `app/api/routes_claims.py`: `POST /documents/{id}/extract-claims[?force=true]` and `GET /claims`.
+- `pyproject.toml`: added `langgraph>=0.2.0` dependency.
+- `documents.status` lifecycle extended: `embedded` → `claims_extracted` | `extraction_partial` | `extraction_failed`.
+
+**Why:** Turns embedded spans into typed, evidence-grounded claims — the prerequisite for Phase 4 brief synthesis.
+
+**Migration / setup:** No schema migrations required (all 8 tables were created in migration 0001). Set `OPENROUTER_API_KEY` in `.env` and optionally `OPENROUTER_T2_MODEL` (default: `openai/gpt-4o-mini`).
+
 ## 2026-05-16 — Phase 2.5: Operator CLI
 
 Added the `nexus` console-script CLI (`app/cli/`) for monitoring and operating the system without a browser or API client.
