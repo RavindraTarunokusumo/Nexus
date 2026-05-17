@@ -1,5 +1,5 @@
 """Unit tests for LLMClient — httpx mocked, no real OpenRouter calls."""
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import BaseModel
@@ -17,15 +17,15 @@ class _SimpleOutput(BaseModel):
 
 @pytest.fixture
 def fake_session_factory():
-    """Session factory that accepts commits but writes nothing."""
-    session = AsyncMock()
+    """Mimic SQLAlchemy async_sessionmaker: a sync callable that returns an
+    AsyncSession (which is itself an async context manager)."""
+    session = MagicMock()
     session.__aenter__ = AsyncMock(return_value=session)
     session.__aexit__ = AsyncMock(return_value=None)
-    session.add = AsyncMock()
+    session.add = MagicMock()
     session.commit = AsyncMock()
 
-    factory = AsyncMock()
-    factory.return_value = session
+    factory = MagicMock(return_value=session)
     return factory
 
 

@@ -122,8 +122,7 @@ class LLMClient:
         status: str,
     ) -> None:
         cost = total_tokens * _COST_PER_TOKEN_USD
-        session = await self._session_factory()
-        async with session:
+        async with self._session_factory() as session:
             session.add(
                 AgentRun(
                     run_type="claim_extraction",
