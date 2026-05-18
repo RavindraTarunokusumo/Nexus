@@ -2,13 +2,11 @@
 
 ## Active
 
-### Phase 3 — Claim Extraction (branch: feat/phase3-claim-extraction)
+### Phase 2 validation harness
 
-- [x] T1: langgraph>=0.2.0 dependency (commit: 48c456c)
-- [x] T2: Prompts module — `app/intelligence/prompts/extract_claims.py` (commit: 31a6540)
-- [x] T3: LLMClient with OpenRouter + AgentRun logging (commit: 618bc4d, fix: f602e14)
-- [x] T4: LangGraph extraction graph — 4 nodes, Semaphore(5), correction-prompt retry (commit: ce76aee)
-- [x] T5: Claims routes + main.py + conftest.py wiring (commit: 02ce267, spec-fix: d526093)
+- [ ] Create and run a destructive CLI validation script that resets local data and exercises text, RSS, status, document inspection, and semantic search paths.
+
+*(Phase 3 — Claim Extraction merged: PR #5, merge commit: 8ab514e — archived to docs/iterations/archive/)*
 
 ## Future
 
