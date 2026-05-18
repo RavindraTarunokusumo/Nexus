@@ -1,6 +1,6 @@
 # Commands
 
-> **Phase 2.5 Status: CLI implemented**
+> **Phase 3 Status: Claim extraction implemented**
 
 ## Prerequisites
 
@@ -185,18 +185,18 @@ nexus status
 nexus status --json
 ```
 
-Shows document counts by status (`fetched` / `chunked` / `embedded`), total spans, source count, and timestamp of the last ingestion. Documents stuck in `fetched` or `chunked` for more than one hour are highlighted yellow.
+Shows document counts by status (`fetched` / `chunked` / `embedded` / `claims_extracted` / `extraction_partial` / `extraction_failed`), total spans, source count, and timestamp of the last ingestion. Documents stuck in `fetched` or `chunked` for more than one hour are highlighted yellow.
 
 **JSON output keys:**
 
 ```json
 {
-  "docs_by_status": {"fetched": 0, "chunked": 0, "embedded": 245},
+  "docs_by_status": {"fetched": 0, "chunked": 0, "embedded": 10, "claims_extracted": 235},
   "total_documents": 245,
   "total_spans": 1843,
   "total_sources": 8,
   "enabled_sources": 7,
-  "last_ingest_at": "2026-05-16T14:23:00+00:00",
+  "last_ingest_at": "2026-05-17T14:23:00+00:00",
   "stuck_count": 0
 }
 ```
@@ -234,7 +234,7 @@ nexus documents --status embedded --json | jq '.[].title'
 
 | Flag | Description |
 |---|---|
-| `--status` | Filter by pipeline status (`fetched`, `chunked`, `embedded`) |
+| `--status` | Filter by pipeline status (`fetched`, `chunked`, `embedded`, `claims_extracted`, `extraction_partial`, `extraction_failed`) |
 | `--source <uuid>` | Filter by source ID |
 | `--since <ISO timestamp>` | Only documents fetched after this time |
 | `--limit N` | Maximum rows returned (default: 50) |
@@ -351,6 +351,51 @@ nexus search "your query here" --top-k 5
 | Document not found | `Document <id> not found.` + exit 1 |
 | No embedded documents for search | Empty results table (not an error) |
 | Invalid `--since` format | `Invalid --since value '...': ...` (Typer validation error) |
+
+---
+
+## Claim Extraction API (Phase 3)
+
+These endpoints are on the FastAPI server; the `nexus` CLI does not yet expose wrappers for them (planned for a future phase).
+
+### Extract claims for a document
+
+```sh
+curl -X POST "http://localhost:8000/documents/<document_id>/extract-claims"
+# Re-extract even if claims already exist
+curl -X POST "http://localhost:8000/documents/<document_id>/extract-claims?force=true"
+```
+
+Response (200):
+
+```json
+{
+  "document_id": "<uuid>",
+  "claims_extracted": 12,
+  "spans_processed": 8,
+  "spans_failed": 0,
+  "tokens_used": 4200,
+  "cost_estimate_usd": 0.00126,
+  "claim_ids": ["<uuid>", "..."]
+}
+```
+
+| Status | Meaning |
+|---|---|
+| 200 | Extraction complete |
+| 404 | Document not found |
+| 409 | Claims already exist — pass `?force=true` to re-extract |
+| 422 | Document not in `embedded` or a post-extraction status |
+| 503 | OpenRouter unreachable |
+
+### List claims
+
+```sh
+curl "http://localhost:8000/claims?document_id=<uuid>"
+curl "http://localhost:8000/claims?document_id=<uuid>&claim_type=model_release&status=active&limit=20"
+```
+
+Query params: `document_id` (required), `claim_type`, `status` (`active`|`rejected`), `limit`, `offset`.
 
 ---
 

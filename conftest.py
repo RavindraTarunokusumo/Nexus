@@ -4,9 +4,15 @@ feedparser 6.0.x requires sgmllib3k which fails to build on this platform.
 We inject a compatible stub before any test module triggers the import.
 """
 
+import os
 import re
 import sys
 import types
+
+# Provide required Settings fields so app.config can be imported in any test context.
+# Tests wire their own DB engine; these values just satisfy pydantic validation.
+os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://nexus:nexus@localhost:5432/nexus")
+os.environ.setdefault("APP_SECRET", "test-secret-for-pytest")
 
 if "sgmllib" not in sys.modules:
     _sgml = types.ModuleType("sgmllib")

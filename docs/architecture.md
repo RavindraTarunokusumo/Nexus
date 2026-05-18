@@ -1,6 +1,6 @@
 # Architecture
 
-> **Phase 2.5 Status: CLI implemented**
+> **Phase 3 Status: Claim extraction implemented**
 
 Nexus Lite is a private FastAPI application backed by PostgreSQL + pgvector, Redis, and local embeddings. The Phase 1 foundation covers source registration, document ingestion, and the full persistence schema.
 
@@ -20,6 +20,8 @@ Read [docs/specs/architecture.md](specs/architecture.md) for the full architectu
 | URL fetching / cleaning | httpx + trafilatura |
 | Cache / queue | Redis 7 |
 | Containers | Docker Compose (pgvector/pgvector:pg16, redis:7-alpine) |
+| LLM orchestration | LangGraph >= 0.2.0 |
+| LLM gateway | OpenRouter (T2: `openai/gpt-4o-mini`) |
 
 ## Directory Layout
 
@@ -31,6 +33,7 @@ app/
     deps.py                # DbSession dependency (injects AsyncSession from request state)
     routes_sources.py      # GET/POST /sources, GET /sources/{id}
     routes_ingestion.py    # POST /ingest/rss/{source_id}, /ingest/url, /ingest/text
+    routes_claims.py       # POST /documents/{id}/extract-claims, GET /claims
   db/
     models.py              # SQLAlchemy ORM models (all 8 tables)
     session.py             # make_engine / make_session_factory helpers
@@ -42,6 +45,15 @@ app/
     cleaner.py             # normalize_text, content_hash, normalize_url, extract_text
     rss.py                 # fetch_rss_entries (feedparser + async httpx)
     url_fetcher.py         # fetch_and_clean (httpx + trafilatura)
+  intelligence/
+    llm_client.py          # LLMClient.complete_json — OpenRouter calls, Pydantic validation,
+                           #   AgentRun logging; ExtractedClaim / ExtractionOutput schemas;
+                           #   LLMError / LLMNetworkError / LLMSchemaError hierarchy
+    extraction.py          # LangGraph StateGraph (load_spans → extract_spans → store_claims
+                           #   → update_status); asyncio.gather concurrency (Semaphore 5);
+                           #   correction-prompt retry (max 2); status constants exported
+    prompts/
+      extract_claims.py    # SYSTEM_PROMPT, build_user_prompt, build_correction_prompt
   domain_packs/
     personal_ai_tech.yaml  # Default domain pack definition
   cli/
@@ -71,8 +83,8 @@ external source
 -> document cleaner (trafilatura + normalize)
 -> content-hash deduplication
 -> persist Document row
--> [future] chunking -> spans -> embeddings
--> [future] claim extraction
+-> chunking -> spans -> embeddings
+-> claim extraction (LangGraph, OpenRouter T2)
 -> [future] retrieval index
 -> [future] brief synthesis
 -> [future] query answering
@@ -87,7 +99,7 @@ The `nexus` CLI uses a hybrid access strategy:
 
 `CLISettings` resolves `--api-url` and `--db-url` from flags, `API_BASE_URL` / `DATABASE_URL` env vars, or `.env` defaults. `DATABASE_URL` is required only for commands that read directly from Postgres (status, sources, documents, document); HTTP-only commands (search, ingest) work without it. Every command accepts `--json` for machine-readable output and `--api-url` / `--db-url` overrides.
 
-## API Endpoints (Phase 1)
+## API Endpoints
 
 | Method | Path | Description |
 |---|---|---|
@@ -99,8 +111,49 @@ The `nexus` CLI uses a hybrid access strategy:
 | POST | /ingest/url | Fetch and ingest a single URL |
 | POST | /ingest/text | Ingest raw text directly |
 | POST | /search/spans | Semantic span search (query, top_k) |
+| POST | /documents/{id}/extract-claims | Run claim extraction for a document |
+| GET | /claims | List claims (filter by document_id, claim_type, status) |
 
 Supported `source_type` values: `rss`, `manual`, `api`.
+
+### Claim extraction endpoint detail
+
+`POST /documents/{document_id}/extract-claims[?force=true]`
+
+| Status | Meaning |
+|---|---|
+| 200 | Extraction complete — returns `{document_id, claims_extracted, spans_processed, spans_failed, tokens_used, cost_estimate_usd, claim_ids}` |
+| 404 | Document not found |
+| 409 | Claims already exist; pass `?force=true` to re-extract |
+| 422 | Document not in `embedded` or a post-extraction status |
+| 503 | OpenRouter unreachable |
+
+`GET /claims` query params: `document_id` (required UUID), `claim_type`, `status` (`active`\|`rejected`), `limit`, `offset`.
+
+## Document Status Lifecycle
+
+```text
+fetched → chunked → embedded → claims_extracted
+                              → extraction_partial
+                              → extraction_failed
+```
+
+Status constants exported from `app/intelligence/extraction.py`: `STATUS_EMBEDDED`, `STATUS_CLAIMS_EXTRACTED`, `STATUS_EXTRACTION_PARTIAL`, `STATUS_EXTRACTION_FAILED`, `POST_EXTRACTION_STATUSES`.
+
+## Claim Taxonomy
+
+Claims are typed using a Pydantic `Literal` validated at extraction time:
+
+`model_release`, `benchmark_result`, `product_launch`, `pricing_change`, `research_finding`, `infrastructure_update`, `security_issue`, `funding_event`, `regulation`, `forecast`, `other`
+
+## LLM Tier Model
+
+| Tier | Purpose | Config key | Default |
+|---|---|---|---|
+| T2 | Claim extraction | `settings.openrouter_t2_model` | `openai/gpt-4o-mini` |
+| T3 | Brief synthesis (Phase 4) | reserved | — |
+
+Cost is tracked per call: `0.30 / 1_000_000 * total_tokens` stored in the `agent_runs.cost_estimate` column.
 
 ## Current Boundary
 
@@ -110,6 +163,6 @@ The MVP implements the simplified hierarchy:
 Source -> Document -> Span -> Claim -> Brief
 ```
 
-All 8 tables are schema-ready (migration 0001). Phase 1 populates `sources` and `documents`. Span chunking, embedding generation, claim extraction, and brief synthesis are Phase 2+.
+All 8 tables are schema-ready (migration 0001). Phases 1–3 populate `sources`, `documents`, `spans`, `claims`, `claim_evidence`, and `agent_runs`. Brief synthesis is Phase 4+.
 
 The broader PoC hierarchy adds entities, relations, signals, clusters, theses, and decision artefacts. Those remain future-facing until the core ingestion-to-synthesis loop is stable.
