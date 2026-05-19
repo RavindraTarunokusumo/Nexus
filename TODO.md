@@ -7,6 +7,7 @@
 - [ ] Create and run a destructive CLI validation script that resets local data and exercises text, RSS, status, document inspection, and semantic search paths.
 
 *(Phase 3 — Claim Extraction merged: PR #5, merge commit: 8ab514e — archived to docs/iterations/archive/)*
+*(Phase 3 CLI + Model Tier Config merged: PR #6, merge commit: 87a869f — archived to docs/iterations/archive/)*
 
 ## Future
 
@@ -23,5 +24,3 @@
 - [ ] Shared httpx.AsyncClient via lifespan (currently created per-request in ingestion)
 - [ ] Populate `docs/iterations/active/` with execution logs
 - [ ] Record durable workflow lessons in `docs/insights.md` as they appear.
-- [ ] `nexus document <id>` CLI command — show extracted claims inline (deferred from Phase 2.5)
-- [ ] `nexus extract <doc_id>` CLI command — trigger extraction from the CLI
