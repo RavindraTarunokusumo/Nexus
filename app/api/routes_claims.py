@@ -91,7 +91,7 @@ async def extract_claims(
     final = await graph.ainvoke(
         {
             "document_id": document_id,
-            "model": settings.openrouter_t2_model,
+            "model": settings.t2_model,
             "spans": [],
             "results": [],
             "stored_claim_ids": [],

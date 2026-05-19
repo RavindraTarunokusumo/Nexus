@@ -36,11 +36,56 @@ def _short(value: Any, n: int) -> str:
 
 
 def _status_color(status: str) -> str:
-    if status == "embedded":
+    if status in {"embedded", "claims_extracted"}:
         return "green"
-    if status in {"fetched", "chunked"}:
+    if status in {"fetched", "chunked", "extraction_partial"}:
         return "yellow"
     return "red"
+
+
+def render_extraction_summary(summary: dict[str, Any], *, json_output: bool) -> None:
+    if json_output:
+        _print_json(summary)
+        return
+
+    table = Table(title="Extraction Summary", show_header=True, header_style="bold")
+    table.add_column("Metric")
+    table.add_column("Value", justify="right")
+    table.add_row("Claims extracted", str(summary.get("claims_extracted", 0)))
+    table.add_row("Spans processed", str(summary.get("spans_processed", 0)))
+    table.add_row("Spans failed", str(summary.get("spans_failed", 0)))
+    table.add_row("Tokens used", str(summary.get("tokens_used", 0)))
+    cost = summary.get("cost_estimate_usd", 0.0)
+    table.add_row("Cost estimate", f"${cost:.6f}")
+    console.print(table)
+
+
+def render_claims_table(claims: list[dict[str, Any]], *, json_output: bool) -> None:
+    if json_output:
+        _print_json(claims)
+        return
+    if not claims:
+        console.print("[dim]No claims found.[/dim]")
+        return
+
+    table = Table(title=f"Claims ({len(claims)})", show_header=True, header_style="bold")
+    table.add_column("Type")
+    table.add_column("Conf", justify="right")
+    table.add_column("Entities")
+    table.add_column("Claim")
+
+    for c in claims:
+        conf = c.get("confidence")
+        conf_str = f"{conf:.2f}" if conf is not None else ""
+        conf_color = "green" if (conf or 0) >= 0.8 else "yellow" if (conf or 0) >= 0.5 else "white"
+        entities = ", ".join(c.get("entities_json") or [])
+        table.add_row(
+            _short(c.get("claim_type") or "", 20),
+            f"[{conf_color}]{conf_str}[/{conf_color}]",
+            _short(entities, 30),
+            _short(c.get("claim_text") or "", 80),
+        )
+    console.print(table)
 
 
 def render_status(snapshot: dict[str, Any], *, json_output: bool) -> None:
@@ -134,9 +179,17 @@ def render_documents_table(documents: list[dict[str, Any]], *, json_output: bool
     console.print(table)
 
 
-def render_document_detail(detail: dict[str, Any], *, json_output: bool) -> None:
+def render_document_detail(
+    detail: dict[str, Any],
+    *,
+    json_output: bool,
+    claims: list[dict[str, Any]] | None = None,
+) -> None:
     if json_output:
-        _print_json(detail)
+        out = dict(detail)
+        if claims is not None:
+            out["claims"] = claims
+        _print_json(out)
         return
 
     meta = Table(title=f"Document {_short(detail['id'], 8)}", show_header=False)
@@ -157,22 +210,24 @@ def render_document_detail(detail: dict[str, Any], *, json_output: bool) -> None
     spans = detail.get("spans") or []
     if not spans:
         console.print("[dim]No spans yet.[/dim]")
-        return
+    else:
+        span_table = Table(title=f"Spans ({len(spans)})", show_header=True, header_style="bold")
+        span_table.add_column("Index", justify="right")
+        span_table.add_column("Tokens", justify="right")
+        span_table.add_column("Embedding")
+        span_table.add_column("Preview")
+        for s in spans:
+            emb = "[green]vec(384)[/green]" if s.get("has_embedding") else "[yellow]none[/yellow]"
+            span_table.add_row(
+                str(s["span_index"]),
+                str(s.get("token_count") or ""),
+                emb,
+                _short(s["text"], 80),
+            )
+        console.print(span_table)
 
-    span_table = Table(title=f"Spans ({len(spans)})", show_header=True, header_style="bold")
-    span_table.add_column("Index", justify="right")
-    span_table.add_column("Tokens", justify="right")
-    span_table.add_column("Embedding")
-    span_table.add_column("Preview")
-    for s in spans:
-        emb = "[green]vec(384)[/green]" if s.get("has_embedding") else "[yellow]none[/yellow]"
-        span_table.add_row(
-            str(s["span_index"]),
-            str(s.get("token_count") or ""),
-            emb,
-            _short(s["text"], 80),
-        )
-    console.print(span_table)
+    if claims is not None:
+        render_claims_table(claims, json_output=False)
 
 
 def render_search_results(results: list[dict[str, Any]], *, json_output: bool) -> None:

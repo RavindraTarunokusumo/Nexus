@@ -40,7 +40,7 @@ def _fake_graph_final_state(doc_id: uuid.UUID, span_id: uuid.UUID) -> dict:
     """Pre-built final state mimicking a successful graph run."""
     return {
         "document_id": doc_id,
-        "model": "openai/gpt-4o-mini",
+        "model": "deepseek/deepseek-v4-flash",
         "spans": [
             {
                 "id": str(span_id),

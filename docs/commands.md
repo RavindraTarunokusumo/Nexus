@@ -250,9 +250,11 @@ Show one document and all its spans — reads Postgres directly.
 ```sh
 nexus document 3f8a2c1d-7e4b-4a9f-b2d5-1c6e8f3a9b7d
 nexus document <id> --json
+nexus document <id> --claims          # include extracted claims below the span table
+nexus document <id> --claims --json   # JSON with "claims" array included
 ```
 
-Prints two tables: document metadata (title, URL, source, status, content hash, timestamps) and a span table (index, token count, embedding presence, 80-char text preview). The raw embedding vectors are never shown.
+Prints two tables: document metadata (title, URL, source, status, content hash, timestamps) and a span table (index, token count, embedding presence, 80-char text preview). The raw embedding vectors are never shown. With `--claims`, a third table lists every extracted claim (type, confidence, entities, claim text).
 
 ---
 
@@ -316,6 +318,50 @@ Calls `POST /ingest/rss/{source_id}`. The source must already be registered (via
 
 ---
 
+### `nexus extract <id>`
+
+Run claim extraction for a document — POSTs to `/documents/<id>/extract-claims` on the running FastAPI server.
+
+```sh
+nexus extract 3f8a2c1d-7e4b-4a9f-b2d5-1c6e8f3a9b7d
+nexus extract <id> --json             # machine-readable ExtractionSummary
+nexus extract <id> --force            # re-extract even if claims already exist
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--force` | off | Delete existing claims and re-run extraction |
+
+The document must have `status = embedded` (or a post-extraction status when using `--force`). The server must be running; exits non-zero on 4xx/5xx.
+
+**Output (human-readable table):**
+
+```
+Metric              Value
+──────────────────────────
+Claims extracted       12
+Spans processed         8
+Spans failed            0
+Tokens used          4200
+Cost estimate    $0.001260
+```
+
+**Output (--json):**
+
+```json
+{
+  "document_id": "<uuid>",
+  "claims_extracted": 12,
+  "spans_processed": 8,
+  "spans_failed": 0,
+  "tokens_used": 4200,
+  "cost_estimate_usd": 0.00126,
+  "claim_ids": ["<uuid>", "..."]
+}
+```
+
+---
+
 ### Typical operator workflow
 
 ```sh
@@ -337,6 +383,12 @@ nexus document <doc_id>
 
 # 6. Test retrieval
 nexus search "your query here" --top-k 5
+
+# 7. Extract claims (requires OPENROUTER_API_KEY)
+nexus extract <doc_id>
+
+# 8. Review extracted claims
+nexus document <doc_id> --claims
 ```
 
 ---
@@ -356,7 +408,7 @@ nexus search "your query here" --top-k 5
 
 ## Claim Extraction API (Phase 3)
 
-These endpoints are on the FastAPI server; the `nexus` CLI does not yet expose wrappers for them (planned for a future phase).
+Use `nexus extract` / `nexus document --claims` for CLI access (see above). The raw HTTP endpoints are also available directly.
 
 ### Extract claims for a document
 

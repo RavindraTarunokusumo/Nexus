@@ -8,14 +8,16 @@ from typing import Any
 import httpx
 
 _TIMEOUT = httpx.Timeout(10.0)
+# Extraction runs LLM calls over every span — allow up to 5 minutes.
+_EXTRACT_TIMEOUT = httpx.Timeout(300.0)
 
 
 class CLIHttpError(Exception):
     """Raised when the API returns a non-2xx response."""
 
 
-async def _request(method: str, base_url: str, path: str, **kwargs) -> Any:
-    async with httpx.AsyncClient(base_url=base_url, timeout=_TIMEOUT) as client:
+async def _request(method: str, base_url: str, path: str, *, timeout: httpx.Timeout = _TIMEOUT, **kwargs) -> Any:
+    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         response = await client.request(method, path, **kwargs)
         if not response.is_success:
             try:
@@ -57,3 +59,10 @@ async def search_spans(base_url: str, query: str, top_k: int) -> list[dict]:
         "/search/spans",
         json={"query": query, "top_k": top_k},
     )
+
+
+async def extract_claims(base_url: str, document_id: uuid.UUID, *, force: bool = False) -> dict:
+    path = f"/documents/{document_id}/extract-claims"
+    if force:
+        path += "?force=true"
+    return await _request("POST", base_url, path, timeout=_EXTRACT_TIMEOUT)

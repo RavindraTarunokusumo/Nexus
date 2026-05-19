@@ -186,6 +186,118 @@ async def test_ingest_text_command_reads_file(monkeypatch, db_url, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_extract_command_calls_http(monkeypatch, db_url):
+    captured = {}
+
+    async def fake_extract(base_url, document_id, *, force):
+        captured["document_id"] = document_id
+        captured["force"] = force
+        return {
+            "document_id": str(document_id),
+            "claims_extracted": 2,
+            "spans_processed": 1,
+            "spans_failed": 0,
+            "tokens_used": 300,
+            "cost_estimate_usd": 0.00009,
+            "claim_ids": [str(uuid.uuid4()), str(uuid.uuid4())],
+        }
+
+    monkeypatch.setattr("app.cli.main.http_extract_claims", fake_extract)
+    doc_id = uuid.uuid4()
+    result = runner.invoke(
+        app,
+        ["extract", str(doc_id), "--api-url", "http://test.example", "--json"],
+    )
+    assert result.exit_code == 0, result.stdout
+    assert captured["document_id"] == doc_id
+    assert captured["force"] is False
+    data = json.loads(result.stdout)
+    assert data["claims_extracted"] == 2
+
+
+@pytest.mark.asyncio
+async def test_extract_command_force_flag(monkeypatch, db_url):
+    captured = {}
+
+    async def fake_extract(base_url, document_id, *, force):
+        captured["force"] = force
+        return {
+            "document_id": str(document_id),
+            "claims_extracted": 1,
+            "spans_processed": 1,
+            "spans_failed": 0,
+            "tokens_used": 100,
+            "cost_estimate_usd": 0.00003,
+            "claim_ids": [str(uuid.uuid4())],
+        }
+
+    monkeypatch.setattr("app.cli.main.http_extract_claims", fake_extract)
+    result = runner.invoke(
+        app,
+        ["extract", str(uuid.uuid4()), "--force", "--api-url", "http://test.example"],
+    )
+    assert result.exit_code == 0, result.stdout
+    assert captured["force"] is True
+
+
+@pytest.mark.asyncio
+async def test_extract_command_api_error_exits_nonzero(monkeypatch, db_url):
+    from app.cli.http import CLIHttpError
+
+    async def fail_extract(base_url, document_id, *, force):
+        raise CLIHttpError("409: claims already exist")
+
+    monkeypatch.setattr("app.cli.main.http_extract_claims", fail_extract)
+    result = runner.invoke(
+        app,
+        ["extract", str(uuid.uuid4()), "--api-url", "http://test.example"],
+    )
+    assert result.exit_code != 0
+
+
+@pytest.mark.asyncio
+async def test_document_claims_flag_shows_claims(session_factory, db_url):
+    from app.db.models import Claim
+
+    _, doc_id, _ = await _seed_two_docs(session_factory)
+    async with session_factory() as session:
+        session.add(
+            Claim(
+                document_id=doc_id,
+                claim_text="GPT-5 released.",
+                claim_type="model_release",
+                entities_json=["OpenAI"],
+                topics_json=[],
+                confidence=0.9,
+                status="active",
+            )
+        )
+        await session.commit()
+
+    result = runner.invoke(
+        app,
+        ["document", str(doc_id), "--claims", "--json", "--db-url", db_url],
+    )
+    assert result.exit_code == 0, result.stdout
+    data = json.loads(result.stdout)
+    assert data["title"] == "Doc One"
+    assert len(data["claims"]) == 1
+    assert data["claims"][0]["claim_text"] == "GPT-5 released."
+
+
+@pytest.mark.asyncio
+async def test_document_no_claims_flag_omits_claims(session_factory, db_url):
+    _, doc_id, _ = await _seed_two_docs(session_factory)
+    result = runner.invoke(
+        app,
+        ["document", str(doc_id), "--json", "--db-url", db_url],
+    )
+    assert result.exit_code == 0, result.stdout
+    data = json.loads(result.stdout)
+    assert "claims" not in data
+
+
+@pytest.mark.asyncio
 async def test_ingest_rss_command(monkeypatch, db_url):
     source_id = uuid.uuid4()
     captured = {}

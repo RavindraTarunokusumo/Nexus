@@ -9,7 +9,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from app.db.models import Document, Source, Span
+from app.db.models import Claim, Document, Source, Span
 from app.db.session import make_engine, make_session_factory
 
 
@@ -126,6 +126,33 @@ async def get_document_with_spans(
                 for s in spans_sorted
             ],
         }
+
+    return await _with_session(database_url, _q)
+
+
+async def get_claims_for_document(
+    database_url: str, document_id: uuid.UUID
+) -> list[dict[str, Any]]:
+    async def _q(session):
+        stmt = (
+            select(Claim)
+            .where(Claim.document_id == document_id)
+            .order_by(Claim.created_at.desc())
+        )
+        rows = (await session.execute(stmt)).scalars().all()
+        return [
+            {
+                "id": c.id,
+                "claim_text": c.claim_text,
+                "claim_type": c.claim_type,
+                "entities_json": c.entities_json or [],
+                "topics_json": c.topics_json or [],
+                "confidence": c.confidence,
+                "status": c.status,
+                "created_at": c.created_at,
+            }
+            for c in rows
+        ]
 
     return await _with_session(database_url, _q)
 

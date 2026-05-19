@@ -21,7 +21,7 @@ Read [docs/specs/architecture.md](specs/architecture.md) for the full architectu
 | Cache / queue | Redis 7 |
 | Containers | Docker Compose (pgvector/pgvector:pg16, redis:7-alpine) |
 | LLM orchestration | LangGraph >= 0.2.0 |
-| LLM gateway | OpenRouter (T2: `openai/gpt-4o-mini`) |
+| LLM gateway | OpenRouter (T2: `deepseek/deepseek-v4-flash`) |
 
 ## Directory Layout
 
@@ -150,8 +150,9 @@ Claims are typed using a Pydantic `Literal` validated at extraction time:
 
 | Tier | Purpose | Config key | Default |
 |---|---|---|---|
-| T2 | Claim extraction | `settings.openrouter_t2_model` | `openai/gpt-4o-mini` |
-| T3 | Brief synthesis (Phase 4) | reserved | — |
+| T1 | Embedding (local) | `settings.t1_model` | `BAAI/bge-small-en-v1.5` |
+| T2 | Claim extraction | `settings.t2_model` | `deepseek/deepseek-v4-flash` |
+| T3 | Brief synthesis (Phase 4) | `settings.t3_model` | `deepseek/deepseek-v4-pro` |
 
 Cost is tracked per call: `0.30 / 1_000_000 * total_tokens` stored in the `agent_runs.cost_estimate` column.
 

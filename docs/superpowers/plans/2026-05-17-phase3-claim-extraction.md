@@ -255,7 +255,7 @@ async def test_complete_json_happy_path(client):
         mock_post.return_value = mock_resp
 
         result, tokens = await client.complete_json(
-            model="openai/gpt-4o-mini",
+            model="deepseek/deepseek-v4-flash",
             system="system",
             user="user",
             response_model=_SimpleOutput,
@@ -274,7 +274,7 @@ async def test_complete_json_5xx_raises_network_error(client):
 
         with pytest.raises(LLMNetworkError):
             await client.complete_json(
-                model="openai/gpt-4o-mini",
+                model="deepseek/deepseek-v4-flash",
                 system="s",
                 user="u",
                 response_model=_SimpleOutput,
@@ -293,7 +293,7 @@ async def test_complete_json_4xx_raises_llm_error(client):
 
         with pytest.raises(LLMError):
             await client.complete_json(
-                model="openai/gpt-4o-mini",
+                model="deepseek/deepseek-v4-flash",
                 system="s",
                 user="u",
                 response_model=_SimpleOutput,
@@ -314,7 +314,7 @@ async def test_complete_json_invalid_json_raises_schema_error(client):
 
         with pytest.raises(LLMSchemaError):
             await client.complete_json(
-                model="openai/gpt-4o-mini",
+                model="deepseek/deepseek-v4-flash",
                 system="s",
                 user="u",
                 response_model=_SimpleOutput,
@@ -335,7 +335,7 @@ async def test_complete_json_schema_mismatch_raises_schema_error(client):
 
         with pytest.raises(LLMSchemaError):
             await client.complete_json(
-                model="openai/gpt-4o-mini",
+                model="deepseek/deepseek-v4-flash",
                 system="s",
                 user="u",
                 response_model=_SimpleOutput,
@@ -664,7 +664,7 @@ async def test_happy_path_stores_claims(session_factory: async_sessionmaker, db_
 
     final = await graph.ainvoke({
         "document_id": doc_id,
-        "model": "openai/gpt-4o-mini",
+        "model": "deepseek/deepseek-v4-flash",
         "spans": [],
         "results": [],
         "total_tokens": 0,
@@ -697,7 +697,7 @@ async def test_network_error_marks_document_failed(session_factory: async_sessio
 
     final = await graph.ainvoke({
         "document_id": doc_id,
-        "model": "openai/gpt-4o-mini",
+        "model": "deepseek/deepseek-v4-flash",
         "spans": [],
         "results": [],
         "total_tokens": 0,
@@ -721,7 +721,7 @@ async def test_schema_error_retried_then_succeeds(session_factory: async_session
 
     final = await graph.ainvoke({
         "document_id": doc_id,
-        "model": "openai/gpt-4o-mini",
+        "model": "deepseek/deepseek-v4-flash",
         "spans": [],
         "results": [],
         "total_tokens": 0,
@@ -754,7 +754,7 @@ async def test_all_retries_exhausted_sets_partial_status(session_factory: async_
 
     await graph.ainvoke({
         "document_id": doc_id,
-        "model": "openai/gpt-4o-mini",
+        "model": "deepseek/deepseek-v4-flash",
         "spans": [],
         "results": [],
         "total_tokens": 0,
@@ -1038,7 +1038,7 @@ def _fake_graph_response(doc_id: uuid.UUID, span_id: uuid.UUID):
     """Pre-built final state that mimics a successful graph run."""
     return {
         "document_id": doc_id,
-        "model": "openai/gpt-4o-mini",
+        "model": "deepseek/deepseek-v4-flash",
         "spans": [{"id": str(span_id), "text": "GPT-5 released.", "token_count": 5, "metadata_json": {}}],
         "results": [
             {

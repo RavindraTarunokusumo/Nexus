@@ -104,7 +104,7 @@ async def test_happy_path_stores_claims(session_factory: async_sessionmaker, db_
     final = await graph.ainvoke(
         {
             "document_id": doc_id,
-            "model": "openai/gpt-4o-mini",
+            "model": "deepseek/deepseek-v4-flash",
             "spans": [],
             "results": [],
             "total_tokens": 0,
@@ -145,7 +145,7 @@ async def test_network_error_marks_document_failed(session_factory: async_sessio
     final = await graph.ainvoke(
         {
             "document_id": doc_id,
-            "model": "openai/gpt-4o-mini",
+            "model": "deepseek/deepseek-v4-flash",
             "spans": [],
             "results": [],
             "total_tokens": 0,
@@ -169,7 +169,7 @@ async def test_schema_error_retried_then_succeeds(session_factory: async_session
     final = await graph.ainvoke(
         {
             "document_id": doc_id,
-            "model": "openai/gpt-4o-mini",
+            "model": "deepseek/deepseek-v4-flash",
             "spans": [],
             "results": [],
             "total_tokens": 0,
@@ -204,7 +204,7 @@ async def test_all_retries_exhausted_marks_failed(session_factory: async_session
     await graph.ainvoke(
         {
             "document_id": doc_id,
-            "model": "openai/gpt-4o-mini",
+            "model": "deepseek/deepseek-v4-flash",
             "spans": [],
             "results": [],
             "total_tokens": 0,
@@ -246,7 +246,7 @@ async def test_partial_extraction_status(session_factory: async_sessionmaker):
     final = await graph.ainvoke(
         {
             "document_id": doc_id,
-            "model": "openai/gpt-4o-mini",
+            "model": "deepseek/deepseek-v4-flash",
             "spans": [],
             "results": [],
             "total_tokens": 0,

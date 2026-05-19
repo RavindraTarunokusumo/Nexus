@@ -26,6 +26,29 @@ Added the `app/intelligence/` module and claim extraction API.
 
 **Migration / setup:** No schema migrations required (all 8 tables were created in migration 0001). Set `OPENROUTER_API_KEY` in `.env` and optionally `OPENROUTER_T2_MODEL` (default: `openai/gpt-4o-mini`).
 
+## 2026-05-19 — Phase 3 CLI + Model Tier Config
+
+Extended the `nexus` CLI with Phase 3 extraction commands and centralised model configuration.
+
+**What changed:**
+
+- `nexus extract <doc_id>` — new CLI command that POSTs to `/documents/{id}/extract-claims`; supports `--force` re-extraction and `--json` output. HTTP timeout raised to 5 min (LLM calls over all spans).
+- `nexus document --claims` — new flag appending extracted claims table (or `"claims"` JSON key) to document detail view.
+- `app/config.py`: model fields renamed to `t1_model` / `t2_model` / `t3_model` with per-tier comments; defaults switched to `BAAI/bge-small-en-v1.5` / `deepseek/deepseek-v4-flash` / `deepseek/deepseek-v4-pro`.
+- `app/intelligence/llm_client.py`: cost estimate updated to DeepSeek flash pricing (~$0.14/1M tokens).
+- `scripts/run_phase3_cli_validation.ps1`: end-to-end smoke-test script.
+- Docs: `commands.md` updated with `nexus extract` reference and extended operator workflow.
+
+**Why:** Gives operators CLI-level access to claim extraction without curl; unifies model selection in one config file.
+
+**⚠ Breaking:** `.env` env var names changed — rename before upgrading:
+
+| Old | New |
+|---|---|
+| `EMBEDDING_MODEL` | `T1_MODEL` |
+| `OPENROUTER_T2_MODEL` | `T2_MODEL` |
+| `OPENROUTER_T3_MODEL` | `T3_MODEL` |
+
 ## 2026-05-16 — Phase 2.5: Operator CLI
 
 Added the `nexus` console-script CLI (`app/cli/`) for monitoring and operating the system without a browser or API client.

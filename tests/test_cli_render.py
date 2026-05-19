@@ -5,8 +5,10 @@ import uuid
 from datetime import datetime, timezone
 
 from app.cli.render import (
+    render_claims_table,
     render_document_detail,
     render_documents_table,
+    render_extraction_summary,
     render_search_results,
     render_sources_table,
     render_status,
@@ -163,6 +165,129 @@ def test_render_search_results_shows_score_and_text(capsys):
     assert "Open-source LLM" in out
     assert "Article 1" in out
     assert "embedded" in out
+
+
+def test_render_extraction_summary_human(capsys):
+    summary = {
+        "document_id": str(uuid.uuid4()),
+        "claims_extracted": 3,
+        "spans_processed": 2,
+        "spans_failed": 0,
+        "tokens_used": 450,
+        "cost_estimate_usd": 0.000135,
+        "claim_ids": [str(uuid.uuid4()) for _ in range(3)],
+    }
+    render_extraction_summary(summary, json_output=False)
+    out = capsys.readouterr().out
+    assert "3" in out
+    assert "450" in out
+    assert "0.000135" in out
+
+
+def test_render_extraction_summary_json(capsys):
+    summary = {
+        "document_id": str(uuid.uuid4()),
+        "claims_extracted": 1,
+        "spans_processed": 1,
+        "spans_failed": 0,
+        "tokens_used": 100,
+        "cost_estimate_usd": 0.00003,
+        "claim_ids": [str(uuid.uuid4())],
+    }
+    render_extraction_summary(summary, json_output=True)
+    out = capsys.readouterr().out
+    parsed = json.loads(out)
+    assert parsed["claims_extracted"] == 1
+    assert parsed["tokens_used"] == 100
+
+
+def test_render_claims_table_human(capsys):
+    claims = [
+        {
+            "id": uuid.uuid4(),
+            "claim_text": "GPT-5 was released by OpenAI.",
+            "claim_type": "model_release",
+            "entities_json": ["OpenAI", "GPT-5"],
+            "topics_json": ["LLM releases"],
+            "confidence": 0.92,
+            "status": "active",
+            "created_at": datetime(2026, 5, 18, 10, 0, tzinfo=timezone.utc),
+        }
+    ]
+    render_claims_table(claims, json_output=False)
+    out = capsys.readouterr().out
+    assert "model_release" in out
+    assert "GPT-5" in out or "OpenAI" in out
+    assert "0.92" in out
+
+
+def test_render_claims_table_empty(capsys):
+    render_claims_table([], json_output=False)
+    out = capsys.readouterr().out
+    assert "No claims" in out
+
+
+def test_render_document_detail_includes_claims(capsys):
+    detail = {
+        "id": uuid.uuid4(),
+        "title": "Test Doc",
+        "url": None,
+        "status": "claims_extracted",
+        "content_hash": "abc",
+        "source_name": "Feed",
+        "fetched_at": datetime(2026, 5, 18, tzinfo=timezone.utc),
+        "published_at": None,
+        "spans": [],
+    }
+    claims = [
+        {
+            "id": uuid.uuid4(),
+            "claim_text": "Model X beats GPT-4.",
+            "claim_type": "benchmark_result",
+            "entities_json": ["Model X"],
+            "topics_json": [],
+            "confidence": 0.85,
+            "status": "active",
+            "created_at": datetime(2026, 5, 18, tzinfo=timezone.utc),
+        }
+    ]
+    render_document_detail(detail, json_output=False, claims=claims)
+    out = capsys.readouterr().out
+    assert "Model X" in out
+    assert "benchmark_result" in out
+
+
+def test_render_document_detail_claims_in_json(capsys):
+    detail = {
+        "id": uuid.uuid4(),
+        "title": "T",
+        "url": None,
+        "status": "claims_extracted",
+        "content_hash": "x",
+        "source_name": "S",
+        "fetched_at": None,
+        "published_at": None,
+        "spans": [],
+    }
+    cid = uuid.uuid4()
+    claims = [
+        {
+            "id": cid,
+            "claim_text": "Claim text here.",
+            "claim_type": "other",
+            "entities_json": [],
+            "topics_json": [],
+            "confidence": 0.5,
+            "status": "active",
+            "created_at": datetime(2026, 5, 18, tzinfo=timezone.utc),
+        }
+    ]
+    render_document_detail(detail, json_output=True, claims=claims)
+    out = capsys.readouterr().out
+    parsed = json.loads(out)
+    assert parsed["title"] == "T"
+    assert len(parsed["claims"]) == 1
+    assert parsed["claims"][0]["claim_text"] == "Claim text here."
 
 
 def test_render_search_results_json(capsys):

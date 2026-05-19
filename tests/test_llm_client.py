@@ -48,7 +48,7 @@ async def test_complete_json_happy_path(client, fake_session_factory):
         mock_post.return_value = mock_resp
 
         result, tokens = await client.complete_json(
-            model="openai/gpt-4o-mini",
+            model="deepseek/deepseek-v4-flash",
             system="system",
             user="user",
             response_model=_SimpleOutput,
@@ -60,7 +60,7 @@ async def test_complete_json_happy_path(client, fake_session_factory):
     assert session.add.called
     agent_run = session.add.call_args[0][0]
     assert agent_run.run_type == "claim_extraction"
-    assert agent_run.model == "openai/gpt-4o-mini"
+    assert agent_run.model == "deepseek/deepseek-v4-flash"
     assert agent_run.status == "success"
 
 
@@ -74,7 +74,7 @@ async def test_complete_json_5xx_raises_network_error(client):
 
         with pytest.raises(LLMNetworkError):
             await client.complete_json(
-                model="openai/gpt-4o-mini",
+                model="deepseek/deepseek-v4-flash",
                 system="s",
                 user="u",
                 response_model=_SimpleOutput,
@@ -93,7 +93,7 @@ async def test_complete_json_4xx_raises_llm_error(client):
 
         with pytest.raises(LLMError):
             await client.complete_json(
-                model="openai/gpt-4o-mini",
+                model="deepseek/deepseek-v4-flash",
                 system="s",
                 user="u",
                 response_model=_SimpleOutput,
@@ -114,7 +114,7 @@ async def test_complete_json_invalid_json_raises_schema_error(client):
 
         with pytest.raises(LLMSchemaError):
             await client.complete_json(
-                model="openai/gpt-4o-mini",
+                model="deepseek/deepseek-v4-flash",
                 system="s",
                 user="u",
                 response_model=_SimpleOutput,
@@ -135,7 +135,7 @@ async def test_complete_json_schema_mismatch_raises_schema_error(client):
 
         with pytest.raises(LLMSchemaError):
             await client.complete_json(
-                model="openai/gpt-4o-mini",
+                model="deepseek/deepseek-v4-flash",
                 system="s",
                 user="u",
                 response_model=_SimpleOutput,
