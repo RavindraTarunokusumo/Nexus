@@ -135,9 +135,7 @@ async def get_claims_for_document(
 ) -> list[dict[str, Any]]:
     async def _q(session):
         stmt = (
-            select(Claim)
-            .where(Claim.document_id == document_id)
-            .order_by(Claim.created_at.desc())
+            select(Claim).where(Claim.document_id == document_id).order_by(Claim.created_at.desc())
         )
         rows = (await session.execute(stmt)).scalars().all()
         return [

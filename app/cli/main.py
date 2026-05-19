@@ -22,6 +22,8 @@ from app.cli.db import (
 )
 from app.cli.http import (
     CLIHttpError,
+)
+from app.cli.http import (
     extract_claims as http_extract_claims,
 )
 from app.cli.http import (
@@ -38,7 +40,6 @@ from app.cli.http import (
 )
 from app.cli.render import (
     print_ingest_result,
-    render_claims_table,
     render_document_detail,
     render_documents_table,
     render_extraction_summary,

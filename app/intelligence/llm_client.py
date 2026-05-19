@@ -118,12 +118,15 @@ class LLMClient:
                 status=call_status,
             )
 
+        if raw_output is None:
+            raise LLMSchemaError("LLM returned null content", raw_output="")
+
         try:
             validated = response_model.model_validate_json(raw_output)
         except (ValueError, ValidationError) as exc:
             raise LLMSchemaError(
                 f"Schema validation failed: {exc}. Raw: {raw_output[:200]}",
-                raw_output=raw_output or "",
+                raw_output=raw_output,
             ) from exc
 
         return validated, total_tokens

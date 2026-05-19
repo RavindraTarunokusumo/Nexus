@@ -86,9 +86,9 @@ def run_migrations(db_url):
         text=True,
         cwd=os.path.dirname(os.path.dirname(__file__)),
     )
-    assert (
-        result.returncode == 0
-    ), f"Alembic migration failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+    assert result.returncode == 0, (
+        f"Alembic migration failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+    )
 
 
 # ---------------------------------------------------------------------------
