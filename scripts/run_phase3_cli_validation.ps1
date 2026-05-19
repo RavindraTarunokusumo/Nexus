@@ -278,12 +278,14 @@ Invoke-RawExe `
 
 Write-Section "TEST 3: nexus extract <doc_id> without --force (should get 409)"
 $output409 = & $script:Nexus "extract" $docId "--api-url" $ApiUrl 2>&1 | Out-String
+$exit409 = $LASTEXITCODE
 Write-Host $output409
-if ($output409 -match "409" -or $output409 -match "already exist" -or $LASTEXITCODE -ne 0) {
-    Write-Host "409_TEST=PASS (re-run blocked as expected)"
+Write-Host "EXIT_CODE=$exit409"
+if ($exit409 -ne 0 -and ($output409 -match "409" -or $output409 -match "already exist")) {
+    Write-Host "409_TEST=PASS (non-zero exit AND 409 message — re-run blocked as expected)"
 }
 else {
-    Write-Host "409_TEST=WARN (expected non-zero exit or 409 message, got: EXIT_CODE=$LASTEXITCODE)"
+    Write-Host "409_TEST=FAIL (expected non-zero exit WITH 409 message; exit=$exit409 message_match=$($output409 -match '409|already exist'))"
 }
 
 Write-Section "TEST 4: nexus extract <doc_id> --force (re-extraction)"

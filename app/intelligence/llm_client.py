@@ -11,8 +11,9 @@ from app.db.models import AgentRun
 
 _BASE_URL = "https://openrouter.ai/api/v1"
 _TIMEOUT = httpx.Timeout(60.0)
-# Approximate blended cost per token for deepseek-v4
-_COST_PER_TOKEN_USD = 0.30 / 1_000_000
+# Approximate blended cost per token (DeepSeek flash-tier ~$0.14/1M input).
+# Override this constant if you switch to a different tier or pricing changes.
+_COST_PER_TOKEN_USD = 0.14 / 1_000_000
 
 T = TypeVar("T", bound=BaseModel)
 
