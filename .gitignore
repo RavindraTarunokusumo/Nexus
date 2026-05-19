@@ -37,3 +37,10 @@ htmlcov/
 .DS_Store
 Thumbs.db
 .worktrees/
+
+# Runtime logs
+*.log
+.nexus-uvicorn.*
+
+# Claude tooling
+.claude/scheduled_tasks.lock
