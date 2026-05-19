@@ -57,3 +57,10 @@ async def search_spans(base_url: str, query: str, top_k: int) -> list[dict]:
         "/search/spans",
         json={"query": query, "top_k": top_k},
     )
+
+
+async def extract_claims(base_url: str, document_id: uuid.UUID, *, force: bool = False) -> dict:
+    path = f"/documents/{document_id}/extract-claims"
+    if force:
+        path += "?force=true"
+    return await _request("POST", base_url, path)

@@ -14,6 +14,7 @@ import typer
 
 from app.cli.config import CLISettings
 from app.cli.db import (
+    get_claims_for_document,
     get_document_with_spans,
     get_status_snapshot,
     list_documents,
@@ -21,6 +22,7 @@ from app.cli.db import (
 )
 from app.cli.http import (
     CLIHttpError,
+    extract_claims as http_extract_claims,
 )
 from app.cli.http import (
     ingest_rss as http_ingest_rss,
@@ -36,8 +38,10 @@ from app.cli.http import (
 )
 from app.cli.render import (
     print_ingest_result,
+    render_claims_table,
     render_document_detail,
     render_documents_table,
+    render_extraction_summary,
     render_search_results,
     render_sources_table,
     render_status,
@@ -166,6 +170,7 @@ def documents(
 @app.command()
 def document(
     document_id: uuid.UUID = typer.Argument(..., help="Document UUID."),
+    show_claims: bool = typer.Option(False, "--claims", help="Also show extracted claims."),
     json_output: bool = typer.Option(False, "--json"),
     db_url: Optional[str] = typer.Option(None, "--db-url"),
     api_url: Optional[str] = typer.Option(None, "--api-url"),
@@ -177,7 +182,21 @@ def document(
     if detail is None:
         typer.echo(f"Document {document_id} not found.", err=True)
         raise typer.Exit(code=1)
-    render_document_detail(detail, json_output=json_output)
+    claims = _run(get_claims_for_document(database_url, document_id)) if show_claims else None
+    render_document_detail(detail, json_output=json_output, claims=claims)
+
+
+@app.command()
+def extract(
+    document_id: uuid.UUID = typer.Argument(..., help="Document UUID to extract claims from."),
+    force: bool = typer.Option(False, "--force", help="Re-extract even if claims already exist."),
+    json_output: bool = typer.Option(False, "--json"),
+    api_url: Optional[str] = typer.Option(None, "--api-url", help="Override API base URL."),
+) -> None:
+    """Run claim extraction for a document via the API."""
+    cfg = _settings(None, api_url)
+    summary = _run_http(http_extract_claims(cfg.api_base_url, document_id, force=force))
+    render_extraction_summary(summary, json_output=json_output)
 
 
 @app.command()
