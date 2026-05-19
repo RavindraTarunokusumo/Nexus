@@ -11,7 +11,7 @@ from app.db.models import AgentRun
 
 _BASE_URL = "https://openrouter.ai/api/v1"
 _TIMEOUT = httpx.Timeout(60.0)
-# Approximate blended cost per token for gpt-4o-mini (clearly marked as estimate)
+# Approximate blended cost per token for deepseek-v4
 _COST_PER_TOKEN_USD = 0.30 / 1_000_000
 
 T = TypeVar("T", bound=BaseModel)

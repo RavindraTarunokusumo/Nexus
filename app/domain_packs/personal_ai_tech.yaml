@@ -33,5 +33,5 @@ brief_sections:
   - watch_next
 
 models:
-  t2: openai/gpt-4o-mini
-  t3: openai/gpt-4o
+  t2: deepseek/deepseek-v4-flash
+  t3: deepseek/deepseek-v4-pro

@@ -24,7 +24,7 @@ Added the `app/intelligence/` module and claim extraction API.
 
 **Why:** Turns embedded spans into typed, evidence-grounded claims — the prerequisite for Phase 4 brief synthesis.
 
-**Migration / setup:** No schema migrations required (all 8 tables were created in migration 0001). Set `OPENROUTER_API_KEY` in `.env` and optionally `OPENROUTER_T2_MODEL` (default: `openai/gpt-4o-mini`).
+**Migration / setup:** No schema migrations required (all 8 tables were created in migration 0001). Set `OPENROUTER_API_KEY` in `.env` and optionally `T2_MODEL` / `T3_MODEL` (defaults: `deepseek/deepseek-v4-flash` / `deepseek/deepseek-v4-pro`).
 
 ## 2026-05-16 — Phase 2.5: Operator CLI
 

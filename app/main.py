@@ -20,8 +20,8 @@ async def lifespan(app: FastAPI):
     try:
         from app.intelligence.embedder import Embedder
 
-        app.state.embedder = Embedder()
-        logger.info("Embedder loaded: BAAI/bge-small-en-v1.5")
+        app.state.embedder = Embedder(settings.t1_model)
+        logger.info("Embedder loaded: %s", settings.t1_model)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Embedder unavailable (%s); search disabled.", exc)
         app.state.embedder = None
