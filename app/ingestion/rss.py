@@ -24,7 +24,7 @@ def _parse_date(entry) -> datetime | None:
         t = getattr(entry, attr, None)
         if t:
             try:
-                return datetime(*t[:6], tzinfo=timezone.utc)
+                return datetime(*t[:6], tzinfo=timezone.utc)  # type: ignore[misc]
             except (TypeError, ValueError):
                 continue
     return None

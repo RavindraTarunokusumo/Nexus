@@ -1,9 +1,9 @@
 # Nexus Lite — Full MVP Specification
 
-Status: Draft  
-Spec path: `docs/specs/nexus-lite-mvp.md`  
-Related document: `proof_of_concept.md`  
-Accepted by: TBD  
+Status: Draft
+Spec path: `docs/specs/nexus-lite-mvp.md`
+Related document: `proof_of_concept.md`
+Accepted by: TBD
 Accepted date: TBD
 
 ---
@@ -1145,4 +1145,3 @@ ingest
 ```
 
 Once that loop is stable, the system can evolve toward the broader architecture described in `proof_of_concept.md`.
-

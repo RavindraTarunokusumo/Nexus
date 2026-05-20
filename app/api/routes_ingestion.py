@@ -90,7 +90,7 @@ async def _chunk_and_embed(
         )
 
         vectors = embedder.embed([s.text for s in spans])
-        for span, vec in zip(spans, vectors):
+        for span, vec in zip(spans, vectors, strict=True):
             span.embedding = vec
 
         doc = await session.get(Document, doc_id)
@@ -282,12 +282,14 @@ async def ingest_url(
     try:
         raw_text, clean_text = await fetch_and_clean(payload.url)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Failed to fetch URL: {exc}",
-        )
+        ) from exc
 
     doc = await _persist_document(
         session,

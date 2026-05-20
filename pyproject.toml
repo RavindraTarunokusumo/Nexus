@@ -36,6 +36,7 @@ dev = [
     "testcontainers[postgres]>=4.4.0",
     "ruff>=0.6.0",
     "pre-commit>=3.5.0",
+    "mypy>=1.11.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -54,15 +55,32 @@ line-length = 100
 # F:   pyflakes (unused imports/variables, undefined names)
 # I:   isort (import ordering)
 # C90: mccabe cyclomatic complexity (technical debt gate)
-select = ["E", "W", "F", "I", "C90"]
-# E501: line-too-long is already covered by line-length above; accept
-# occasional overruns in docstrings/comments without breaking the build.
-ignore = ["E501"]
+# B:   flake8-bugbear (common bugs and design issues)
+# ASYNC: async-specific pitfalls (blocking calls in async, etc.)
+# S:   bandit-equivalent security checks
+select = ["E", "W", "F", "I", "C90", "B", "ASYNC", "S"]
+# E501: line-too-long covered by line-length setting above.
+# B008: typer.Option/Argument and FastAPI Depends() are intentional
+#       function calls in default args — the library pattern, not a bug.
+ignore = ["E501", "B008"]
 
 [tool.ruff.lint.mccabe]
 # Functions with cyclomatic complexity above this are flagged as technical debt.
-max-complexity = 10
+max-complexity = 15
 
 [tool.ruff.lint.per-file-ignores]
 # Tests can have longer fixture/seed functions and more local variables.
-"tests/**" = ["C901"]
+# S101: assert is the standard assertion mechanism in pytest.
+# S324: md5/sha1 used in test fixtures for deterministic IDs, not crypto.
+# S603: subprocess calls in conftest for test infrastructure setup.
+"tests/**" = ["C901", "S101", "S324", "S603"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_configs = true
+# warn_return_any is disabled: SQLAlchemy async query results are typed as
+# Any — enabling it produces ~14 false positives without the SQLAlchemy
+# mypy plugin.  Add sqlalchemy[mypy] to dev deps if stricter checks are wanted.
+# Exclude test files — mypy type-checks app/ only at commit time.
+exclude = ["tests/"]

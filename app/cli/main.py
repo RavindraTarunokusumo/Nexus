@@ -79,10 +79,10 @@ def _run_http(coro):
         return _run(coro)
     except CLIHttpError as exc:
         typer.echo(f"API error: {exc}", err=True)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from None
     except httpx.HTTPError as exc:
         typer.echo(f"Network error: {exc}", err=True)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from None
 
 
 def _settings(db_url: Optional[str], api_url: Optional[str]) -> CLISettings:
@@ -108,7 +108,7 @@ def _parse_since(value: Optional[str]) -> Optional[datetime]:
     try:
         return datetime.fromisoformat(value)
     except ValueError as exc:
-        raise typer.BadParameter(f"Invalid --since value '{value}': {exc}")
+        raise typer.BadParameter(f"Invalid --since value '{value}': {exc}") from exc
 
 
 @app.command()

@@ -17,7 +17,12 @@ class CLIHttpError(Exception):
 
 
 async def _request(
-    method: str, base_url: str, path: str, *, timeout: httpx.Timeout = _TIMEOUT, **kwargs
+    method: str,
+    base_url: str,
+    path: str,
+    *,
+    timeout: httpx.Timeout = _TIMEOUT,  # noqa: ASYNC109
+    **kwargs,
 ) -> Any:
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         response = await client.request(method, path, **kwargs)

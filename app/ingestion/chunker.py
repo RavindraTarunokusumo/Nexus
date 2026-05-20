@@ -36,7 +36,9 @@ def chunk_document(text: str, metadata: dict | None = None) -> list[dict]:
             {
                 "span_index": i,
                 "text": chunk_text,
-                "token_count": len(window), ## Comment: this is a rough proxy for token count; for more accuracy, consider using a tokenizer.
+                "token_count": len(
+                    window
+                ),  ## Comment: this is a rough proxy for token count; for more accuracy, consider using a tokenizer.
                 "metadata_json": {**metadata, "chunk_start_token": start},
             }
         )
