@@ -1,5 +1,6 @@
 """Span chunking: overlapping sliding-window splits measured in whitespace tokens."""
 
+## Comment: This is a simple implementation that splits on whitespace and counts tokens as words. For more accuracy, especially with languages where tokenization is not whitespace-based, consider integrating a proper tokenizer (e.g., from Hugging Face's tokenizers library) to count tokens and split accordingly.
 _CHUNK_TOKENS = 600
 _OVERLAP_TOKENS = 100
 _STEP = _CHUNK_TOKENS - _OVERLAP_TOKENS  # 500
@@ -35,7 +36,7 @@ def chunk_document(text: str, metadata: dict | None = None) -> list[dict]:
             {
                 "span_index": i,
                 "text": chunk_text,
-                "token_count": len(window),
+                "token_count": len(window), ## Comment: this is a rough proxy for token count; for more accuracy, consider using a tokenizer.
                 "metadata_json": {**metadata, "chunk_start_token": start},
             }
         )

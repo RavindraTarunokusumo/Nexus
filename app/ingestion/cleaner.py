@@ -27,7 +27,7 @@ def normalize_url(url: str) -> str:
 
 def clean_html(raw: str) -> str:
     """Strip HTML tags as a minimal fallback when trafilatura fails."""
-    return re.sub(r"<[^>]+>", " ", raw)
+    return re.sub(r"<[^>]+>", " ", raw) ## Comment: this is a very naive tag stripper and may not handle all edge cases; consider using a proper HTML parser for more robust cleaning.
 
 
 def extract_text(raw: str) -> str:

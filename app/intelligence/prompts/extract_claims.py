@@ -1,5 +1,6 @@
 """System and user prompt builders for claim extraction."""
 
+## Comment: Consider including examples (1-2 shot prompting) in the SYSTEM_PROMPT to guide the model towards the desired output format and content, especially if the claims can be complex or nuanced.
 SYSTEM_PROMPT = """\
 You are a precise claim extractor for an intelligence research system.
 

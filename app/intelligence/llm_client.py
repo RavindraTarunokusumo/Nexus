@@ -13,7 +13,7 @@ _BASE_URL = "https://openrouter.ai/api/v1"
 _TIMEOUT = httpx.Timeout(60.0)
 # Approximate blended cost per token (DeepSeek flash-tier ~$0.14/1M input).
 # Override this constant if you switch to a different tier or pricing changes.
-_COST_PER_TOKEN_USD = 0.14 / 1_000_000
+_COST_PER_TOKEN_USD = 0.14 / 1_000_000 ## Comment: This should not be hardcoded in production code; consider making it configurable via environment variables or a config file to allow for easy updates as pricing changes or if different models with different costs are used.
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -159,6 +159,7 @@ class LLMClient:
 # Extraction schema — imported by extraction.py and tests
 # ---------------------------------------------------------------------------
 
+## Comment: Again, this should not be hardcoded in production code; consider making it configurable via environment variables or a config file to allow for easy updates as ClaimTypes evolve or a different domain pack is used.
 ClaimType = Literal[
     "model_release",
     "benchmark_result",
