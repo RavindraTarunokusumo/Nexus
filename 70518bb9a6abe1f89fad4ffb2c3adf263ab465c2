@@ -1,0 +1,9 @@
+Summary: Add run_id to ExtractionSummary and replace graph.ainvoke with run_with_context in the extraction route.
+
+Scope: app/api/routes_claims.py — ExtractionSummary model, extract_claims handler.
+
+Tests: 129 passed; test_extraction_summary_includes_run_id added and passing.
+
+Risk: LOW — extract_claims route handler has 0 upstream callers in the graph.
+
+Docs: No doc changes needed; run_id is a new additive field in the API response.
