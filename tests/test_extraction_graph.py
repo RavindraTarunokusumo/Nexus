@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.db.models import Claim, ClaimEvidence, Document, Source, Span
+from app.db.models import Claim, ClaimEvidence, Document, Source, Span, SpanExtraction
 from app.intelligence.extraction import make_extraction_graph
 from app.intelligence.llm_client import LLMNetworkError, LLMSchemaError
 
@@ -104,9 +104,11 @@ async def test_happy_path_stores_claims(session_factory: async_sessionmaker, db_
     final = await graph.ainvoke(
         {
             "document_id": doc_id,
+            "run_id": None,
             "model": "deepseek/deepseek-v4-flash",
             "spans": [],
             "results": [],
+            "stored_claim_ids": [],
             "total_tokens": 0,
             "error": None,
         }
@@ -145,9 +147,11 @@ async def test_network_error_marks_document_failed(session_factory: async_sessio
     final = await graph.ainvoke(
         {
             "document_id": doc_id,
+            "run_id": None,
             "model": "deepseek/deepseek-v4-flash",
             "spans": [],
             "results": [],
+            "stored_claim_ids": [],
             "total_tokens": 0,
             "error": None,
         }
@@ -169,9 +173,11 @@ async def test_schema_error_retried_then_succeeds(session_factory: async_session
     final = await graph.ainvoke(
         {
             "document_id": doc_id,
+            "run_id": None,
             "model": "deepseek/deepseek-v4-flash",
             "spans": [],
             "results": [],
+            "stored_claim_ids": [],
             "total_tokens": 0,
             "error": None,
         }
@@ -204,9 +210,11 @@ async def test_all_retries_exhausted_marks_failed(session_factory: async_session
     await graph.ainvoke(
         {
             "document_id": doc_id,
+            "run_id": None,
             "model": "deepseek/deepseek-v4-flash",
             "spans": [],
             "results": [],
+            "stored_claim_ids": [],
             "total_tokens": 0,
             "error": None,
         }
@@ -246,9 +254,11 @@ async def test_partial_extraction_status(session_factory: async_sessionmaker):
     final = await graph.ainvoke(
         {
             "document_id": doc_id,
+            "run_id": None,
             "model": "deepseek/deepseek-v4-flash",
             "spans": [],
             "results": [],
+            "stored_claim_ids": [],
             "total_tokens": 0,
             "error": None,
         }
@@ -264,3 +274,69 @@ async def test_partial_extraction_status(session_factory: async_sessionmaker):
             .all()
         )
         assert len(claims) == 1
+
+
+@pytest.mark.asyncio
+async def test_extraction_populates_span_extractions_table(session_factory: async_sessionmaker):
+    """After extraction, one span_extractions row per span must exist with run_id set."""
+    doc_id, _span_ids = await _seed_doc_with_spans(session_factory, n_spans=2)
+    client = FakeLLMClient(
+        responses=[_make_claim_response("GPT-5 released."), _make_claim_response("GPT-5 fast.")]
+    )
+    graph = make_extraction_graph(session_factory, client)
+
+    run_id = uuid.uuid4()
+    await graph.ainvoke(
+        {
+            "document_id": doc_id,
+            "run_id": run_id,
+            "model": "deepseek/deepseek-v4-flash",
+            "spans": [],
+            "results": [],
+            "stored_claim_ids": [],
+            "total_tokens": 0,
+            "error": None,
+        }
+    )
+
+    async with session_factory() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(SpanExtraction).where(SpanExtraction.document_id == doc_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert len(rows) >= 1
+    assert all(r.run_id is not None for r in rows)
+    assert all(r.document_id == doc_id for r in rows)
+    assert all(r.status == "success" for r in rows)
+
+
+@pytest.mark.asyncio
+async def test_extraction_populates_document_timestamps(session_factory: async_sessionmaker):
+    """extraction_started_at and extraction_completed_at must be set after extraction."""
+    doc_id, _ = await _seed_doc_with_spans(session_factory, n_spans=1)
+    client = FakeLLMClient(responses=[_make_claim_response()])
+    graph = make_extraction_graph(session_factory, client)
+
+    await graph.ainvoke(
+        {
+            "document_id": doc_id,
+            "run_id": uuid.uuid4(),
+            "model": "deepseek/deepseek-v4-flash",
+            "spans": [],
+            "results": [],
+            "stored_claim_ids": [],
+            "total_tokens": 0,
+            "error": None,
+        }
+    )
+
+    async with session_factory() as session:
+        doc = await session.get(Document, doc_id)
+    assert doc.extraction_started_at is not None
+    assert doc.extraction_completed_at is not None
+    assert doc.extraction_completed_at >= doc.extraction_started_at
