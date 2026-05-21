@@ -1,0 +1,9 @@
+Summary: Add tracer.py with three DB-writing helpers for pipeline audit observability.
+
+Scope: app/observability/tracer.py (new), tests/test_observability_tracer.py (new, 7 integration tests).
+
+Tests: 7 new integration tests via local Postgres — all pass. Full suite 124 passed.
+
+Risk: Low — new module only; no existing symbols modified. All three helpers swallow DB errors and never raise.
+
+Docs: No doc changes needed; tracer is an internal audit helper consumed by the pipeline.
