@@ -232,3 +232,49 @@ async def test_get_claims_filters_by_claim_type(
 async def test_get_claims_requires_document_id(client: AsyncClient):
     resp = await client.get("/claims")
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_extraction_summary_includes_run_id(
+    client: AsyncClient, session_factory: async_sessionmaker, monkeypatch
+):
+    """ExtractionSummary response must include a non-null run_id UUID."""
+    doc_id, span_id = await _seed_embedded_doc(session_factory)
+
+    mock_graph = MagicMock()
+    claim_id = uuid.uuid4()
+    run_id = uuid.uuid4()
+
+    async def fake_ainvoke(state):
+        async with session_factory() as session:
+            session.add(
+                Claim(
+                    id=claim_id,
+                    document_id=doc_id,
+                    claim_text="GPT-5 was released.",
+                    claim_type="model_release",
+                    entities_json=["OpenAI"],
+                    topics_json=["LLM"],
+                    confidence=0.9,
+                    status="active",
+                )
+            )
+            await session.commit()
+        state_out = _fake_graph_final_state(doc_id, span_id)
+        state_out["stored_claim_ids"] = [claim_id]
+        state_out["run_id"] = run_id
+        return state_out
+
+    mock_graph.ainvoke = fake_ainvoke
+
+    async def fake_run_with_context(graph, document_id, model):
+        return await fake_ainvoke({})
+
+    monkeypatch.setattr("app.api.routes_claims.make_extraction_graph", lambda *_: mock_graph)
+    monkeypatch.setattr("app.api.routes_claims.run_with_context", fake_run_with_context)
+
+    resp = await client.post(f"/documents/{doc_id}/extract-claims")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "run_id" in body, f"run_id missing from response: {body}"
+    uuid.UUID(body["run_id"])  # must parse as a valid UUID
