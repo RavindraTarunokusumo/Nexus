@@ -91,6 +91,7 @@ async def extract_claims(
     final = await graph.ainvoke(
         {
             "document_id": document_id,
+            "run_id": None,
             "model": settings.t2_model,
             "spans": [],
             "results": [],
