@@ -1,0 +1,12 @@
+Summary: Created Alembic migration 0002 to add observability schema
+
+Scope:
+- agent_runs: added run_id, document_id, span_id (UUID), prompt_tokens, completion_tokens (Integer), and ix_agent_runs_run_id index
+- documents: added chunked_at, embedded_at, extraction_started_at, extraction_completed_at (all TIMESTAMP with timezone)
+- span_extractions: new table with id (UUID, PK), run_id, span_id (FK -> spans.id), document_id (FK -> documents.id), status, attempts, error, created_at; includes 3 indexes
+
+Tests: Syntax validation passed. Database migration pending (DB auth required).
+
+Risk: LOW - additive schema changes only, no existing data modified, includes proper foreign keys and cascading deletes.
+
+Docs: Migration follows Alembic best practices with proper upgrade/downgrade functions.
