@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.api.deps import DbSession
 from app.db.models import Document, Source, Span
 from app.ingestion.cleaner import content_hash, normalize_url
+from app.observability.tracer import mark_document_timestamp
 from app.ingestion.rss import fetch_rss_entries
 from app.ingestion.url_fetcher import fetch_and_clean
 
@@ -75,6 +76,8 @@ async def _chunk_and_embed(
             )
         await session.commit()
 
+    await mark_document_timestamp(session_factory, doc_id, "chunked_at")
+
     if not spans_data or embedder is None:
         return
 
@@ -98,6 +101,8 @@ async def _chunk_and_embed(
             doc.status = "embedded"
 
         await session.commit()
+
+    await mark_document_timestamp(session_factory, doc_id, "embedded_at")
 
 
 # ---------------------------------------------------------------------------
