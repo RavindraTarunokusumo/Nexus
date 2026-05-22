@@ -65,6 +65,48 @@ async def test_complete_json_happy_path(client, fake_session_factory):
 
 
 @pytest.mark.asyncio
+async def test_complete_json_defaults_to_claim_extraction_run_type(client, fake_session_factory):
+    openrouter_response = {
+        "choices": [{"message": {"content": '{"value": "hello"}'}}],
+        "usage": {"total_tokens": 50},
+    }
+    with patch("httpx.AsyncClient.post", new=AsyncMock()) as mock_post:
+        mock_resp = AsyncMock()
+        mock_resp.status_code = 200
+        mock_resp.json = lambda: openrouter_response
+        mock_post.return_value = mock_resp
+
+        await client.complete_json(model="m", system="s", user="u", response_model=_SimpleOutput)
+
+    agent_run = fake_session_factory.return_value.add.call_args[0][0]
+    assert agent_run.run_type == "claim_extraction"
+
+
+@pytest.mark.asyncio
+async def test_complete_json_accepts_chat_answer_run_type(client, fake_session_factory):
+    openrouter_response = {
+        "choices": [{"message": {"content": '{"value": "hello"}'}}],
+        "usage": {"total_tokens": 50},
+    }
+    with patch("httpx.AsyncClient.post", new=AsyncMock()) as mock_post:
+        mock_resp = AsyncMock()
+        mock_resp.status_code = 200
+        mock_resp.json = lambda: openrouter_response
+        mock_post.return_value = mock_resp
+
+        await client.complete_json(
+            model="m",
+            system="s",
+            user="u",
+            response_model=_SimpleOutput,
+            run_type="chat_answer",
+        )
+
+    agent_run = fake_session_factory.return_value.add.call_args[0][0]
+    assert agent_run.run_type == "chat_answer"
+
+
+@pytest.mark.asyncio
 async def test_complete_json_5xx_raises_network_error(client):
     with patch("httpx.AsyncClient.post", new=AsyncMock()) as mock_post:
         mock_resp = AsyncMock()

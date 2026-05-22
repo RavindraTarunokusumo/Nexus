@@ -52,6 +52,7 @@ class LLMClient:
         response_model: type[T],
         temperature: float = 0.1,
         max_tokens: int = 2000,
+        run_type: str = "claim_extraction",
     ) -> tuple[T, int]:
         """Call OpenRouter and return (validated_result, total_tokens).
 
@@ -115,7 +116,7 @@ class LLMClient:
         finally:
             await record_agent_run(
                 self._session_factory,
-                run_type="claim_extraction",
+                run_type=run_type,
                 model=model,
                 input_payload={"system": system, "user": user},
                 raw_output=raw_output,
