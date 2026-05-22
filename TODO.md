@@ -2,6 +2,14 @@
 
 ## Active
 
+### 2026-05-22 Hybrid Chatbot
+
+- [ ] LLM client run type support
+- [ ] Hybrid chat graph and prompt
+- [ ] Chat API route
+- [ ] CLI chat command
+- [ ] Docs and validation
+
 ### Phase 2 validation harness
 
 - [ ] Create and run a destructive CLI validation script that resets local data and exercises text, RSS, status, document inspection, and semantic search paths.
