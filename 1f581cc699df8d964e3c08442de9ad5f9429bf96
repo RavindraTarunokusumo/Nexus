@@ -1,1 +1,9 @@
-Summary: Designed the hybrid chatbot workflow for single-turn grounded answers.\n\nScope: Documentation spec only; no runtime code changes.\n\nTests: pre-commit run --files docs/superpowers/specs/2026-05-22-hybrid-chatbot-design.md passed. Commit hook was skipped because unrelated pre-existing staged/unstaged AGENTS.md and CLAUDE.md changes caused hook autostash conflicts.\n\nRisk: Low; design document only.\n\nDocs: Added docs/superpowers/specs/2026-05-22-hybrid-chatbot-design.md.
+Summary: Designed the hybrid chatbot workflow for single-turn grounded answers.
+
+Scope: Documentation spec only; no runtime code changes.
+
+Tests: pre-commit run --files docs/superpowers/specs/2026-05-22-hybrid-chatbot-design.md passed. Commit hook was skipped because unrelated pre-existing AGENTS.md and CLAUDE.md changes caused hook autostash conflicts.
+
+Risk: Low; design document only.
+
+Docs: Added docs/superpowers/specs/2026-05-22-hybrid-chatbot-design.md.
