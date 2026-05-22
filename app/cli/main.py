@@ -13,6 +13,7 @@ import httpx
 import typer
 
 from app.cli.config import CLISettings
+from app.observability.logger import configure_logging
 from app.cli.db import (
     get_claims_for_document,
     get_document_with_spans,
@@ -47,6 +48,8 @@ from app.cli.render import (
     render_sources_table,
     render_status,
 )
+
+configure_logging()
 
 app = typer.Typer(help="Nexus Lite — operator CLI for monitoring the system.")
 ingest_app = typer.Typer(help="Trigger ingestion via the running server.")

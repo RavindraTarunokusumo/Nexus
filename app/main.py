@@ -6,12 +6,14 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.db.session import make_engine, make_session_factory
+from app.observability.logger import configure_logging
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    configure_logging()
     engine = make_engine(settings.database_url)
     session_factory = make_session_factory(engine)
     app.state.engine = engine
