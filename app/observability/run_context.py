@@ -26,6 +26,21 @@ async def extraction_run(document_id: uuid.UUID) -> AsyncIterator[uuid.UUID]:
 
 
 @asynccontextmanager
+async def chat_run() -> AsyncIterator[uuid.UUID]:
+    """Mint a run_id for chat answers without binding a document_id."""
+    run_id = uuid.uuid4()
+    t_run = run_id_var.set(run_id)
+    t_doc = document_id_var.set(None)
+    t_span = span_id_var.set(None)
+    try:
+        yield run_id
+    finally:
+        span_id_var.reset(t_span)
+        document_id_var.reset(t_doc)
+        run_id_var.reset(t_run)
+
+
+@asynccontextmanager
 async def span_scope(span_id: uuid.UUID) -> AsyncIterator[None]:
     """Bind span_id within an active extraction_run; Token-reset on exit."""
     token = span_id_var.set(span_id)
