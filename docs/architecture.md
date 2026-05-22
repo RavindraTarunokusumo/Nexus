@@ -1,6 +1,6 @@
 # Architecture
 
-> **Phase 3 Status: Claim extraction implemented**
+> **Phase 3 Status: Claim extraction + observability implemented**
 
 Nexus Lite is a private FastAPI application backed by PostgreSQL + pgvector, Redis, and local embeddings. The Phase 1 foundation covers source registration, document ingestion, and the full persistence schema.
 
@@ -34,6 +34,14 @@ app/
     routes_sources.py      # GET/POST /sources, GET /sources/{id}
     routes_ingestion.py    # POST /ingest/rss/{source_id}, /ingest/url, /ingest/text
     routes_claims.py       # POST /documents/{id}/extract-claims, GET /claims
+  observability/
+    run_context.py         # asyncio-safe ContextVars (run_id, document_id, span_id);
+                           #   extraction_run(), span_scope(), current_context() context managers
+    logger.py              # RunContextFilter (injects correlation IDs into log records);
+                           #   _JsonFormatter (stdlib JSON output); configure_logging() (idempotent,
+                           #   reads LOG_LEVEL / LOG_FORMAT env vars)
+    tracer.py              # record_agent_run(), record_span_extraction(), mark_document_timestamp()
+                           #   — all fire-and-forget, never raise
   db/
     models.py              # SQLAlchemy ORM models (all 8 tables)
     session.py             # make_engine / make_session_factory helpers
@@ -41,17 +49,22 @@ app/
       env.py               # Alembic env wired to DATABASE_URL
       versions/
         0001_initial_schema.py  # All 8 tables + pgvector extension
+        0002_observability.py   # Adds correlation ID columns to agent_runs/documents; new span_extractions table
   ingestion/
     cleaner.py             # normalize_text, content_hash, normalize_url, extract_text
     rss.py                 # fetch_rss_entries (feedparser + async httpx)
     url_fetcher.py         # fetch_and_clean (httpx + trafilatura)
   intelligence/
-    llm_client.py          # LLMClient.complete_json — OpenRouter calls, Pydantic validation,
-                           #   AgentRun logging; ExtractedClaim / ExtractionOutput schemas;
-                           #   LLMError / LLMNetworkError / LLMSchemaError hierarchy
+    llm_client.py          # LLMClient.complete_json — OpenRouter calls, Pydantic validation;
+                           #   ExtractedClaim / ExtractionOutput schemas;
+                           #   LLMError / LLMNetworkError / LLMSchemaError hierarchy;
+                           #   uses tracer.record_agent_run; tracks prompt_tokens / completion_tokens
     extraction.py          # LangGraph StateGraph (load_spans → extract_spans → store_claims
                            #   → update_status); asyncio.gather concurrency (Semaphore 5);
-                           #   correction-prompt retry (max 2); status constants exported
+                           #   correction-prompt retry (max 2); status constants exported;
+                           #   wraps graph in extraction_run context; span_scope per span;
+                           #   writes span_extractions rows; marks extraction timestamps;
+                           #   run_with_context() entry point
     prompts/
       extract_claims.py    # SYSTEM_PROMPT, build_user_prompt, build_correction_prompt
   domain_packs/
@@ -59,10 +72,12 @@ app/
   cli/
     __init__.py
     config.py              # CLISettings (API_URL, DB_URL, rich/json output flags)
-    db.py                  # 5 direct-Postgres readers (asyncpg, short-lived sessions)
-    http.py                # 4 HTTP wrappers for ingest/search (FastAPI server)
-    render.py              # 5 Rich+JSON formatters + print_ingest_result
-    main.py                # Typer app — nexus console-script entry point
+    db.py                  # direct-Postgres readers (asyncpg, short-lived sessions);
+                           #   includes list_runs() and show_run()
+    http.py                # HTTP wrappers for ingest/search (FastAPI server)
+    render.py              # Rich+JSON formatters; includes render_runs_list() and render_run_detail()
+    main.py                # Typer app — nexus console-script entry point;
+                           #   registers `runs` sub-app with `list` and `show` commands
 tests/
   conftest.py              # testcontainers fixtures, Alembic migration, per-test DB clean
   test_sources.py          # Source CRUD integration tests (8 tests)
@@ -94,7 +109,7 @@ external source
 
 The `nexus` CLI uses a hybrid access strategy:
 
-- **Reads** (status, sources, documents, document detail) go **direct to Postgres** via short-lived asyncpg sessions — no server required.
+- **Reads** (status, sources, documents, document detail, runs) go **direct to Postgres** via short-lived asyncpg sessions — no server required.
 - **Ingest and search** go **through the FastAPI server** over HTTP.
 
 `CLISettings` resolves `--api-url` and `--db-url` from flags, `API_BASE_URL` / `DATABASE_URL` env vars, or `.env` defaults. `DATABASE_URL` is required only for commands that read directly from Postgres (status, sources, documents, document); HTTP-only commands (search, ingest) work without it. Every command accepts `--json` for machine-readable output and `--api-url` / `--db-url` overrides.
@@ -156,6 +171,41 @@ Claims are typed using a Pydantic `Literal` validated at extraction time:
 
 Cost is tracked per call: `0.30 / 1_000_000 * total_tokens` stored in the `agent_runs.cost_estimate` column.
 
+## Observability
+
+The `app/observability/` package adds structured logging and DB-backed tracing without modifying business logic.
+
+### Correlation IDs (`run_context.py`)
+
+Three asyncio-safe `ContextVar`s — `run_id_var`, `document_id_var`, `span_id_var` — propagate UUIDs through async call stacks without thread-safety concerns. Three context managers control their lifetimes:
+
+| Context manager | Scope | Sets |
+|---|---|---|
+| `extraction_run(document_id)` | Full extraction graph | `run_id`, `document_id` |
+| `span_scope(span_id)` | Single span extraction | `span_id` |
+| `current_context()` | Any point | Returns `{run_id, document_id, span_id}` snapshot |
+
+### Structured Logging (`logger.py`)
+
+`configure_logging()` is idempotent and called at startup by both `app/main.py` (FastAPI lifespan) and `app/cli/main.py`. It reads two env vars:
+
+| Env var | Values | Default |
+|---|---|---|
+| `LOG_LEVEL` | `DEBUG`, `INFO`, `WARNING`, `ERROR` | `INFO` |
+| `LOG_FORMAT` | `json`, `text` | `json` |
+
+`RunContextFilter` injects `run_id`, `document_id`, and `span_id` from the current `ContextVar` state into every log record, enabling log correlation across the extraction graph without passing IDs through function signatures.
+
+### DB Tracing (`tracer.py`)
+
+Three fire-and-forget functions write audit rows to Postgres. They never raise — failures are swallowed so tracing cannot break the hot path:
+
+| Function | What it writes |
+|---|---|
+| `record_agent_run(...)` | Upserts `agent_runs` with `run_id`, `document_id`, `span_id`, `prompt_tokens`, `completion_tokens` |
+| `record_span_extraction(...)` | Inserts/updates a `span_extractions` row (`status`, `attempts`, `error`) |
+| `mark_document_timestamp(field, doc_id)` | Sets one of the four pipeline timestamps on `documents` |
+
 ## Current Boundary
 
 The MVP implements the simplified hierarchy:
@@ -164,6 +214,6 @@ The MVP implements the simplified hierarchy:
 Source -> Document -> Span -> Claim -> Brief
 ```
 
-All 8 tables are schema-ready (migration 0001). Phases 1–3 populate `sources`, `documents`, `spans`, `claims`, `claim_evidence`, and `agent_runs`. Brief synthesis is Phase 4+.
+All 8 tables are schema-ready (migration 0001). Migration 0002 extends `agent_runs` and `documents` with correlation/timestamp columns and adds `span_extractions`. Phases 1–3 populate `sources`, `documents`, `spans`, `claims`, `claim_evidence`, `agent_runs`, and `span_extractions`. Brief synthesis is Phase 4+.
 
 The broader PoC hierarchy adds entities, relations, signals, clusters, theses, and decision artefacts. Those remain future-facing until the core ingestion-to-synthesis loop is stable.
