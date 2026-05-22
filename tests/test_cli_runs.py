@@ -1,4 +1,5 @@
 """Integration tests for nexus runs list / nexus runs show."""
+
 from __future__ import annotations
 
 import json
@@ -28,29 +29,40 @@ async def seeded_run(session_factory):
         session.add(source)
         await session.flush()
         doc = Document(
-            id=doc_id, source_id=source.id,
-            clean_text="hi", raw_text="hi",
-            content_hash=f"h-{uuid.uuid4()}", status="claims_extracted",
+            id=doc_id,
+            source_id=source.id,
+            clean_text="hi",
+            raw_text="hi",
+            content_hash=f"h-{uuid.uuid4()}",
+            status="claims_extracted",
         )
         session.add(doc)
         await session.flush()
         span = Span(
-            id=span_id, document_id=doc_id,
-            span_index=0, text="hi",
+            id=span_id,
+            document_id=doc_id,
+            span_index=0,
+            text="hi",
         )
         session.add(span)
         await session.flush()
         ar = AgentRun(
-            run_type="claim_extraction", model="test-m",
+            run_type="claim_extraction",
+            model="test-m",
             input_json={"system": "sys", "user": "usr"},
             output_json={"raw": "{}"},
-            cost_estimate=0.001, status="success",
-            run_id=run_id, document_id=doc_id,
+            cost_estimate=0.001,
+            status="success",
+            run_id=run_id,
+            document_id=doc_id,
         )
         session.add(ar)
         se = SpanExtraction(
-            run_id=run_id, span_id=span_id, document_id=doc_id,
-            status="success", attempts=1,
+            run_id=run_id,
+            span_id=span_id,
+            document_id=doc_id,
+            status="success",
+            attempts=1,
         )
         session.add(se)
         await session.commit()

@@ -238,23 +238,31 @@ async def show_run(database_url: str, run_id: str) -> dict[str, Any] | None:
 
     async def _q(session):
         ar_rows = (
-            await session.execute(
-                select(AgentRun)
-                .where(AgentRun.run_id == run_uuid)
-                .order_by(AgentRun.created_at)
+            (
+                await session.execute(
+                    select(AgentRun)
+                    .where(AgentRun.run_id == run_uuid)
+                    .order_by(AgentRun.created_at)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         if not ar_rows:
             return None
 
         se_rows = (
-            await session.execute(
-                select(SpanExtraction)
-                .where(SpanExtraction.run_id == run_uuid)
-                .order_by(SpanExtraction.created_at)
+            (
+                await session.execute(
+                    select(SpanExtraction)
+                    .where(SpanExtraction.run_id == run_uuid)
+                    .order_by(SpanExtraction.created_at)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         doc_id = ar_rows[0].document_id
         doc_info = None

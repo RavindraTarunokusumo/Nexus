@@ -1,4 +1,5 @@
 """Centralized logging configuration for Nexus — stdlib + JSON formatter."""
+
 from __future__ import annotations
 
 import json
@@ -30,11 +31,30 @@ class RunContextFilter(logging.Filter):
 class _JsonFormatter(logging.Formatter):
     """Emit one JSON object per log record."""
 
-    _SKIP = {"msg", "message", "args", "exc_info", "exc_text", "stack_info",
-              "levelname", "levelno", "pathname", "filename", "module",
-              "created", "msecs", "relativeCreated", "thread", "threadName",
-              "processName", "process", "name", "funcName", "lineno",
-              "taskName"}
+    _SKIP = {
+        "msg",
+        "message",
+        "args",
+        "exc_info",
+        "exc_text",
+        "stack_info",
+        "levelname",
+        "levelno",
+        "pathname",
+        "filename",
+        "module",
+        "created",
+        "msecs",
+        "relativeCreated",
+        "thread",
+        "threadName",
+        "processName",
+        "process",
+        "name",
+        "funcName",
+        "lineno",
+        "taskName",
+    }
 
     def format(self, record: logging.LogRecord) -> str:
         record.message = record.getMessage()
@@ -91,9 +111,7 @@ def configure_logging(
     if effective_fmt == "json":
         handler.setFormatter(_make_json_formatter())
     else:
-        handler.setFormatter(
-            logging.Formatter("%(asctime)s %(levelname)-8s %(name)s %(message)s")
-        )
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-8s %(name)s %(message)s"))
 
     ctx_filter = RunContextFilter()
     root.addFilter(ctx_filter)

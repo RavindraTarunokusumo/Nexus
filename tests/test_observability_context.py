@@ -1,4 +1,5 @@
 """Unit tests for run_context — no DB required."""
+
 from __future__ import annotations
 
 import asyncio
@@ -65,7 +66,7 @@ async def test_no_context_bleed_under_gather():
 
     async def task(sid: uuid.UUID) -> uuid.UUID | None:
         async with span_scope(sid):
-            await asyncio.sleep(0.001 * random.randint(1, 5))
+            await asyncio.sleep(0.001 * random.randint(1, 5))  # noqa: S311
             return current_context()["span_id"]
 
     async with extraction_run(doc_id):

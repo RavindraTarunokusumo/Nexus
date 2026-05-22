@@ -1,4 +1,5 @@
 """Unit tests for configure_logging and RunContextFilter."""
+
 from __future__ import annotations
 
 import io
@@ -80,11 +81,17 @@ def test_run_context_filter_survives_broken_contextvar(caplog):
 
     f = RunContextFilter()
     record = logging.LogRecord(
-        name="test", level=logging.INFO, pathname="", lineno=0,
-        msg="ok", args=(), exc_info=None,
+        name="test",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg="ok",
+        args=(),
+        exc_info=None,
     )
     # Simulate failure by patching current_context to raise
     import app.observability.logger as mod
+
     original = mod.current_context
     mod.current_context = lambda: (_ for _ in ()).throw(RuntimeError("boom"))
     try:

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from typing import Sequence, Union
+
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
-
-from typing import Sequence, Union
 
 revision: str = "0002"
 down_revision: Union[str, None] = "0001"
@@ -17,7 +17,9 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # agent_runs: correlation columns + token split
     op.add_column("agent_runs", sa.Column("run_id", postgresql.UUID(as_uuid=True), nullable=True))
-    op.add_column("agent_runs", sa.Column("document_id", postgresql.UUID(as_uuid=True), nullable=True))
+    op.add_column(
+        "agent_runs", sa.Column("document_id", postgresql.UUID(as_uuid=True), nullable=True)
+    )
     op.add_column("agent_runs", sa.Column("span_id", postgresql.UUID(as_uuid=True), nullable=True))
     op.add_column("agent_runs", sa.Column("prompt_tokens", sa.Integer, nullable=True))
     op.add_column("agent_runs", sa.Column("completion_tokens", sa.Integer, nullable=True))
@@ -26,23 +28,45 @@ def upgrade() -> None:
     # documents: per-stage timestamps
     op.add_column("documents", sa.Column("chunked_at", sa.TIMESTAMP(timezone=True), nullable=True))
     op.add_column("documents", sa.Column("embedded_at", sa.TIMESTAMP(timezone=True), nullable=True))
-    op.add_column("documents", sa.Column("extraction_started_at", sa.TIMESTAMP(timezone=True), nullable=True))
-    op.add_column("documents", sa.Column("extraction_completed_at", sa.TIMESTAMP(timezone=True), nullable=True))
+    op.add_column(
+        "documents", sa.Column("extraction_started_at", sa.TIMESTAMP(timezone=True), nullable=True)
+    )
+    op.add_column(
+        "documents",
+        sa.Column("extraction_completed_at", sa.TIMESTAMP(timezone=True), nullable=True),
+    )
 
     # span_extractions: new table
     op.create_table(
         "span_extractions",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("run_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("span_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("spans.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("document_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("documents.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "span_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("spans.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "document_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("documents.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("status", sa.Text, nullable=False),
         sa.Column("attempts", sa.Integer, nullable=False, server_default="1"),
         sa.Column("error", sa.Text, nullable=True),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.TIMESTAMP(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
     )
     op.create_index("ix_span_extractions_run_id", "span_extractions", ["run_id"])
-    op.create_index("ix_span_extractions_document_span", "span_extractions", ["document_id", "span_id"])
+    op.create_index(
+        "ix_span_extractions_document_span", "span_extractions", ["document_id", "span_id"]
+    )
     op.create_index("ix_span_extractions_status", "span_extractions", ["status"])
 
 

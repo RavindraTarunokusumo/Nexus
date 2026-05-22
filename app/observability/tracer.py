@@ -1,4 +1,5 @@
 """Thin DB-writing helpers for pipeline audit — never raises, always logs on failure."""
+
 from __future__ import annotations
 
 import logging
@@ -34,19 +35,21 @@ async def record_agent_run(
     cost = total_tokens * (0.14 / 1_000_000)
     try:
         async with session_factory() as session:
-            session.add(AgentRun(
-                run_type=run_type,
-                model=model,
-                input_json=input_payload,
-                output_json={"raw": raw_output},
-                cost_estimate=cost,
-                status=status,
-                run_id=ctx["run_id"],
-                document_id=ctx["document_id"],
-                span_id=ctx["span_id"],
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-            ))
+            session.add(
+                AgentRun(
+                    run_type=run_type,
+                    model=model,
+                    input_json=input_payload,
+                    output_json={"raw": raw_output},
+                    cost_estimate=cost,
+                    status=status,
+                    run_id=ctx["run_id"],
+                    document_id=ctx["document_id"],
+                    span_id=ctx["span_id"],
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                )
+            )
             await session.commit()
     except Exception:
         logger.exception(
@@ -68,14 +71,16 @@ async def record_span_extraction(
     """Insert one span_extractions row. Catches and logs DB errors; never raises."""
     try:
         async with session_factory() as session:
-            session.add(SpanExtraction(
-                run_id=run_id,
-                span_id=span_id,
-                document_id=document_id,
-                status=status,
-                attempts=attempts,
-                error=error,
-            ))
+            session.add(
+                SpanExtraction(
+                    run_id=run_id,
+                    span_id=span_id,
+                    document_id=document_id,
+                    status=status,
+                    attempts=attempts,
+                    error=error,
+                )
+            )
             await session.commit()
     except Exception:
         logger.exception(

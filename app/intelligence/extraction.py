@@ -152,7 +152,10 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
             if doc is None:
                 return {"error": f"Document {state['document_id']} not found", "run_id": None}
             if doc.status != STATUS_EMBEDDED:
-                return {"error": f"Document status is '{doc.status}'; must be 'embedded'", "run_id": None}
+                return {
+                    "error": f"Document status is '{doc.status}'; must be 'embedded'",
+                    "run_id": None,
+                }
             rows = (
                 (
                     await session.execute(
@@ -174,7 +177,9 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                 for s in rows
             ]
 
-        await mark_document_timestamp(session_factory, state["document_id"], "extraction_started_at")
+        await mark_document_timestamp(
+            session_factory, state["document_id"], "extraction_started_at"
+        )
         return {"spans": spans}
 
     async def extract_spans(state: ExtractionState) -> dict:
@@ -267,7 +272,9 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                 doc.status = new_status
                 await session.commit()
 
-        await mark_document_timestamp(session_factory, state["document_id"], "extraction_completed_at")
+        await mark_document_timestamp(
+            session_factory, state["document_id"], "extraction_completed_at"
+        )
         return {}
 
     def _route_after_extract(state: ExtractionState) -> str:
@@ -295,15 +302,17 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
 async def run_with_context(graph, document_id: uuid.UUID, model: str) -> dict:
     """Enter extraction_run context, invoke the graph, return final state with run_id."""
     async with extraction_run(document_id) as run_id:
-        final = await graph.ainvoke({
-            "document_id": document_id,
-            "run_id": run_id,
-            "model": model,
-            "spans": [],
-            "results": [],
-            "stored_claim_ids": [],
-            "total_tokens": 0,
-            "error": None,
-        })
+        final = await graph.ainvoke(
+            {
+                "document_id": document_id,
+                "run_id": run_id,
+                "model": model,
+                "spans": [],
+                "results": [],
+                "stored_claim_ids": [],
+                "total_tokens": 0,
+                "error": None,
+            }
+        )
     final["run_id"] = run_id
     return final

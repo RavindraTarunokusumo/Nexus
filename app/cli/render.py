@@ -305,11 +305,15 @@ def render_run_detail(detail: dict[str, Any], *, json_output: bool = False) -> N
     doc = detail.get("document") or {}
     console.print(f"[bold]Run:[/bold] {detail['run_id'][:8]}")
     if doc:
-        console.print(f"[bold]Document:[/bold] {_short(doc.get('id'), 8)} — status: {doc.get('status')}")
+        console.print(
+            f"[bold]Document:[/bold] {_short(doc.get('id'), 8)} — status: {doc.get('status')}"
+        )
         console.print(f"  extraction_started_at:   {doc.get('extraction_started_at')}")
         console.print(f"  extraction_completed_at: {doc.get('extraction_completed_at')}")
 
-    ar_table = Table(title="LLM Calls (agent_runs)", show_lines=False, show_header=True, header_style="bold")
+    ar_table = Table(
+        title="LLM Calls (agent_runs)", show_lines=False, show_header=True, header_style="bold"
+    )
     ar_table.add_column("span_id")
     ar_table.add_column("status")
     ar_table.add_column("prompt_tok", justify="right")
@@ -325,7 +329,9 @@ def render_run_detail(detail: dict[str, Any], *, json_output: bool = False) -> N
         )
     console.print(ar_table)
 
-    se_table = Table(title="Span Extractions", show_lines=False, show_header=True, header_style="bold")
+    se_table = Table(
+        title="Span Extractions", show_lines=False, show_header=True, header_style="bold"
+    )
     se_table.add_column("span_id")
     se_table.add_column("status")
     se_table.add_column("attempts", justify="right")

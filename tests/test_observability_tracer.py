@@ -1,14 +1,14 @@
 """Integration tests for tracer.py — requires a running Postgres (via conftest.py)."""
+
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.db.models import AgentRun, Document, Source, Span, SpanExtraction
 from app.observability.run_context import extraction_run, span_scope
@@ -113,6 +113,7 @@ async def test_record_agent_run_swallows_db_error(caplog):
     broken_sf.return_value = broken_cm
 
     import logging
+
     with caplog.at_level(logging.WARNING, logger="app.observability.tracer"):
         await record_agent_run(
             broken_sf,
@@ -187,6 +188,7 @@ async def test_mark_document_timestamp_swallows_db_error(caplog):
     broken_sf.return_value = broken_cm
 
     import logging
+
     with caplog.at_level(logging.WARNING, logger="app.observability.tracer"):
         await mark_document_timestamp(broken_sf, uuid.uuid4(), "chunked_at")
     assert "mark_document_timestamp failed" in caplog.text

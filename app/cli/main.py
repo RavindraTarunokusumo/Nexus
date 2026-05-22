@@ -13,7 +13,6 @@ import httpx
 import typer
 
 from app.cli.config import CLISettings
-from app.observability.logger import configure_logging
 from app.cli.db import (
     get_claims_for_document,
     get_document_with_spans,
@@ -52,6 +51,7 @@ from app.cli.render import (
     render_sources_table,
     render_status,
 )
+from app.observability.logger import configure_logging
 
 configure_logging()
 

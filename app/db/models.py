@@ -57,8 +57,12 @@ class Document(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, default="fetched")
     chunked_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     embedded_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
-    extraction_started_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
-    extraction_completed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    extraction_started_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    extraction_completed_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
 
     source: Mapped["Source"] = relationship("Source", back_populates="documents")
     spans: Mapped[list["Span"]] = relationship("Span", back_populates="document")

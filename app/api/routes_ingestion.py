@@ -12,9 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.api.deps import DbSession
 from app.db.models import Document, Source, Span
 from app.ingestion.cleaner import content_hash, normalize_url
-from app.observability.tracer import mark_document_timestamp
 from app.ingestion.rss import fetch_rss_entries
 from app.ingestion.url_fetcher import fetch_and_clean
+from app.observability.tracer import mark_document_timestamp
 
 # Allowlist for user-supplied identifier fields stored to the database.
 _IDENTIFIER_RE = re.compile(r"^[a-z0-9_\-]{1,64}$")
