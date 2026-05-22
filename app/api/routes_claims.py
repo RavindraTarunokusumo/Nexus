@@ -15,6 +15,7 @@ from app.intelligence.extraction import (
     POST_EXTRACTION_STATUSES,
     STATUS_EMBEDDED,
     make_extraction_graph,
+    run_with_context,
 )
 from app.intelligence.llm_client import _COST_PER_TOKEN_USD, LLMClient
 
@@ -37,6 +38,7 @@ class ClaimResponse(BaseModel):
 
 class ExtractionSummary(BaseModel):
     document_id: uuid.UUID
+    run_id: uuid.UUID
     claims_extracted: int
     spans_processed: int
     spans_failed: int
@@ -87,18 +89,7 @@ async def extract_claims(
         session_factory=request.app.state.session_factory,
     )
     graph = make_extraction_graph(request.app.state.session_factory, llm_client)
-
-    final = await graph.ainvoke(
-        {
-            "document_id": document_id,
-            "model": settings.t2_model,
-            "spans": [],
-            "results": [],
-            "stored_claim_ids": [],
-            "total_tokens": 0,
-            "error": None,
-        }
-    )
+    final = await run_with_context(graph, document_id, settings.t2_model)
 
     if final.get("error"):
         raise HTTPException(
@@ -114,6 +105,7 @@ async def extract_claims(
 
     return ExtractionSummary(
         document_id=document_id,
+        run_id=final["run_id"],
         claims_extracted=len(claim_ids),
         spans_processed=len(results),
         spans_failed=spans_failed,

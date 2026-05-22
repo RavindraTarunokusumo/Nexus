@@ -18,7 +18,9 @@ from app.cli.db import (
     get_document_with_spans,
     get_status_snapshot,
     list_documents,
+    list_runs,
     list_sources,
+    show_run,
 )
 from app.cli.http import (
     CLIHttpError,
@@ -43,14 +45,21 @@ from app.cli.render import (
     render_document_detail,
     render_documents_table,
     render_extraction_summary,
+    render_run_detail,
+    render_runs_list,
     render_search_results,
     render_sources_table,
     render_status,
 )
+from app.observability.logger import configure_logging
+
+configure_logging()
 
 app = typer.Typer(help="Nexus Lite — operator CLI for monitoring the system.")
 ingest_app = typer.Typer(help="Trigger ingestion via the running server.")
 app.add_typer(ingest_app, name="ingest")
+runs_app = typer.Typer(help="Query extraction run traces.")
+app.add_typer(runs_app, name="runs")
 
 
 def _run(coro):
@@ -212,6 +221,37 @@ def search(
     cfg = _settings(db_url, api_url)
     results = _run_http(http_search_spans(cfg.api_base_url, query, top_k))
     render_search_results(results, json_output=json_output)
+
+
+@runs_app.command("list")
+def runs_list(
+    limit: int = typer.Option(50, "--limit"),
+    json_output: bool = typer.Option(False, "--json"),
+    db_url: Optional[str] = typer.Option(None, "--db-url"),
+    api_url: Optional[str] = typer.Option(None, "--api-url"),
+) -> None:
+    """List recent extraction runs."""
+    cfg = _settings(db_url, api_url)
+    database_url = _require_db_url(cfg)
+    result = _run(list_runs(database_url, limit=limit))
+    render_runs_list(result, json_output=json_output)
+
+
+@runs_app.command("show")
+def runs_show(
+    run_id: str = typer.Argument(..., help="Run UUID to inspect."),
+    json_output: bool = typer.Option(False, "--json"),
+    db_url: Optional[str] = typer.Option(None, "--db-url"),
+    api_url: Optional[str] = typer.Option(None, "--api-url"),
+) -> None:
+    """Show full trace for one extraction run."""
+    cfg = _settings(db_url, api_url)
+    database_url = _require_db_url(cfg)
+    detail = _run(show_run(database_url, run_id))
+    if detail is None:
+        typer.echo(f"Run {run_id} not found.", err=True)
+        raise typer.Exit(code=1)
+    render_run_detail(detail, json_output=json_output)
 
 
 @ingest_app.command("url")

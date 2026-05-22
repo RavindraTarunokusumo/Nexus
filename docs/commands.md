@@ -163,6 +163,7 @@ The `nexus` command is installed as a console script by `pip install -e .`.
 | Command group | Access path | Server required? |
 |---|---|---|
 | `status`, `sources`, `documents`, `document` | Direct Postgres | No |
+| `runs list`, `runs show` | Direct Postgres | No |
 | `search` | HTTP → FastAPI | Yes |
 | `ingest url / text / rss` | HTTP → FastAPI | Yes |
 
@@ -351,6 +352,7 @@ Cost estimate    $0.001260
 ```json
 {
   "document_id": "<uuid>",
+  "run_id": "<uuid>",
   "claims_extracted": 12,
   "spans_processed": 8,
   "spans_failed": 0,
@@ -359,6 +361,45 @@ Cost estimate    $0.001260
   "claim_ids": ["<uuid>", "..."]
 }
 ```
+
+---
+
+### `nexus runs list`
+
+List recent agent runs — reads Postgres directly, no server required.
+
+```sh
+nexus runs list
+nexus runs list --limit 20
+nexus runs list --json
+nexus runs list --db-url postgresql+asyncpg://nexus:nexus@host:5432/nexus
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--limit N` | 50 | Maximum rows returned |
+| `--json` | off | Machine-readable JSON output |
+| `--db-url <url>` | `$DATABASE_URL` | Override the Postgres connection string |
+
+Columns: ID (short), Run type, Model, Status, Tokens (prompt / completion), Cost estimate, Created At.
+
+---
+
+### `nexus runs show <run_id>`
+
+Show detail for a single agent run — reads Postgres directly, no server required.
+
+```sh
+nexus runs show 3f8a2c1d-7e4b-4a9f-b2d5-1c6e8f3a9b7d
+nexus runs show <run_id> --json
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--json` | off | Machine-readable JSON output |
+| `--db-url <url>` | `$DATABASE_URL` | Override the Postgres connection string |
+
+Displays the run record including correlation IDs (`run_id`, `document_id`, `span_id`), token split (`prompt_tokens`, `completion_tokens`), status, cost estimate, and associated `span_extractions` rows.
 
 ---
 
@@ -423,6 +464,7 @@ Response (200):
 ```json
 {
   "document_id": "<uuid>",
+  "run_id": "<uuid>",
   "claims_extracted": 12,
   "spans_processed": 8,
   "spans_failed": 0,

@@ -12,6 +12,7 @@ This repository is bootstrapped with an agent harness and supporting docs. Use t
 - [Patterns](patterns.md)
 - [Testing](testing.md)
 - [Commands](commands.md)
+- [Nexus CLI](cli.md)
 - [Changelog](changelog.md)
 - [Insights](insights.md)
 - [CI docs](ci/README.md)

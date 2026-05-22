@@ -1,4 +1,4 @@
-"""OpenRouter HTTP client with per-call AgentRun logging."""
+"""OpenRouter HTTP client with per-call tracer logging."""
 
 from __future__ import annotations
 
@@ -7,15 +7,11 @@ from typing import Any, Literal, TypeVar
 import httpx
 from pydantic import BaseModel, ValidationError
 
-from app.db.models import AgentRun
+from app.observability.tracer import record_agent_run
 
 _BASE_URL = "https://openrouter.ai/api/v1"
 _TIMEOUT = httpx.Timeout(60.0)
-# Approximate blended cost per token (DeepSeek flash-tier ~$0.14/1M input).
-# Override this constant if you switch to a different tier or pricing changes.
-_COST_PER_TOKEN_USD = (
-    0.14 / 1_000_000
-)  ## Comment: This should not be hardcoded in production code; consider making it configurable via environment variables or a config file to allow for easy updates as pricing changes or if different models with different costs are used.
+_COST_PER_TOKEN_USD = 0.14 / 1_000_000
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -29,10 +25,10 @@ class LLMNetworkError(LLMError):
 
 
 class LLMSchemaError(LLMError):
-    """Response arrived but failed Pydantic validation — caller may retry with correction.
+    """Response arrived but failed Pydantic validation.
 
-    The raw model output is preserved on `raw_output` so callers can include it in a
-    correction prompt to help the model see what it produced.
+    The raw model output is preserved on `raw_output` so callers can include it
+    in a correction prompt.
     """
 
     def __init__(self, message: str, raw_output: str = "") -> None:
@@ -41,7 +37,7 @@ class LLMSchemaError(LLMError):
 
 
 class LLMClient:
-    """Async OpenRouter client. Logs every call to AgentRun."""
+    """Async OpenRouter client. Records every call to agent_runs via tracer."""
 
     def __init__(self, api_key: str, session_factory: Any) -> None:
         self._api_key = api_key
@@ -62,7 +58,7 @@ class LLMClient:
         Raises LLMNetworkError on 5xx / connection failure.
         Raises LLMError on 4xx.
         Raises LLMSchemaError if the response fails Pydantic validation.
-        Always logs an AgentRun row (even on failure).
+        Always records an agent_runs row (even on failure).
         """
         payload = {
             "model": model,
@@ -77,6 +73,8 @@ class LLMClient:
 
         raw_output: str | None = None
         total_tokens = 0
+        prompt_tokens: int | None = None
+        completion_tokens: int | None = None
         call_status = "success"
 
         try:
@@ -102,22 +100,29 @@ class LLMClient:
             try:
                 raw_output = data["choices"][0]["message"]["content"]
             except (KeyError, IndexError, TypeError) as exc:
-                # Malformed 200 response — recoverable per-span, not a pipeline abort.
                 call_status = "malformed_response"
                 raise LLMError(f"Malformed OpenRouter response: {exc}") from exc
-            total_tokens = data.get("usage", {}).get("total_tokens", 0)
+
+            usage = data.get("usage", {})
+            total_tokens = usage.get("total_tokens", 0)
+            prompt_tokens = usage.get("prompt_tokens")
+            completion_tokens = usage.get("completion_tokens")
 
         except httpx.HTTPError as exc:
             call_status = "network_error"
             raise LLMNetworkError(str(exc)) from exc
 
         finally:
-            await self._log(
+            await record_agent_run(
+                self._session_factory,
+                run_type="claim_extraction",
                 model=model,
-                input_payload={"system": system[:300], "user": user[:300]},
+                input_payload={"system": system, "user": user},
                 raw_output=raw_output,
                 total_tokens=total_tokens,
                 status=call_status,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
             )
 
         if raw_output is None:
@@ -133,35 +138,11 @@ class LLMClient:
 
         return validated, total_tokens
 
-    async def _log(
-        self,
-        *,
-        model: str,
-        input_payload: dict,
-        raw_output: str | None,
-        total_tokens: int,
-        status: str,
-    ) -> None:
-        cost = total_tokens * _COST_PER_TOKEN_USD
-        async with self._session_factory() as session:
-            session.add(
-                AgentRun(
-                    run_type="claim_extraction",
-                    model=model,
-                    input_json=input_payload,
-                    output_json={"raw": raw_output[:500] if raw_output else None},
-                    cost_estimate=cost,
-                    status=status,
-                )
-            )
-            await session.commit()
-
 
 # ---------------------------------------------------------------------------
 # Extraction schema — imported by extraction.py and tests
 # ---------------------------------------------------------------------------
 
-## Comment: Again, this should not be hardcoded in production code; consider making it configurable via environment variables or a config file to allow for easy updates as ClaimTypes evolve or a different domain pack is used.
 ClaimType = Literal[
     "model_release",
     "benchmark_result",

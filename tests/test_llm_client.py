@@ -140,3 +140,85 @@ async def test_complete_json_schema_mismatch_raises_schema_error(client):
                 user="u",
                 response_model=_SimpleOutput,
             )
+
+
+# ---------------------------------------------------------------------------
+# Tracer-based tests — require real DB session_factory
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_agent_run_stores_full_payload_without_truncation(session_factory):
+    """After the tracer switch, input/output must not be truncated to 300/500 chars."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.intelligence.llm_client import ExtractionOutput, LLMClient
+
+    long_prompt = "A" * 2000
+    fake_response = {
+        "choices": [{"message": {"content": '{"claims": []}'}}],
+        "usage": {"total_tokens": 10, "prompt_tokens": 6, "completion_tokens": 4},
+    }
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = fake_response
+
+    client = LLMClient(api_key="test-key", session_factory=session_factory)
+    with patch("httpx.AsyncClient") as mock_http:
+        mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_http.return_value)
+        mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_http.return_value.post = AsyncMock(return_value=mock_resp)
+        await client.complete_json(
+            model="m",
+            system=long_prompt,
+            user=long_prompt,
+            response_model=ExtractionOutput,
+        )
+
+    async with session_factory() as session:
+        from sqlalchemy import select
+
+        from app.db.models import AgentRun
+
+        row = (await session.execute(select(AgentRun))).scalar_one()
+
+    assert row.input_json["system"] == long_prompt
+    assert row.prompt_tokens == 6
+    assert row.completion_tokens == 4
+
+
+@pytest.mark.asyncio
+async def test_agent_run_split_tokens_populated(session_factory):
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.intelligence.llm_client import ExtractionOutput, LLMClient
+
+    fake_response = {
+        "choices": [{"message": {"content": '{"claims": []}'}}],
+        "usage": {"total_tokens": 15, "prompt_tokens": 10, "completion_tokens": 5},
+    }
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = fake_response
+
+    client = LLMClient(api_key="test-key", session_factory=session_factory)
+    with patch("httpx.AsyncClient") as mock_http:
+        mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_http.return_value)
+        mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_http.return_value.post = AsyncMock(return_value=mock_resp)
+        await client.complete_json(
+            model="m",
+            system="s",
+            user="u",
+            response_model=ExtractionOutput,
+        )
+
+    async with session_factory() as session:
+        from sqlalchemy import select
+
+        from app.db.models import AgentRun
+
+        row = (await session.execute(select(AgentRun))).scalar_one()
+
+    assert row.prompt_tokens == 10
+    assert row.completion_tokens == 5

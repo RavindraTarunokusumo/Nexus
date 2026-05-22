@@ -14,6 +14,7 @@ from app.db.models import Document, Source, Span
 from app.ingestion.cleaner import content_hash, normalize_url
 from app.ingestion.rss import fetch_rss_entries
 from app.ingestion.url_fetcher import fetch_and_clean
+from app.observability.tracer import mark_document_timestamp
 
 # Allowlist for user-supplied identifier fields stored to the database.
 _IDENTIFIER_RE = re.compile(r"^[a-z0-9_\-]{1,64}$")
@@ -75,6 +76,8 @@ async def _chunk_and_embed(
             )
         await session.commit()
 
+    await mark_document_timestamp(session_factory, doc_id, "chunked_at")
+
     if not spans_data or embedder is None:
         return
 
@@ -98,6 +101,8 @@ async def _chunk_and_embed(
             doc.status = "embedded"
 
         await session.commit()
+
+    await mark_document_timestamp(session_factory, doc_id, "embedded_at")
 
 
 # ---------------------------------------------------------------------------

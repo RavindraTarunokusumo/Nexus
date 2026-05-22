@@ -96,3 +96,17 @@ async def test_chunk_embed_empty_text(session_factory: async_sessionmaker, mock_
         assert len(spans) == 0
         # Status is "chunked" since the chunking phase completed (zero spans produced).
         assert doc.status == "chunked"
+
+
+@pytest.mark.asyncio
+async def test_chunk_embed_sets_timestamps(session_factory: async_sessionmaker, mock_embedder):
+    """chunked_at and embedded_at must be set after _chunk_and_embed completes."""
+    doc_id = await _create_doc(session_factory, clean_text="word " * 700)
+
+    await _chunk_and_embed(doc_id, session_factory, mock_embedder)
+
+    async with session_factory() as session:
+        doc = await session.get(Document, doc_id)
+
+    assert doc.chunked_at is not None, "chunked_at should be set after chunking"
+    assert doc.embedded_at is not None, "embedded_at should be set after embedding"

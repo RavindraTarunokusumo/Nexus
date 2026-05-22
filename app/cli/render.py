@@ -268,3 +268,79 @@ def print_ingest_result(result: dict[str, Any], *, json_output: bool) -> None:
         import typer
 
         typer.echo(f"Ingested: {result['ingested']}, Skipped: {result['skipped']}")
+
+
+def render_runs_list(runs: list[dict[str, Any]], *, json_output: bool = False) -> None:
+    if json_output:
+        _print_json(runs)
+        return
+    if not runs:
+        console.print("[dim]No extraction runs found.[/dim]")
+        return
+    table = Table(title="Extraction Runs", show_lines=False, show_header=True, header_style="bold")
+    table.add_column("run_id", style="cyan")
+    table.add_column("document_id")
+    table.add_column("model")
+    table.add_column("LLM calls", justify="right")
+    table.add_column("cost $", justify="right")
+    table.add_column("started_at")
+    table.add_column("ok?")
+    for r in runs:
+        table.add_row(
+            _short(r.get("run_id"), 9),
+            _short(r.get("document_id"), 9) or "—",
+            str(r.get("model") or "—"),
+            str(r.get("llm_calls", "")),
+            f"{float(r.get('total_cost') or 0):.5f}",
+            _short(r.get("started_at"), 19) or "—",
+            "✓" if r.get("all_success") else "✗",
+        )
+    console.print(table)
+
+
+def render_run_detail(detail: dict[str, Any], *, json_output: bool = False) -> None:
+    if json_output:
+        _print_json(detail)
+        return
+    doc = detail.get("document") or {}
+    console.print(f"[bold]Run:[/bold] {detail['run_id'][:8]}")
+    if doc:
+        console.print(
+            f"[bold]Document:[/bold] {_short(doc.get('id'), 8)} — status: {doc.get('status')}"
+        )
+        console.print(f"  extraction_started_at:   {doc.get('extraction_started_at')}")
+        console.print(f"  extraction_completed_at: {doc.get('extraction_completed_at')}")
+
+    ar_table = Table(
+        title="LLM Calls (agent_runs)", show_lines=False, show_header=True, header_style="bold"
+    )
+    ar_table.add_column("span_id")
+    ar_table.add_column("status")
+    ar_table.add_column("prompt_tok", justify="right")
+    ar_table.add_column("comp_tok", justify="right")
+    ar_table.add_column("created_at")
+    for r in detail.get("agent_runs", []):
+        ar_table.add_row(
+            _short(r.get("span_id"), 8) or "—",
+            str(r.get("status", "")),
+            str(r.get("prompt_tokens") or "—"),
+            str(r.get("completion_tokens") or "—"),
+            _short(r.get("created_at"), 19),
+        )
+    console.print(ar_table)
+
+    se_table = Table(
+        title="Span Extractions", show_lines=False, show_header=True, header_style="bold"
+    )
+    se_table.add_column("span_id")
+    se_table.add_column("status")
+    se_table.add_column("attempts", justify="right")
+    se_table.add_column("error")
+    for r in detail.get("span_extractions", []):
+        se_table.add_row(
+            _short(r.get("span_id"), 8),
+            str(r.get("status", "")),
+            str(r.get("attempts", "")),
+            str(r.get("error") or "—"),
+        )
+    console.print(se_table)
