@@ -1,6 +1,6 @@
 # Database / Persistence
 
-> **Phase 3 Status: Implemented** — all 8 tables created by migration 0001; `sources`, `documents`, `spans`, `claims`, `claim_evidence`, and `agent_runs` are actively populated by the pipeline.
+> **Phase 3 Status: Implemented** — migration 0001 creates all 8 tables; migration 0002 extends `agent_runs` and `documents` with correlation/timestamp columns and adds `span_extractions`. `sources`, `documents`, `spans`, `claims`, `claim_evidence`, `agent_runs`, and `span_extractions` are actively populated by the pipeline.
 
 The persistence layer is PostgreSQL 16 with the `pgvector` extension. SQLAlchemy 2.x async ORM + asyncpg is used throughout. Alembic manages migrations.
 
@@ -27,6 +27,7 @@ alembic upgrade head
 | Revision | Description |
 |---|---|
 | 0001 | Initial schema: all 8 tables + `CREATE EXTENSION IF NOT EXISTS vector` |
+| 0002 | Observability: adds `run_id`, `document_id`, `span_id`, `prompt_tokens`, `completion_tokens` to `agent_runs`; adds `chunked_at`, `embedded_at`, `extraction_started_at`, `extraction_completed_at` to `documents`; creates `span_extractions` table |
 
 ## Schema
 
@@ -63,6 +64,10 @@ One row per fetched article/page/paste. Deduplication enforced on both `url` (un
 | published_at | TIMESTAMPTZ | Nullable |
 | fetched_at | TIMESTAMPTZ | Auto-set |
 | status | TEXT | Pipeline stage: `fetched`, `chunked`, `embedded`, `claims_extracted`, `extraction_partial`, `extraction_failed` |
+| chunked_at | TIMESTAMPTZ | Set after chunking completes; nullable |
+| embedded_at | TIMESTAMPTZ | Set after embedding completes; nullable |
+| extraction_started_at | TIMESTAMPTZ | Set when claim extraction begins; nullable |
+| extraction_completed_at | TIMESTAMPTZ | Set when claim extraction finishes; nullable |
 
 Indexes: `source_id`, `status`, `fetched_at`.
 
@@ -148,7 +153,7 @@ Index: `brief_id`.
 
 ### `agent_runs`
 
-Audit log for LLM/agent invocations with cost tracking. Phase 3 writes one row per LLM call made during claim extraction.
+Audit log for LLM/agent invocations with cost tracking and correlation IDs. Phase 3 writes one row per LLM call made during claim extraction.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -160,8 +165,30 @@ Audit log for LLM/agent invocations with cost tracking. Phase 3 writes one row p
 | cost_estimate | FLOAT | Approximate USD cost (`0.30 / 1_000_000 * total_tokens`) |
 | status | TEXT | |
 | created_at | TIMESTAMPTZ | Auto-set |
+| run_id | UUID | Correlation ID from `extraction_run()` context; nullable |
+| document_id | UUID | Correlation ID — which document triggered this run; nullable |
+| span_id | UUID | Correlation ID — which span was being processed; nullable |
+| prompt_tokens | INTEGER | Token count for the prompt; nullable |
+| completion_tokens | INTEGER | Token count for the completion; nullable |
 
 Indexes: `run_type`, `status`, `created_at`.
+
+### `span_extractions`
+
+Per-span extraction audit rows. One row per (run, span) pair written during claim extraction by `tracer.record_span_extraction()`.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| run_id | UUID | FK → agent_runs; nullable |
+| span_id | UUID | FK → spans (CASCADE) |
+| document_id | UUID | FK → documents (CASCADE) |
+| status | TEXT | `pending`, `success`, `failed` |
+| attempts | INTEGER | Retry count; default 0 |
+| error | TEXT | Last error message if failed; nullable |
+| created_at | TIMESTAMPTZ | Auto-set |
+
+Index: `run_id`, `span_id`, `document_id`.
 
 ## Core Invariant
 
