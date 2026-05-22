@@ -2,8 +2,8 @@
 
 **Branch:** `observability`
 **PR:** #7
-**Merge commit:** _(pending merge)_
-**Merged at:** _(pending merge)_
+**Merge commit:** `ea2ebdc`
+**Merged at:** 2026-05-22T17:00:57Z
 **Merged by:** RavindraTarunokusumo
 
 ## Summary
