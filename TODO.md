@@ -4,11 +4,11 @@
 
 ### 2026-05-22 Hybrid Chatbot
 
-- [ ] LLM client run type support
-- [ ] Hybrid chat graph and prompt
-- [ ] Chat API route
-- [ ] CLI chat command
-- [ ] Docs and validation
+- [x] LLM client run type support — d8a7503
+- [x] Hybrid chat graph and prompt — e4c40e0
+- [x] Chat API route — e2936d2
+- [x] CLI chat command — 8f0ac23
+- [x] Docs and validation — 94779fb
 
 ### Phase 2 validation harness
 

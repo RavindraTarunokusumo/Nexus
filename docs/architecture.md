@@ -100,9 +100,8 @@ external source
 -> persist Document row
 -> chunking -> spans -> embeddings
 -> claim extraction (LangGraph, OpenRouter T2)
--> [future] retrieval index
+-> query answering (hybrid span + claim retrieval, LangGraph, OpenRouter T2)
 -> [future] brief synthesis
--> [future] query answering
 ```
 
 ## CLI Access Model
@@ -110,7 +109,7 @@ external source
 The `nexus` CLI uses a hybrid access strategy:
 
 - **Reads** (status, sources, documents, document detail, runs) go **direct to Postgres** via short-lived asyncpg sessions — no server required.
-- **Ingest and search** go **through the FastAPI server** over HTTP.
+- **Ingest, search, and chat** go **through the FastAPI server** over HTTP.
 
 `CLISettings` resolves `--api-url` and `--db-url` from flags, `API_BASE_URL` / `DATABASE_URL` env vars, or `.env` defaults. `DATABASE_URL` is required only for commands that read directly from Postgres (status, sources, documents, document); HTTP-only commands (search, ingest) work without it. Every command accepts `--json` for machine-readable output and `--api-url` / `--db-url` overrides.
 
@@ -126,6 +125,7 @@ The `nexus` CLI uses a hybrid access strategy:
 | POST | /ingest/url | Fetch and ingest a single URL |
 | POST | /ingest/text | Ingest raw text directly |
 | POST | /search/spans | Semantic span search (query, top_k) |
+| POST | /chat/answer | Hybrid chatbot answer over embedded spans and active extracted claims |
 | POST | /documents/{id}/extract-claims | Run claim extraction for a document |
 | GET | /claims | List claims (filter by document_id, claim_type, status) |
 

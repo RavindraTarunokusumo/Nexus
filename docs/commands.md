@@ -279,6 +279,24 @@ The server must be running and at least one document must have `status = embedde
 
 ---
 
+### `nexus chat`
+
+Ask a single-turn question answered from embedded spans and extracted claims.
+
+```sh
+nexus chat "What changed in recent open-source LLM releases?"
+nexus chat "What changed?" --top-k 5
+nexus chat "What changed?" --json
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--top-k N` | 8 | Maximum retrieved context spans to use, from 1 to 20 |
+
+The command POSTs to `/chat/answer` on the running FastAPI server. The server must have the embedder initialised. Human output prints the answer first and a compact citation table when citations are available; `--json` prints the raw API response.
+
+---
+
 ### `nexus ingest`
 
 Trigger ingestion — POSTs to the FastAPI server.
@@ -430,6 +448,9 @@ nexus extract <doc_id>
 
 # 8. Review extracted claims
 nexus document <doc_id> --claims
+
+# 9. Ask a grounded question over spans and claims
+nexus chat "What changed in the latest ingested sources?"
 ```
 
 ---
