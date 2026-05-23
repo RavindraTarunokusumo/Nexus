@@ -1,0 +1,9 @@
+Summary: Added POST /chat/answer route for hybrid chatbot responses.
+
+Scope: API route, app router registration, test app setup, API tests.
+
+Tests: python -m pytest tests/test_chat_api.py tests/test_chat_graph.py -v; pre-commit run --files app/api/routes_chat.py app/main.py tests/conftest.py tests/test_chat_api.py (ruff, format, fast pytest passed; mypy failed only on known unrelated app/intelligence/extraction.py:199 UUID | None caveat).
+
+Risk: Medium; new public API route.
+
+Docs: Pending command and architecture docs task.
