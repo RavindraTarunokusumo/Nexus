@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime, timezone
 
 from app.cli.render import (
+    render_chat_answer,
     render_claims_table,
     render_document_detail,
     render_documents_table,
@@ -306,3 +307,28 @@ def test_render_search_results_json(capsys):
     out = capsys.readouterr().out
     parsed = json.loads(out)
     assert parsed[0]["score"] == 0.5
+
+
+def test_render_chat_answer_human(capsys):
+    render_chat_answer(
+        {
+            "answer": "Model X was released.",
+            "citations": [
+                {
+                    "document_id": str(uuid.uuid4()),
+                    "span_id": str(uuid.uuid4()),
+                    "document_title": "Release article",
+                    "url": "https://example.com/release",
+                    "score": 0.91,
+                    "claim_ids": [str(uuid.uuid4())],
+                }
+            ],
+            "tokens_used": 123,
+            "cost_estimate_usd": 0.000017,
+        },
+        json_output=False,
+    )
+    out = capsys.readouterr().out
+    assert "Model X was released" in out
+    assert "Release article" in out
+    assert "0.91" in out
