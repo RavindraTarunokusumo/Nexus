@@ -1,0 +1,16 @@
+Summary:
+Design spec only — no implementation. Selected approach: hybrid (Nexus owns
+harness, schemas, persistence; judges borrow rubric ideas from G-Eval/Ragas
+but execute through existing LLMClient).
+
+Scope:
+- docs/superpowers/specs/2026-05-24-llm-as-judge-eval-framework-design.md
+
+Tests:
+N/A — spec only.
+
+Risk:
+None — documentation-only change on a worktree branch.
+
+Docs:
+New spec file. docs/index.md update deferred to implementation PR.
