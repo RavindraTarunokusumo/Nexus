@@ -107,8 +107,10 @@ async def execute_run(
     for example in dataset.examples:
         if not isinstance(example, ClaimExtractionExample):
             continue  # skip non-claim_extraction examples
+        # Budget gate: approximate — current example's cost is checked *before* scoring,
+        # so one example may overshoot the limit by its own cost. Gate is not atomic.
         if total_cost >= max_cost_usd:
-            break  # budget gate
+            break
 
         example_result = await _score_example(
             run_id=run_id,

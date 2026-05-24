@@ -32,7 +32,7 @@ def _get_session_factory(db_url: str):
 
 
 def _require_db_url(cfg: CLISettings) -> str:
-    if not cfg.database_url:
+    if not cfg.database_url.strip():
         typer.echo(
             "DATABASE_URL is required for eval commands. Set it in .env or pass --db-url.",
             err=True,
@@ -157,6 +157,13 @@ def eval_run(
 
     resolved_sut = sut_model or app_settings.t2_model
     resolved_judge = judge_model or app_settings.t3_model
+
+    if max_cost > 50.0:
+        raise typer.BadParameter(
+            f"--max-cost {max_cost} exceeds the 50 USD safety ceiling. "
+            "Pass a value ≤ 50.0 or contact the team to raise the limit.",
+            param_hint="--max-cost",
+        )
 
     try:
         prompt_sha = subprocess.check_output(
