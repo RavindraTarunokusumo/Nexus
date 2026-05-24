@@ -9,7 +9,7 @@
 - [x] Chat API route — e2936d2
 - [x] CLI chat command — 8f0ac23
 - [x] Docs and validation — 150a5eb
-- [x] Review fix: schema-error LLM audit status — PENDING
+- [x] Review fix: schema-error LLM audit status — d3737d5
 
 ### Phase 2 validation harness
 
