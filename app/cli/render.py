@@ -260,6 +260,33 @@ def render_search_results(results: list[dict[str, Any]], *, json_output: bool) -
     console.print(table)
 
 
+def render_chat_answer(result: dict[str, Any], *, json_output: bool) -> None:
+    if json_output:
+        _print_json(result)
+        return
+
+    console.print(result.get("answer") or "")
+    citations = result.get("citations") or []
+    if not citations:
+        console.print("[dim]No citations.[/dim]")
+        return
+
+    table = Table(title="Citations", show_header=True, header_style="bold")
+    table.add_column("Score", justify="right")
+    table.add_column("Title")
+    table.add_column("Span")
+    table.add_column("URL")
+    for c in citations:
+        score = float(c.get("score") or 0.0)
+        table.add_row(
+            f"{score:.3f}",
+            _short(c.get("document_title") or "", 40),
+            _short(c.get("span_id") or "", 8),
+            _short(c.get("url") or "", 60),
+        )
+    console.print(table)
+
+
 def print_ingest_result(result: dict[str, Any], *, json_output: bool) -> None:
     """Print the result of an ingest command (url/text/rss)."""
     if json_output:

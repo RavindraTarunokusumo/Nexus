@@ -216,6 +216,35 @@ async def test_extract_command_calls_http(monkeypatch, db_url):
 
 
 @pytest.mark.asyncio
+async def test_chat_command_calls_http(monkeypatch, db_url):
+    captured = {}
+
+    async def fake_chat(base_url, question, top_k):
+        captured["base_url"] = base_url
+        captured["question"] = question
+        captured["top_k"] = top_k
+        return {
+            "answer": "Grounded answer.",
+            "citations": [],
+            "retrieved_context_count": 0,
+            "run_id": str(uuid.uuid4()),
+            "tokens_used": 0,
+            "cost_estimate_usd": 0.0,
+        }
+
+    monkeypatch.setattr("app.cli.main.http_chat_answer", fake_chat)
+    result = runner.invoke(
+        app,
+        ["chat", "What changed?", "--top-k", "5", "--json", "--api-url", "http://test.example"],
+    )
+    assert result.exit_code == 0, result.stdout
+    assert captured["base_url"] == "http://test.example"
+    assert captured["question"] == "What changed?"
+    assert captured["top_k"] == 5
+    assert json.loads(result.stdout)["answer"] == "Grounded answer."
+
+
+@pytest.mark.asyncio
 async def test_extract_command_force_flag(monkeypatch, db_url):
     captured = {}
 

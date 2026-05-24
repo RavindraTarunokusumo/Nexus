@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.api.routes_chat import router as chat_router
 from app.api.routes_claims import router as claims_router
 from app.api.routes_documents import router as documents_router
 from app.api.routes_ingestion import router as ingestion_router
@@ -86,9 +87,9 @@ def run_migrations(db_url):
         text=True,
         cwd=os.path.dirname(os.path.dirname(__file__)),
     )
-    assert result.returncode == 0, (
-        f"Alembic migration failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
-    )
+    assert (
+        result.returncode == 0
+    ), f"Alembic migration failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
 
 
 # ---------------------------------------------------------------------------
@@ -132,6 +133,7 @@ def _build_app(async_engine, session_factory, embedder=None) -> FastAPI:
     test_app.include_router(ingestion_router)
     test_app.include_router(documents_router)
     test_app.include_router(claims_router)
+    test_app.include_router(chat_router)
     return test_app
 
 
