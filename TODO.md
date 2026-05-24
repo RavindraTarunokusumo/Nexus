@@ -8,7 +8,7 @@
 - [x] Hybrid chat graph and prompt — e4c40e0
 - [x] Chat API route — e2936d2
 - [x] CLI chat command — 8f0ac23
-- [x] Docs and validation — 94779fb
+- [x] Docs and validation — 150a5eb
 
 ### Phase 2 validation harness
 
