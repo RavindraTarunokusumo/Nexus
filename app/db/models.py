@@ -198,3 +198,65 @@ class SpanExtraction(Base):
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, default=_utcnow
     )
+
+
+class EvalDataset(Base):
+    __tablename__ = "eval_datasets"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    task: Mapped[str] = mapped_column(Text, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    checksum: Mapped[str] = mapped_column(Text, nullable=False)
+    example_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    path: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_utcnow
+    )
+
+    eval_runs: Mapped[list["EvalRun"]] = relationship("EvalRun", back_populates="dataset")
+
+
+class EvalRun(Base):
+    __tablename__ = "eval_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    dataset_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("eval_datasets.id", ondelete="RESTRICT"), nullable=False
+    )
+    sut_model: Mapped[str] = mapped_column(Text, nullable=False)
+    sut_prompt_version: Mapped[str] = mapped_column(Text, nullable=False)
+    judge_name: Mapped[str] = mapped_column(Text, nullable=False)
+    judge_model: Mapped[str] = mapped_column(Text, nullable=False)
+    judge_prompt_version: Mapped[str] = mapped_column(Text, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
+    aggregate_scores: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    total_cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    dataset: Mapped["EvalDataset"] = relationship("EvalDataset", back_populates="eval_runs")
+    results: Mapped[list["EvalResult"]] = relationship(
+        "EvalResult", back_populates="run", cascade="all, delete-orphan"
+    )
+
+
+class EvalResult(Base):
+    __tablename__ = "eval_results"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("eval_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    example_id: Mapped[str] = mapped_column(Text, nullable=False)
+    sut_output: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    judge_verdict: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    deterministic_metrics: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_utcnow
+    )
+
+    run: Mapped["EvalRun"] = relationship("EvalRun", back_populates="results")
