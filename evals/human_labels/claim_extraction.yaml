@@ -1,0 +1,54 @@
+labels:
+  - pair_id: hl_001
+    example_id: mr_001
+    gold_claim_text: "Anthropic released Claude 4 Opus on March 12, 2025."
+    pred_claim_text: "Anthropic released Claude 4 Opus on March 12, 2025."
+    human_match_status: exact
+    human_groundedness: 1.0
+    judge_match_status: ""
+    judge_groundedness: null
+
+  - pair_id: hl_002
+    example_id: br_001
+    gold_claim_text: "OpenAI's o3 model achieved 87.5% on the SWE-bench Verified benchmark."
+    pred_claim_text: "The o3 model by OpenAI scored around 87% on SWE-bench, setting a new record."
+    human_match_status: partial
+    human_groundedness: 0.8
+    judge_match_status: ""
+    judge_groundedness: null
+
+  - pair_id: hl_003
+    example_id: fe_001
+    gold_claim_text: "Anthropic closed a $2.5 billion Series E funding round led by Google in March 2024."
+    pred_claim_text: "Anthropic raised funding from Google in early 2024."
+    human_match_status: partial
+    human_groundedness: 0.6
+    judge_match_status: ""
+    judge_groundedness: null
+
+  - pair_id: hl_004
+    example_id: si_001
+    gold_claim_text: "Researchers disclosed a prompt injection vulnerability in GitHub Copilot Chat enabling exfiltration of user queries."
+    pred_claim_text: ""
+    human_match_status: missing
+    human_groundedness: 0.0
+    judge_match_status: ""
+    judge_groundedness: null
+
+  - pair_id: hl_005
+    example_id: rg_001
+    gold_claim_text: "The EU AI Act entered into force on August 1, 2024."
+    pred_claim_text: "The EU AI Act classifies systems by risk and imposes penalties on high-risk applications involving autonomous vehicles."
+    human_match_status: spurious
+    human_groundedness: 0.2
+    judge_match_status: ""
+    judge_groundedness: null
+
+  - pair_id: hl_006
+    example_id: fc_001
+    gold_claim_text: "Sam Altman predicted AGI could arrive within the next few years, possibly before the end of the decade."
+    pred_claim_text: "Sam Altman stated in January 2025 that AGI is likely to emerge before 2030."
+    human_match_status: partial
+    human_groundedness: 0.75
+    judge_match_status: ""
+    judge_groundedness: null
