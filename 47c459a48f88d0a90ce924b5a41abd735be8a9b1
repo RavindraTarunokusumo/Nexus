@@ -1,0 +1,9 @@
+Summary: Resolve merge conflict between feature branch (old 7-step workflow + new GitNexus stats 2662/4050/76) and main (new 9-step workflow + old stats). Result keeps 9-step workflow + updated stats.
+
+Scope: CLAUDE.md, AGENTS.md — workflow documentation only, no code changes.
+
+Tests: N/A
+
+Risk: Low — documentation only.
+
+Docs: CLAUDE.md and AGENTS.md now in sync with main's 9-step workflow.
