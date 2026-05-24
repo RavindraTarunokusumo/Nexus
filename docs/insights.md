@@ -40,3 +40,13 @@ When a new import from `app.observability` is added between two `app.ingestion` 
 ### CliRunner output encoding error on Windows cp1252
 
 Printing `CliRunner.invoke().output` via `print()` in a cp1252 shell raises `UnicodeEncodeError` because Rich emits box-drawing characters. Inspect `result.output` programmatically (e.g., `"Usage" in result.output`) rather than printing it to avoid the error.
+
+## Session: chat-session-memory-spec (2026-05-24)
+
+### `apply_patch` uses the agent process directory, not the command workdir
+
+When working from a dedicated git worktree, `apply_patch` can still apply relative paths against the original agent process directory. Use absolute paths in patch headers for worktree edits, or verify file placement immediately after patching before running validation.
+
+### GitNexus query can require explicit repo paths in multi-worktree setups
+
+After indexing both the root checkout and a session worktree, `npx gitnexus query` can fail with "Multiple repositories indexed." Pass `--repo "<absolute worktree path>"` for `query`, `context`, `impact`, and `detect-changes` commands to avoid ambiguous repo selection.
