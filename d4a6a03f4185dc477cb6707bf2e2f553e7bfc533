@@ -1,0 +1,9 @@
+Summary: Ensured direct extraction graph invocations mint a run_id when one is not supplied, unblocking mypy validation.
+
+Scope: app/intelligence/extraction.py only.
+
+Tests: npx gitnexus impact make_extraction_graph (MEDIUM, no HIGH/CRITICAL); python -m pytest tests/test_extraction_graph.py tests/test_routes_claims.py tests/test_chat_graph.py tests/test_chat_api.py -v (31 passed); pre-commit run --files app/intelligence/extraction.py; npx gitnexus detect-changes (MEDIUM, extraction flows only plus pre-existing AGENTS/CLAUDE dirt).
+
+Risk: Medium; touches extraction graph run context propagation but preserves production run_with_context behavior.
+
+Docs: None.
