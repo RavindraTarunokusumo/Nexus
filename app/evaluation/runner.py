@@ -14,13 +14,18 @@ from app.db.models import EvalDataset as EvalDatasetModel
 from app.db.models import EvalResult, EvalRun
 from app.evaluation.datasets import ClaimExtractionExample, Dataset
 from app.evaluation.judges import ClaimExtractionJudge
-from app.intelligence.llm_client import ExtractionOutput
+from app.intelligence.llm_client import ExtractionOutput, _COST_PER_TOKEN_USD
 
 # Import the SUT prompt. Use production prompt if available, fallback otherwise.
 try:
     from app.intelligence.prompts.extract_claims import build_user_prompt as _build_sut_prompt
+    from app.intelligence.prompts.extract_claims import SYSTEM_PROMPT as SUT_SYSTEM_PROMPT
     _HAS_PRODUCTION_PROMPT = True
 except ImportError:
+    SUT_SYSTEM_PROMPT = (
+        "You are a precise claim extractor. Extract only atomic propositions "
+        "directly supported by the provided text. Output valid JSON."
+    )
     _HAS_PRODUCTION_PROMPT = False
 
 from app.evaluation.prompts.claim_extraction_judge import JUDGE_SYSTEM_PROMPT as SYSTEM_PROMPT
@@ -68,7 +73,7 @@ async def execute_run(
     async with session_factory() as session:
         stmt = select(EvalDatasetModel).where(
             EvalDatasetModel.name == dataset.name,
-            EvalDatasetModel.task == dataset.task,
+            EvalDatasetModel.task == dataset.task.value,
             EvalDatasetModel.version == dataset.version,
         )
         result = await session.execute(stmt)
@@ -115,6 +120,7 @@ async def execute_run(
         )
         if example_result["status"] == "scored":
             score_accumulator.append(example_result["deterministic_metrics"])
+            total_cost += example_result.get("cost", 0.0)
         else:
             error_count += 1
 
@@ -159,9 +165,9 @@ async def _score_example(
         else:
             user_prompt = f"Extract all factual claims from the following document:\n\n{document_text}"
 
-        sut_output, _ = await llm_client.complete_json(
+        sut_output, sut_tokens = await llm_client.complete_json(
             model=sut_config.model,
-            system=SYSTEM_PROMPT,
+            system=SUT_SYSTEM_PROMPT,
             user=user_prompt,
             response_model=ExtractionOutput,
             temperature=sut_config.temperature,
@@ -178,7 +184,7 @@ async def _score_example(
             error_message=f"SUT error: {exc}",
             session_factory=session_factory,
         )
-        return {"status": "error"}
+        return {"status": "error", "cost": 0.0}
 
     gold_claims = [c.model_dump() for c in example.gold_claims]
     verdict = await judge.score(
@@ -198,7 +204,7 @@ async def _score_example(
         error_message=None,
         session_factory=session_factory,
     )
-    return {"status": "scored", "deterministic_metrics": det_metrics}
+    return {"status": "scored", "deterministic_metrics": det_metrics, "cost": sut_tokens * _COST_PER_TOKEN_USD}
 
 
 async def _persist_result(

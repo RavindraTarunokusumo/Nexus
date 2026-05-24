@@ -59,7 +59,7 @@ def register_dataset(
         async with sf() as session:
             stmt = select(EvalDatasetModel).where(
                 EvalDatasetModel.name == ds.name,
-                EvalDatasetModel.task == ds.task,
+                EvalDatasetModel.task == ds.task.value,
                 EvalDatasetModel.version == ds.version,
             )
             result = await session.execute(stmt)
