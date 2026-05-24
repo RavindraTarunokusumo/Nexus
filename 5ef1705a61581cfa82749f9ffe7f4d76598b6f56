@@ -1,0 +1,9 @@
+Summary: Tagged the completed hybrid chatbot docs and validation TODO item with the docs commit hash.
+
+Scope: TODO.md only.
+
+Tests: pre-commit run --files TODO.md.
+
+Risk: Low; workflow ledger only.
+
+Docs: None.
