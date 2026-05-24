@@ -2,20 +2,9 @@
 
 ## Active
 
-### 2026-05-22 Hybrid Chatbot
-
-- [x] LLM client run type support — d8a7503
-- [x] Hybrid chat graph and prompt — e4c40e0
-- [x] Chat API route — e2936d2
-- [x] CLI chat command — 8f0ac23
-- [x] Docs and validation — 150a5eb
-- [x] Review fix: schema-error LLM audit status — d3737d5
-
 ### Phase 2 validation harness
 
 - [ ] Create and run a destructive CLI validation script that resets local data and exercises text, RSS, status, document inspection, and semantic search paths.
-
-*(Phase 3 — Claim Extraction merged: PR #5, merge commit: 8ab514e — archived to docs/iterations/archive/)*
 
 ## Future
 
