@@ -229,7 +229,7 @@ class EvalRun(Base):
     judge_name: Mapped[str] = mapped_column(Text, nullable=False)
     judge_model: Mapped[str] = mapped_column(Text, nullable=False)
     judge_prompt_version: Mapped[str] = mapped_column(Text, nullable=False)
-    started_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
     aggregate_scores: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
