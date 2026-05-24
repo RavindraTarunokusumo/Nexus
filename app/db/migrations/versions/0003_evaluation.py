@@ -41,10 +41,11 @@ def upgrade() -> None:
         sa.Column("judge_prompt_version", sa.Text(), nullable=False),
         sa.Column("started_at", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("completed_at", sa.TIMESTAMP(timezone=True), nullable=True),
-        sa.Column("status", sa.Text(), nullable=False),
+        sa.Column("status", sa.Text(), nullable=False, server_default="pending"),
         sa.Column("aggregate_scores", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("total_cost_usd", sa.Float(), nullable=False),
+        sa.Column("total_cost_usd", sa.Numeric(precision=12, scale=6), nullable=False),
         sa.Column("notes", sa.Text(), nullable=True),
+        sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.ForeignKeyConstraint(["dataset_id"], ["eval_datasets.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
     )
