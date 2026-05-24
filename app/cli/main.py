@@ -26,6 +26,9 @@ from app.cli.http import (
     CLIHttpError,
 )
 from app.cli.http import (
+    chat_answer as http_chat_answer,
+)
+from app.cli.http import (
     extract_claims as http_extract_claims,
 )
 from app.cli.http import (
@@ -42,6 +45,7 @@ from app.cli.http import (
 )
 from app.cli.render import (
     print_ingest_result,
+    render_chat_answer,
     render_document_detail,
     render_documents_table,
     render_extraction_summary,
@@ -221,6 +225,20 @@ def search(
     cfg = _settings(db_url, api_url)
     results = _run_http(http_search_spans(cfg.api_base_url, query, top_k))
     render_search_results(results, json_output=json_output)
+
+
+@app.command()
+def chat(
+    question: str = typer.Argument(..., help="Natural language question to answer."),
+    top_k: int = typer.Option(8, "--top-k", min=1, max=20),
+    json_output: bool = typer.Option(False, "--json"),
+    db_url: Optional[str] = typer.Option(None, "--db-url"),
+    api_url: Optional[str] = typer.Option(None, "--api-url"),
+) -> None:
+    """Answer a question using embedded spans and extracted claims."""
+    cfg = _settings(db_url, api_url)
+    result = _run_http(http_chat_answer(cfg.api_base_url, question, top_k))
+    render_chat_answer(result, json_output=json_output)
 
 
 @runs_app.command("list")

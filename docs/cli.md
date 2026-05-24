@@ -1,6 +1,6 @@
 # Nexus CLI
 
-The `nexus` CLI is installed as a console script by `pip install -e .`. It uses a hybrid access model: read-only commands go direct to Postgres; ingest and search commands POST to the running FastAPI server.
+The `nexus` CLI is installed as a console script by `pip install -e .`. It uses a hybrid access model: read-only commands go direct to Postgres; ingest, extract, search, and chat commands POST to the running FastAPI server.
 
 See [docs/commands.md](commands.md) for full flag reference and examples for every command.
 
@@ -14,12 +14,13 @@ See [docs/commands.md](commands.md) for full flag reference and examples for eve
 | `document` | _(root)_ | Direct Postgres |
 | `runs` | `list`, `show` | Direct Postgres |
 | `search` | _(root)_ | HTTP → FastAPI |
+| `chat` | _(root)_ | HTTP → FastAPI |
 | `ingest` | `url`, `text`, `rss` | HTTP → FastAPI |
 | `extract` | _(root)_ | HTTP → FastAPI |
 
 ## `runs` Subcommand Group
 
-The `runs` group exposes the `agent_runs` audit table (populated by `tracer.record_agent_run()` during claim extraction). Both commands read Postgres directly — no server required.
+The `runs` group exposes the `agent_runs` audit table (populated by `tracer.record_agent_run()` during claim extraction and chat answers). Both commands read Postgres directly — no server required.
 
 ### `nexus runs list`
 

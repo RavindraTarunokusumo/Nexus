@@ -52,6 +52,7 @@ class LLMClient:
         response_model: type[T],
         temperature: float = 0.1,
         max_tokens: int = 2000,
+        run_type: str = "claim_extraction",
     ) -> tuple[T, int]:
         """Call OpenRouter and return (validated_result, total_tokens).
 
@@ -108,6 +109,19 @@ class LLMClient:
             prompt_tokens = usage.get("prompt_tokens")
             completion_tokens = usage.get("completion_tokens")
 
+            if raw_output is None:
+                call_status = "schema_error"
+                raise LLMSchemaError("LLM returned null content", raw_output="")
+
+            try:
+                validated = response_model.model_validate_json(raw_output)
+            except (ValueError, ValidationError) as exc:
+                call_status = "schema_error"
+                raise LLMSchemaError(
+                    f"Schema validation failed: {exc}. Raw: {raw_output[:200]}",
+                    raw_output=raw_output,
+                ) from exc
+
         except httpx.HTTPError as exc:
             call_status = "network_error"
             raise LLMNetworkError(str(exc)) from exc
@@ -115,7 +129,7 @@ class LLMClient:
         finally:
             await record_agent_run(
                 self._session_factory,
-                run_type="claim_extraction",
+                run_type=run_type,
                 model=model,
                 input_payload={"system": system, "user": user},
                 raw_output=raw_output,
@@ -124,17 +138,6 @@ class LLMClient:
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
             )
-
-        if raw_output is None:
-            raise LLMSchemaError("LLM returned null content", raw_output="")
-
-        try:
-            validated = response_model.model_validate_json(raw_output)
-        except (ValueError, ValidationError) as exc:
-            raise LLMSchemaError(
-                f"Schema validation failed: {exc}. Raw: {raw_output[:200]}",
-                raw_output=raw_output,
-            ) from exc
 
         return validated, total_tokens
 
