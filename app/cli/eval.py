@@ -321,7 +321,8 @@ def eval_diff(
     typer.echo(f"\nDiff: {run_a[:8]}… (A) vs {run_b[:8]}… (B)")
     typer.echo(f"{'Metric':<25} {'A':>8} {'B':>8} {chr(916):>8}")
     typer.echo("-" * 55)
-    for k, vals in output["deltas"].items():
+    deltas: dict[str, dict[str, float | None]] = output["deltas"]
+    for k, vals in deltas.items():
         va = f"{vals['a']:.4f}" if vals["a"] is not None else "—"
         vb = f"{vals['b']:.4f}" if vals["b"] is not None else "—"
         d = f"{vals['delta']:+.4f}" if vals["delta"] is not None else "—"
@@ -345,8 +346,8 @@ def eval_calibrate(
     human_vals = [l["human_match_status"] for l in labels]
     kappa = compute_kappa(judge_vals, human_vals)
 
-    judge_gnd = [l.get("judge_groundedness") for l in labels if l.get("judge_groundedness") is not None]
-    human_gnd = [l.get("human_groundedness") for l in labels if l.get("human_groundedness") is not None]
+    judge_gnd: list[float] = [float(l["judge_groundedness"]) for l in labels if l.get("judge_groundedness") is not None]
+    human_gnd: list[float] = [float(l["human_groundedness"]) for l in labels if l.get("human_groundedness") is not None]
     pearson_gnd = compute_pearson(judge_gnd, human_gnd) if len(judge_gnd) > 1 else None
 
     output = {
