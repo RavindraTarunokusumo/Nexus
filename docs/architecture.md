@@ -1,6 +1,6 @@
 # Architecture
 
-> **Phase 3 Status: Claim extraction + observability implemented**
+> **Phase 3 Status: Claim extraction + observability + LLM-as-a-Judge eval framework implemented**
 
 Nexus Lite is a private FastAPI application backed by PostgreSQL + pgvector, Redis, and local embeddings. The Phase 1 foundation covers source registration, document ingestion, and the full persistence schema.
 
@@ -50,6 +50,7 @@ app/
       versions/
         0001_initial_schema.py  # All 8 tables + pgvector extension
         0002_observability.py   # Adds correlation ID columns to agent_runs/documents; new span_extractions table
+        0003_evaluation.py      # Adds eval_datasets, eval_runs, eval_results tables
   ingestion/
     cleaner.py             # normalize_text, content_hash, normalize_url, extract_text
     rss.py                 # fetch_rss_entries (feedparser + async httpx)
@@ -69,6 +70,19 @@ app/
       extract_claims.py    # SYSTEM_PROMPT, build_user_prompt, build_correction_prompt
   domain_packs/
     personal_ai_tech.yaml  # Default domain pack definition
+  evaluation/
+    __init__.py
+    datasets.py            # Pydantic schemas (GoldClaim, ClaimExtractionExample,
+                           #   SpanRetrievalExample, Dataset); load_dataset(path) with SHA-256 checksum
+    metrics.py             # precision_recall_f1, precision_at_k, ndcg_at_k, align_claims (Jaccard greedy)
+    judges.py              # ClaimExtractionJudge (active);
+                           #   BriefSynthesisJudge, GroundedAnswerJudge (Phase 4 stubs)
+    runner.py              # execute_run(*) entry point; SUTConfig / EvalRunResult dataclasses;
+                           #   budget gate; per-example error tolerance; Postgres persistence
+    meta_eval.py           # compute_kappa, compute_pearson, load_human_labels
+    prompts/
+      __init__.py
+      claim_extraction_judge.py  # JUDGE_SYSTEM_PROMPT, build_judge_prompt(), ClaimPairVerdict model
   cli/
     __init__.py
     config.py              # CLISettings (API_URL, DB_URL, rich/json output flags)
@@ -76,8 +90,11 @@ app/
                            #   includes list_runs() and show_run()
     http.py                # HTTP wrappers for ingest/search (FastAPI server)
     render.py              # Rich+JSON formatters; includes render_runs_list() and render_run_detail()
+    eval.py                # Typer sub-app — nexus eval commands:
+                           #   register-dataset, list-datasets, run, show, diff, calibrate
     main.py                # Typer app — nexus console-script entry point;
-                           #   registers `runs` sub-app with `list` and `show` commands
+                           #   registers `runs` sub-app with `list` and `show` commands;
+                           #   registers `eval` sub-app
 tests/
   conftest.py              # testcontainers fixtures, Alembic migration, per-test DB clean
   test_sources.py          # Source CRUD integration tests (8 tests)
@@ -166,8 +183,8 @@ Claims are typed using a Pydantic `Literal` validated at extraction time:
 | Tier | Purpose | Config key | Default |
 |---|---|---|---|
 | T1 | Embedding (local) | `settings.t1_model` | `BAAI/bge-small-en-v1.5` |
-| T2 | Claim extraction | `settings.t2_model` | `deepseek/deepseek-v4-flash` |
-| T3 | Brief synthesis (Phase 4) | `settings.t3_model` | `deepseek/deepseek-v4-pro` |
+| T2 | Claim extraction (SUT) | `settings.t2_model` | `deepseek/deepseek-v4-flash` |
+| T3 | Brief synthesis (Phase 4); LLM judge for eval | `settings.t3_model` | `deepseek/deepseek-v4-pro` |
 
 Cost is tracked per call: `0.30 / 1_000_000 * total_tokens` stored in the `agent_runs.cost_estimate` column.
 
@@ -206,6 +223,41 @@ Three fire-and-forget functions write audit rows to Postgres. They never raise �
 | `record_span_extraction(...)` | Inserts/updates a `span_extractions` row (`status`, `attempts`, `error`) |
 | `mark_document_timestamp(field, doc_id)` | Sets one of the four pipeline timestamps on `documents` |
 
+## Evaluation Framework (`app/evaluation/`)
+
+The `app/evaluation/` package implements LLM-as-a-Judge offline evaluation for Nexus pipeline components. It is invoked exclusively through the `nexus eval` CLI — it has no FastAPI routes and is not part of the hot path.
+
+### Data flow
+
+```text
+gold YAML
+  -> load_dataset()           # validates schema, computes SHA-256
+  -> execute_run()            # runner.py: orchestrates SUT + judge
+       -> SUT (T2 model)      # calls production claim extraction prompt
+       -> ClaimExtractionJudge (T3 model)  # scores each (gold, predicted) claim pair
+       -> _persist_result()   # writes eval_results row per example
+  -> aggregate_scores         # precision, recall, f1, type_accuracy,
+                              #   mean_groundedness, mean_factuality
+  -> EvalRun (Postgres)       # persisted for diff and show commands
+```
+
+### Judge architecture
+
+`ClaimExtractionJudge` is the only active judge. It uses `align_claims()` (Jaccard greedy matching) to pair gold and predicted claims, then calls the LLM judge for each pair to get a `ClaimPairVerdict` (match_status, groundedness, factuality scores). Deterministic metrics (precision, recall, f1) are computed from the verdicts in `metrics.py`.
+
+`BriefSynthesisJudge` and `GroundedAnswerJudge` are Phase 4 stubs — they exist as class skeletons in `judges.py` but are not callable.
+
+### Gold datasets
+
+Gold-set YAML files live in `evals/gold/`. Each file must be registered with `nexus eval register-dataset` before it can be used in a run.
+
+| File | Task | Examples |
+|---|---|---|
+| `evals/gold/claim_extraction/ai_tech_v1.yaml` | `claim_extraction` | 30 |
+| `evals/gold/span_retrieval/queries_v1.yaml` | `span_retrieval` | 20 |
+
+Human calibration labels for the judge live in `evals/human_labels/claim_extraction.yaml` (6-seed set). Use `nexus eval calibrate` to compute kappa against these.
+
 ## Current Boundary
 
 The MVP implements the simplified hierarchy:
@@ -214,6 +266,6 @@ The MVP implements the simplified hierarchy:
 Source -> Document -> Span -> Claim -> Brief
 ```
 
-All 8 tables are schema-ready (migration 0001). Migration 0002 extends `agent_runs` and `documents` with correlation/timestamp columns and adds `span_extractions`. Phases 1–3 populate `sources`, `documents`, `spans`, `claims`, `claim_evidence`, `agent_runs`, and `span_extractions`. Brief synthesis is Phase 4+.
+All 8 core tables are schema-ready (migration 0001). Migration 0002 extends `agent_runs` and `documents` with correlation/timestamp columns and adds `span_extractions`. Migration 0003 adds the 3 eval tables. Phases 1–3 populate `sources`, `documents`, `spans`, `claims`, `claim_evidence`, `agent_runs`, and `span_extractions`. The `eval_*` tables are populated by `nexus eval run`. Brief synthesis is Phase 4+.
 
 The broader PoC hierarchy adds entities, relations, signals, clusters, theses, and decision artefacts. Those remain future-facing until the core ingestion-to-synthesis loop is stable.
