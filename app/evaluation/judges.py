@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from app.evaluation.metrics import align_claims
@@ -43,33 +44,29 @@ class ClaimExtractionJudge:
         """
         pairs = align_claims(gold_claims, pred_claims)
 
-        matched_gold_ids: set[str] = set()
-        matched_pred_ids: set[str] = set()
+        # Judge all pairs concurrently — each call is independent.
+        judgments = await asyncio.gather(
+            *[self._judge_pair(document_text, gold, pred) for gold, pred in pairs]
+        )
+
+        n_matched = 0
         per_pair: list[dict] = []
         type_correct_flags: list[bool] = []
         groundedness_scores: list[float] = []
         factuality_scores: list[float] = []
         total_judge_tokens: int = 0
 
-        for idx, (gold, pred) in enumerate(pairs):
-            verdict, tokens = await self._judge_pair(document_text, gold, pred)
+        for verdict, tokens in judgments:
             total_judge_tokens += tokens
             per_pair.append(verdict)
-
             if verdict["match_status"] in ("exact", "partial"):
-                matched_gold_ids.add(str(idx) + "_gold")
-                matched_pred_ids.add(str(idx) + "_pred")
-                if verdict["type_correct"]:
-                    type_correct_flags.append(True)
-                else:
-                    type_correct_flags.append(False)
+                n_matched += 1
+                type_correct_flags.append(bool(verdict["type_correct"]))
                 groundedness_scores.append(verdict["groundedness"])
                 factuality_scores.append(verdict["factuality"])
 
-        # Compute set-level P/R/F1 using claim counts
         n_gold = len(gold_claims)
         n_pred = len(pred_claims)
-        n_matched = len(matched_gold_ids)
 
         precision = n_matched / n_pred if n_pred > 0 else 0.0
         recall = n_matched / n_gold if n_gold > 0 else 0.0

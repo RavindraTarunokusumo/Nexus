@@ -15,19 +15,8 @@ from app.db.models import EvalResult, EvalRun
 from app.evaluation.datasets import ClaimExtractionExample, Dataset
 from app.evaluation.judges import ClaimExtractionJudge
 from app.intelligence.llm_client import _COST_PER_TOKEN_USD, ExtractionOutput
-
-# Import the SUT prompt. Use production prompt if available, fallback otherwise.
-try:
-    from app.intelligence.prompts.extract_claims import SYSTEM_PROMPT as SUT_SYSTEM_PROMPT
-    from app.intelligence.prompts.extract_claims import build_user_prompt as _build_sut_prompt
-
-    _HAS_PRODUCTION_PROMPT = True
-except ImportError:
-    SUT_SYSTEM_PROMPT = (
-        "You are a precise claim extractor. Extract only atomic propositions "
-        "directly supported by the provided text. Output valid JSON."
-    )
-    _HAS_PRODUCTION_PROMPT = False
+from app.intelligence.prompts.extract_claims import SYSTEM_PROMPT as SUT_SYSTEM_PROMPT
+from app.intelligence.prompts.extract_claims import build_user_prompt as _build_sut_prompt
 
 
 @dataclass
@@ -70,7 +59,6 @@ async def execute_run(
     run_id = uuid.uuid4()
     started_at = datetime.now(timezone.utc)
 
-    # --- Verify dataset registration ---
     async with session_factory() as session:
         stmt = select(EvalDatasetModel).where(
             EvalDatasetModel.name == dataset.name,
@@ -107,7 +95,7 @@ async def execute_run(
 
     for example in dataset.examples:
         if not isinstance(example, ClaimExtractionExample):
-            continue  # skip non-claim_extraction examples
+            continue
         # Budget gate: approximate — current example's cost is checked *before* scoring,
         # so one example may overshoot the limit by its own cost. Gate is not atomic.
         if total_cost >= max_cost_usd:
@@ -163,13 +151,7 @@ async def _score_example(
     document_text = example.document_text or ""
 
     try:
-        if _HAS_PRODUCTION_PROMPT:
-            user_prompt = _build_sut_prompt(document_text, {})
-        else:
-            user_prompt = (
-                f"Extract all factual claims from the following document:\n\n{document_text}"
-            )
-
+        user_prompt = _build_sut_prompt(document_text, {})
         sut_output, sut_tokens = await llm_client.complete_json(
             model=sut_config.model,
             system=SUT_SYSTEM_PROMPT,

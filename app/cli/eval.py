@@ -83,7 +83,7 @@ def register_dataset(
             session.add(
                 EvalDatasetModel(
                     name=ds.name,
-                    task=ds.task,
+                    task=ds.task.value,
                     version=ds.version,
                     checksum=ds.checksum,
                     example_count=len(ds.examples),
@@ -144,9 +144,6 @@ def list_datasets(
 
 @eval_app.command("run")
 def eval_run(
-    task: str = typer.Argument(..., help="Task name: claim_extraction"),
-    dataset_name: str = typer.Argument(..., help="Dataset name, e.g. ai_tech_v1"),
-    dataset_version: int = typer.Option(1, "--version", "-v"),
     dataset_path: Path = typer.Option(..., "--path", help="Path to the gold-set YAML."),
     sut_model: Optional[str] = typer.Option(None, "--sut-model", help="Override T2 model."),
     judge_model: Optional[str] = typer.Option(
@@ -336,7 +333,7 @@ def eval_diff(
         return
 
     typer.echo(f"\nDiff: {run_a[:8]}… (A) vs {run_b[:8]}… (B)")
-    typer.echo(f"{'Metric':<25} {'A':>8} {'B':>8} {chr(916):>8}")
+    typer.echo(f"{'Metric':<25} {'A':>8} {'B':>8} {'Δ':>8}")
     typer.echo("-" * 55)
     deltas: dict[str, dict[str, float | None]] = output["deltas"]  # type: ignore[assignment]
     for k, vals in deltas.items():
@@ -350,7 +347,6 @@ def eval_diff(
 def eval_calibrate(
     task: str = typer.Argument(..., help="Task name: claim_extraction"),
     labels_path: Path = typer.Option(..., "--labels-path", help="Path to human_labels YAML."),
-    judge_model: Optional[str] = typer.Option(None, "--judge-model"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
     """Compute Cohen's kappa between judge verdicts and human labels in a YAML file."""

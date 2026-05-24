@@ -56,9 +56,6 @@ def load_dataset(path: Path) -> Dataset:
     Raises ValueError if task is unknown.
     Computes SHA-256 checksum of the raw file bytes.
     """
-    if not path.exists():
-        raise FileNotFoundError(f"Dataset file not found: {path}")
-
     raw = path.read_bytes()
     checksum = hashlib.sha256(raw).hexdigest()
 
