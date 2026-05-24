@@ -1,6 +1,6 @@
 # Database / Persistence
 
-> **Phase 3 Status: Implemented** — migration 0001 creates all 8 tables; migration 0002 extends `agent_runs` and `documents` with correlation/timestamp columns and adds `span_extractions`. `sources`, `documents`, `spans`, `claims`, `claim_evidence`, `agent_runs`, and `span_extractions` are actively populated by the pipeline.
+> **Phase 3 Status: Implemented** — migration 0001 creates all 8 tables; migration 0002 extends `agent_runs` and `documents` with correlation/timestamp columns and adds `span_extractions`; migration 0003 adds the 3 eval tables. `sources`, `documents`, `spans`, `claims`, `claim_evidence`, `agent_runs`, and `span_extractions` are actively populated by the pipeline. `eval_datasets`, `eval_runs`, and `eval_results` are populated by the `nexus eval` CLI.
 
 The persistence layer is PostgreSQL 16 with the `pgvector` extension. SQLAlchemy 2.x async ORM + asyncpg is used throughout. Alembic manages migrations.
 
@@ -28,6 +28,7 @@ alembic upgrade head
 |---|---|
 | 0001 | Initial schema: all 8 tables + `CREATE EXTENSION IF NOT EXISTS vector` |
 | 0002 | Observability: adds `run_id`, `document_id`, `span_id`, `prompt_tokens`, `completion_tokens` to `agent_runs`; adds `chunked_at`, `embedded_at`, `extraction_started_at`, `extraction_completed_at` to `documents`; creates `span_extractions` table |
+| 0003 | Evaluation: creates `eval_datasets`, `eval_runs`, `eval_results` tables |
 
 ## Schema
 
@@ -189,6 +190,64 @@ Per-span extraction audit rows. One row per (run, span) pair written during clai
 | created_at | TIMESTAMPTZ | Auto-set |
 
 Index: `run_id`, `span_id`, `document_id`.
+
+### `eval_datasets`
+
+Registry of gold-set YAML files. One row per registered dataset (name + task + version triple is unique in practice; `register-dataset` upserts on match).
+
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| name | TEXT | Dataset name (e.g. `ai_tech_v1`) |
+| task | TEXT | Task type (`claim_extraction`, `span_retrieval`) |
+| version | INTEGER | Schema/dataset version |
+| checksum | TEXT | SHA-256 hex of the YAML file contents |
+| example_count | INTEGER | Number of examples in the file |
+| path | TEXT | Absolute path to the YAML at registration time |
+| created_at | TIMESTAMPTZ | Auto-set |
+
+No explicit indexes beyond the primary key.
+
+### `eval_runs`
+
+One row per `nexus eval run` invocation. Records the SUT config, judge config, cost, status, and rolled-up aggregate scores.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| dataset_id | UUID | FK → eval_datasets (RESTRICT — dataset cannot be deleted while runs reference it) |
+| sut_model | TEXT | Model used as the system under test |
+| sut_prompt_version | TEXT | Git SHA of the SUT prompt at run time |
+| judge_name | TEXT | Judge class name (e.g. `ClaimExtractionJudge`) |
+| judge_model | TEXT | Model used as the LLM judge |
+| judge_prompt_version | TEXT | Git SHA of the judge prompt at run time |
+| started_at | TIMESTAMPTZ | Nullable; set when run begins |
+| completed_at | TIMESTAMPTZ | Nullable; set when run ends |
+| status | TEXT | `pending`, `running`, `completed`, `partial` |
+| aggregate_scores | JSONB | Nullable; keys: `precision`, `recall`, `f1`, `type_accuracy`, `mean_groundedness`, `mean_factuality` |
+| total_cost_usd | Numeric(12,6) | Accumulated LLM cost in USD; default 0.0 |
+| notes | TEXT | Optional free-text note from `--note` flag; nullable |
+| created_at | TIMESTAMPTZ | Auto-set |
+
+No explicit indexes beyond the primary key and FK.
+
+### `eval_results`
+
+One row per (run, example) pair. Stores raw SUT output, judge verdict, and deterministic metrics for each example.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| run_id | UUID | FK → eval_runs (CASCADE) |
+| example_id | TEXT | Example identifier from the gold YAML |
+| sut_output | JSONB | Nullable; `{"claims": [...]}` from the SUT |
+| judge_verdict | JSONB | Nullable; full verdict dict from the judge including `per_pair_verdicts` |
+| deterministic_metrics | JSONB | Nullable; per-example metric dict (precision, recall, f1, type_accuracy, mean_groundedness, mean_factuality) |
+| status | TEXT | `scored` or `error` |
+| error_message | TEXT | Nullable; populated on `error` status |
+| created_at | TIMESTAMPTZ | Auto-set |
+
+No explicit indexes beyond the primary key and FK.
 
 ## Core Invariant
 

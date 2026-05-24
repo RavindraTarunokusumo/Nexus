@@ -1,0 +1,108 @@
+name: queries_v1
+task: span_retrieval
+version: 1
+description: |
+  20 queries targeting content in ai_tech_v1.yaml claim extraction examples.
+  Each query has one gold_span_text that is a substring of the corresponding
+  document_text, testing the retrieval system's ability to pinpoint evidence.
+
+examples:
+  - example_id: sr_001
+    query: When was Claude 4 Opus released?
+    gold_span_texts:
+      - "Anthropic released Claude 4 Opus on March 12, 2025"
+
+  - example_id: sr_002
+    query: What are the names of the three Llama 4 model sizes?
+    gold_span_texts:
+      - "Scout, Maverick, and Behemoth"
+
+  - example_id: sr_003
+    query: How many GPUs were used to train Grok-3?
+    gold_span_texts:
+      - "approximately 200,000 Nvidia H100 GPUs in a single cluster"
+
+  - example_id: sr_004
+    query: What score did o3 achieve on SWE-bench Verified?
+    gold_span_texts:
+      - "87.5% on the SWE-bench Verified benchmark"
+
+  - example_id: sr_005
+    query: What was Claude 3.7 Sonnet's SWE-bench score?
+    gold_span_texts:
+      - "Claude 3.7 Sonnet at 70.3%"
+
+  - example_id: sr_006
+    query: What did DeepSeek-V3 score on HumanEval?
+    gold_span_texts:
+      - "82.6% pass@1 on HumanEval"
+
+  - example_id: sr_007
+    query: When did Sora become available to paying users?
+    gold_span_texts:
+      - "December 9, 2024"
+
+  - example_id: sr_008
+    query: What architecture does Codestral Mamba use?
+    gold_span_texts:
+      - "Mamba state-space architecture"
+
+  - example_id: sr_009
+    query: By how much did OpenAI reduce GPT-4o API pricing?
+    gold_span_texts:
+      - "cut the price of GPT-4o by 50% for API customers"
+
+  - example_id: sr_010
+    query: What was the new price per million tokens for Gemini 1.5 Flash input after the 2024 cut?
+    gold_span_texts:
+      - "$0.0375 per million tokens"
+
+  - example_id: sr_011
+    query: What new molecule types did AlphaFold 3 add beyond proteins?
+    gold_span_texts:
+      - "DNA, RNA, and small molecules"
+
+  - example_id: sr_012
+    query: What speed did Mistral 7B achieve on M3 MacBook Pro with MLX?
+    gold_span_texts:
+      - "30 tokens per second on an M3 MacBook Pro"
+
+  - example_id: sr_013
+    query: What vulnerability was found in GitHub Copilot Chat?
+    gold_span_texts:
+      - "prompt injection vulnerability in GitHub Copilot Chat"
+
+  - example_id: sr_014
+    query: How was the Stability AI breach carried out?
+    gold_span_texts:
+      - "compromised employee credential"
+
+  - example_id: sr_015
+    query: How much did Anthropic raise in its Series E and who led it?
+    gold_span_texts:
+      - "$2.5 billion Series E funding round led by Google"
+
+  - example_id: sr_016
+    query: What valuation did Scale AI reach in its Series F?
+    gold_span_texts:
+      - "$13.8 billion valuation"
+
+  - example_id: sr_017
+    query: When did the EU AI Act enter into force?
+    gold_span_texts:
+      - "August 1, 2024"
+
+  - example_id: sr_018
+    query: What new tier did Anthropic introduce in its updated Responsible Scaling Policy?
+    gold_span_texts:
+      - "ASL-4 tier"
+
+  - example_id: sr_019
+    query: What did Sam Altman predict about AGI timing?
+    gold_span_texts:
+      - "AGI could arrive within the next few years, possibly before the end of the decade"
+
+  - example_id: sr_020
+    query: What happened to Inflection AI's consumer chatbot Pi?
+    gold_span_texts:
+      - "wind down its consumer chatbot Pi"
