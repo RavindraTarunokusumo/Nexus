@@ -61,6 +61,9 @@ app.add_typer(ingest_app, name="ingest")
 runs_app = typer.Typer(help="Query extraction run traces.")
 app.add_typer(runs_app, name="runs")
 
+from app.cli.eval import eval_app  # noqa: E402
+app.add_typer(eval_app, name="eval")
+
 
 def _run(coro):
     """Run a coroutine safely — works both inside and outside a running event loop.
