@@ -27,8 +27,9 @@ def upgrade() -> None:
         sa.Column("checksum", sa.Text(), nullable=False),
         sa.Column("example_count", sa.Integer(), nullable=False),
         sa.Column("path", sa.Text(), nullable=False),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False),
+        sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("name", "task", "version", name="uq_eval_datasets_name_task_version"),
     )
     op.create_table(
         "eval_runs",
@@ -61,7 +62,7 @@ def upgrade() -> None:
         ),
         sa.Column("status", sa.Text(), nullable=False),
         sa.Column("error_message", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False),
+        sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.ForeignKeyConstraint(["run_id"], ["eval_runs.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )

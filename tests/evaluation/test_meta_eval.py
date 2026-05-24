@@ -24,8 +24,16 @@ class TestCohenKappa:
         h = ["exact"] * 8 + ["partial", "missing"]
         assert compute_kappa(j, h) == pytest.approx(1.0)
 
+    def test_fully_disjoint_categories_returns_zero(self):
+        # When raters use entirely different category sets, marginals never overlap:
+        # pe = sum(p_j(c)*p_h(c)) = 0 because for each c, one rater's proportion is 0.
+        # po = 0 (no matches), so κ = (0 - 0) / (1 - 0) = 0.0, NOT negative.
+        j = ["exact"] * 10
+        h = ["missing"] * 10
+        assert compute_kappa(j, h) == pytest.approx(0.0)
+
     def test_mismatched_lengths_raises(self):
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             compute_kappa(["exact"], ["exact", "partial"])
 
 
@@ -47,5 +55,5 @@ class TestPearson:
         assert compute_pearson(x, y) == pytest.approx(0.0)
 
     def test_mismatched_lengths_raises(self):
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             compute_pearson([1.0], [1.0, 2.0])

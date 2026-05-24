@@ -11,6 +11,8 @@ import yaml
 
 def load_human_labels(path: Path) -> list[dict]:
     """Load human-labeled (example_id, judge_verdict, human_verdict) triples."""
+    if not path.exists():
+        raise FileNotFoundError(f"Human labels file not found: {path}")
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     return data.get("labels", [])
 
@@ -22,9 +24,10 @@ def compute_kappa(judge_labels: list[str], human_labels: list[str]) -> float:
     κ 0.4–0.6 → moderate agreement.
     κ ≥ 0.6 → substantial agreement (trust the judge for gating decisions).
     """
-    assert len(judge_labels) == len(human_labels), (
-        f"Label lists must be the same length: {len(judge_labels)} vs {len(human_labels)}"
-    )
+    if len(judge_labels) != len(human_labels):
+        raise ValueError(
+            f"Label lists must be the same length: {len(judge_labels)} vs {len(human_labels)}"
+        )
     n = len(judge_labels)
     if n == 0:
         return 0.0
@@ -46,7 +49,8 @@ def compute_kappa(judge_labels: list[str], human_labels: list[str]) -> float:
 def compute_pearson(x: list[float], y: list[float]) -> float:
     """Pearson product-moment correlation coefficient."""
     n = len(x)
-    assert n == len(y) and n > 1, "Both lists must have length > 1 and be equal length"
+    if len(y) != n or n <= 1:
+        raise ValueError("Both lists must have equal length > 1")
     mx = sum(x) / n
     my = sum(y) / n
     num = sum((xi - mx) * (yi - my) for xi, yi in zip(x, y))

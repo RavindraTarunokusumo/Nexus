@@ -49,9 +49,11 @@ class ClaimExtractionJudge:
         type_correct_flags: list[bool] = []
         groundedness_scores: list[float] = []
         factuality_scores: list[float] = []
+        total_judge_tokens: int = 0
 
         for idx, (gold, pred) in enumerate(pairs):
-            verdict = await self._judge_pair(document_text, gold, pred)
+            verdict, tokens = await self._judge_pair(document_text, gold, pred)
+            total_judge_tokens += tokens
             per_pair.append(verdict)
 
             if verdict["match_status"] in ("exact", "partial"):
@@ -103,6 +105,7 @@ class ClaimExtractionJudge:
             "mean_groundedness": round(mean_groundedness, 4),
             "mean_factuality": round(mean_factuality, 4),
             "per_pair_verdicts": per_pair,
+            "total_judge_tokens": total_judge_tokens,
         }
 
     async def _judge_pair(
@@ -110,10 +113,10 @@ class ClaimExtractionJudge:
         document_text: str,
         gold: dict | None,
         pred: dict | None,
-    ) -> dict:
+    ) -> tuple[dict, int]:
         """Call LLM judge for a single (gold, pred) pair.
 
-        Returns the ClaimPairVerdict as a dict, or an error dict if the LLM call fails.
+        Returns (verdict_dict, tokens_used). Tokens are 0 on error or when LLM is skipped.
         """
         # For pure missing/spurious with no counterpart, skip LLM call
         if gold is None and pred is None:
@@ -123,18 +126,18 @@ class ClaimExtractionJudge:
                 "groundedness": 0.0,
                 "factuality": 0.0,
                 "rationale": "Both gold and pred are None — alignment error.",
-            }
+            }, 0
 
         user_prompt = build_judge_prompt(document_text, gold, pred)
         try:
-            verdict, _ = await self._llm_client.complete_json(
+            verdict, tokens = await self._llm_client.complete_json(
                 model=self._model,
                 system=JUDGE_SYSTEM_PROMPT,
                 user=user_prompt,
                 response_model=ClaimPairVerdict,
                 temperature=0.0,
             )
-            return verdict.model_dump()
+            return verdict.model_dump(), tokens
         except Exception as exc:  # noqa: BLE001
             return {
                 "match_status": "error",
@@ -142,7 +145,7 @@ class ClaimExtractionJudge:
                 "groundedness": 0.0,
                 "factuality": 0.0,
                 "rationale": f"Judge LLM call failed: {exc}",
-            }
+            }, 0
 
 
 class BriefSynthesisJudge:
