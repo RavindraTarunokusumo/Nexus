@@ -25,7 +25,3 @@ What changed:
 ## Backlog
 
 -
-
-## Targeted UI Checks
-
--

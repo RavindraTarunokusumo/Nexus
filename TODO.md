@@ -6,8 +6,6 @@
 
 - [ ] Create and run a destructive CLI validation script that resets local data and exercises text, RSS, status, document inspection, and semantic search paths.
 
-*(Phase 3 — Claim Extraction merged: PR #5, merge commit: 8ab514e — archived to docs/iterations/archive/)*
-
 ## Future
 
 ### Phase 4 — Brief Synthesis + Query Answering

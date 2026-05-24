@@ -186,7 +186,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         if state.get("error"):
             return {}
 
-        run_id = state.get("run_id")
+        run_id = state.get("run_id") or uuid.uuid4()
         semaphore = asyncio.Semaphore(5)
 
         async def bounded(span: dict) -> dict:
@@ -206,7 +206,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
             return {"error": str(exc), "results": []}
 
         total = sum(r.get("tokens", 0) for r in results)
-        return {"results": results, "total_tokens": total}
+        return {"run_id": run_id, "results": results, "total_tokens": total}
 
     async def store_claims(state: ExtractionState) -> dict:
         async with session_factory() as session:

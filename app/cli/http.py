@@ -10,6 +10,7 @@ import httpx
 _TIMEOUT = httpx.Timeout(10.0)
 # Extraction runs LLM calls over every span — allow up to 5 minutes.
 _EXTRACT_TIMEOUT = httpx.Timeout(300.0)
+_CHAT_TIMEOUT = httpx.Timeout(120.0)
 
 
 class CLIHttpError(Exception):
@@ -65,6 +66,16 @@ async def search_spans(base_url: str, query: str, top_k: int) -> list[dict]:
         base_url,
         "/search/spans",
         json={"query": query, "top_k": top_k},
+    )
+
+
+async def chat_answer(base_url: str, question: str, top_k: int) -> dict:
+    return await _request(
+        "POST",
+        base_url,
+        "/chat/answer",
+        json={"question": question, "top_k": top_k},
+        timeout=_CHAT_TIMEOUT,
     )
 
 

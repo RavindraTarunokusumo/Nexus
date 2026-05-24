@@ -1,6 +1,6 @@
 # Commands
 
-> **Phase 3 Status: Claim extraction implemented. Eval framework added.**
+> **Phase 3 Status: Claim extraction + hybrid chatbot + Eval framework implemented.**
 
 ## Prerequisites
 
@@ -167,6 +167,8 @@ The `nexus` command is installed as a console script by `pip install -e .`.
 | `eval register-dataset`, `eval list-datasets`, `eval run`, `eval show`, `eval diff` | Direct Postgres | No |
 | `eval calibrate` | Local computation only | No |
 | `search` | HTTP → FastAPI | Yes |
+| `chat` | HTTP → FastAPI | Yes |
+| `extract` | HTTP → FastAPI | Yes |
 | `ingest url / text / rss` | HTTP → FastAPI | Yes |
 
 **Universal flags** available on every command:
@@ -278,6 +280,24 @@ nexus search "infrastructure benchmark" --json
 Results are ranked by cosine similarity (score 0–1). Score is colour-coded: ≥ 0.7 green, 0.5–0.7 yellow, < 0.5 white.
 
 The server must be running and at least one document must have `status = embedded` before results are returned. Returns an empty table (not an error) if the index has no embedded spans.
+
+---
+
+### `nexus chat`
+
+Ask a single-turn question answered from embedded spans and extracted claims.
+
+```sh
+nexus chat "What changed in recent open-source LLM releases?"
+nexus chat "What changed?" --top-k 5
+nexus chat "What changed?" --json
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--top-k N` | 8 | Maximum retrieved context spans to use, from 1 to 20 |
+
+The command POSTs to `/chat/answer` on the running FastAPI server. The server must have the embedder initialised. Human output prints the answer first and a compact citation table when citations are available; `--json` prints the raw API response.
 
 ---
 
@@ -514,6 +534,9 @@ nexus extract <doc_id>
 
 # 8. Review extracted claims
 nexus document <doc_id> --claims
+
+# 9. Ask a grounded question over spans and claims
+nexus chat "What changed in the latest ingested sources?"
 ```
 
 ---
@@ -528,6 +551,54 @@ nexus document <doc_id> --claims
 | Document not found | `Document <id> not found.` + exit 1 |
 | No embedded documents for search | Empty results table (not an error) |
 | Invalid `--since` format | `Invalid --since value '...': ...` (Typer validation error) |
+
+---
+
+## Chat Answer API (Phase 3)
+
+Use `nexus chat` for CLI access (see above). The raw HTTP endpoint is also available directly.
+
+### Ask a grounded question
+
+```sh
+curl -X POST "http://localhost:8000/chat/answer" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"What changed in recent open-source LLM releases?","top_k":8}'
+```
+
+Response (200):
+
+```json
+{
+  "answer": "Grounded answer text.",
+  "citations": [
+    {
+      "document_id": "<uuid>",
+      "span_id": "<uuid>",
+      "document_title": "Document title",
+      "url": "https://example.com/article",
+      "score": 0.82,
+      "claim_ids": ["<uuid>"]
+    }
+  ],
+  "retrieved_context_count": 3,
+  "run_id": "<uuid>",
+  "tokens_used": 900,
+  "cost_estimate_usd": 0.000126
+}
+```
+
+| Status | Meaning |
+|---|---|
+| 200 | Returns a grounded answer or the insufficient-evidence fallback |
+| 422 | Blank question or invalid `top_k` |
+| 503 | Embedder not initialised or OpenRouter/chat execution failed |
+
+Citation safety behavior:
+
+- The model may cite only retrieved labels such as `C1`.
+- The API normalizes and validates returned labels against retrieved context.
+- Unknown labels are dropped, and if no valid citations remain the route falls back to the insufficient-evidence answer.
 
 ---
 
