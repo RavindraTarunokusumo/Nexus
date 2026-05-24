@@ -1,6 +1,6 @@
 # Architecture
 
-> **Phase 3 Status: Claim extraction + observability implemented**
+> **Phase 3 Status: Claim extraction + hybrid chatbot + observability implemented**
 
 Nexus Lite is a private FastAPI application backed by PostgreSQL + pgvector, Redis, and local embeddings. The Phase 1 foundation covers source registration, document ingestion, and the full persistence schema.
 
@@ -33,10 +33,12 @@ app/
     deps.py                # DbSession dependency (injects AsyncSession from request state)
     routes_sources.py      # GET/POST /sources, GET /sources/{id}
     routes_ingestion.py    # POST /ingest/rss/{source_id}, /ingest/url, /ingest/text
+    routes_chat.py         # POST /chat/answer
     routes_claims.py       # POST /documents/{id}/extract-claims, GET /claims
   observability/
     run_context.py         # asyncio-safe ContextVars (run_id, document_id, span_id);
-                           #   extraction_run(), span_scope(), current_context() context managers
+                           #   extraction_run(), chat_run(), span_scope(), current_context()
+                           #   context managers
     logger.py              # RunContextFilter (injects correlation IDs into log records);
                            #   _JsonFormatter (stdlib JSON output); configure_logging() (idempotent,
                            #   reads LOG_LEVEL / LOG_FORMAT env vars)
@@ -55,10 +57,14 @@ app/
     rss.py                 # fetch_rss_entries (feedparser + async httpx)
     url_fetcher.py         # fetch_and_clean (httpx + trafilatura)
   intelligence/
+    chat.py                # LangGraph chat answer graph (retrieve_spans → load_claims
+                           #   → generate_answer → format_result); validates citation labels
+                           #   against retrieved context; wraps graph in chat_run context
     llm_client.py          # LLMClient.complete_json — OpenRouter calls, Pydantic validation;
                            #   ExtractedClaim / ExtractionOutput schemas;
                            #   LLMError / LLMNetworkError / LLMSchemaError hierarchy;
-                           #   uses tracer.record_agent_run; tracks prompt_tokens / completion_tokens
+                           #   uses tracer.record_agent_run; tracks prompt_tokens / completion_tokens;
+                           #   supports run_type for claim extraction and chat answers
     extraction.py          # LangGraph StateGraph (load_spans → extract_spans → store_claims
                            #   → update_status); asyncio.gather concurrency (Semaphore 5);
                            #   correction-prompt retry (max 2); status constants exported;
@@ -66,6 +72,7 @@ app/
                            #   writes span_extractions rows; marks extraction timestamps;
                            #   run_with_context() entry point
     prompts/
+      chat_answer.py       # SYSTEM_PROMPT plus question/context prompt builder for grounded chat
       extract_claims.py    # SYSTEM_PROMPT, build_user_prompt, build_correction_prompt
   domain_packs/
     personal_ai_tech.yaml  # Default domain pack definition
@@ -74,16 +81,18 @@ app/
     config.py              # CLISettings (API_URL, DB_URL, rich/json output flags)
     db.py                  # direct-Postgres readers (asyncpg, short-lived sessions);
                            #   includes list_runs() and show_run()
-    http.py                # HTTP wrappers for ingest/search (FastAPI server)
-    render.py              # Rich+JSON formatters; includes render_runs_list() and render_run_detail()
+    http.py                # HTTP wrappers for ingest/search/chat/extract (FastAPI server)
+    render.py              # Rich+JSON formatters; includes search/chat/extract and run renderers
     main.py                # Typer app — nexus console-script entry point;
-                           #   registers `runs` sub-app with `list` and `show` commands
+                           #   registers root commands plus `runs` and `ingest` sub-apps
 tests/
   conftest.py              # testcontainers fixtures, Alembic migration, per-test DB clean
   test_sources.py          # Source CRUD integration tests (8 tests)
   test_ingestion.py        # Ingestion integration tests (12 tests)
   test_cli_db.py           # CLI DB reader unit tests (8 tests)
-  test_cli_render.py       # CLI render/formatter tests (10 tests)
+  test_chat_api.py         # Chat API integration tests
+  test_chat_graph.py       # Chat graph integration tests
+  test_cli_render.py       # CLI render/formatter tests
   test_cli_e2e.py          # CLI end-to-end integration tests (10 tests)
 docker-compose.yml         # postgres (pgvector/pgvector:pg16), redis:7-alpine, app
 alembic.ini
@@ -109,9 +118,9 @@ external source
 The `nexus` CLI uses a hybrid access strategy:
 
 - **Reads** (status, sources, documents, document detail, runs) go **direct to Postgres** via short-lived asyncpg sessions — no server required.
-- **Ingest, search, and chat** go **through the FastAPI server** over HTTP.
+- **Ingest, extract, search, and chat** go **through the FastAPI server** over HTTP.
 
-`CLISettings` resolves `--api-url` and `--db-url` from flags, `API_BASE_URL` / `DATABASE_URL` env vars, or `.env` defaults. `DATABASE_URL` is required only for commands that read directly from Postgres (status, sources, documents, document); HTTP-only commands (search, ingest) work without it. Every command accepts `--json` for machine-readable output and `--api-url` / `--db-url` overrides.
+`CLISettings` resolves `--api-url` and `--db-url` from flags, `API_BASE_URL` / `DATABASE_URL` env vars, or `.env` defaults. `DATABASE_URL` is required only for commands that read directly from Postgres (status, sources, documents, document, runs); HTTP-only commands (`search`, `chat`, `extract`, `ingest`) work without it. Every command accepts `--json` for machine-readable output and `--api-url` / `--db-url` overrides.
 
 ## API Endpoints
 
@@ -130,6 +139,29 @@ The `nexus` CLI uses a hybrid access strategy:
 | GET | /claims | List claims (filter by document_id, claim_type, status) |
 
 Supported `source_type` values: `rss`, `manual`, `api`.
+
+### Chat answer endpoint detail
+
+`POST /chat/answer`
+
+Request body:
+
+```json
+{
+  "question": "What changed in recent open-source LLM releases?",
+  "top_k": 8
+}
+```
+
+| Status | Meaning |
+|---|---|
+| 200 | Returns `{answer, citations, retrieved_context_count, run_id, tokens_used, cost_estimate_usd}` |
+| 422 | Blank question or invalid `top_k` |
+| 503 | Embedder not initialised, OpenRouter unavailable, or chat graph failed |
+
+If retrieval finds no usable embedded context, the route returns `200` with the insufficient-evidence answer, empty citations, and zero token usage without making a model call.
+
+Citation safety behavior: the model may reference only retrieved context labels such as `C1`. The API normalizes and validates those labels against retrieved spans, drops unknown labels, and falls back to the insufficient-evidence answer if no valid citations remain.
 
 ### Claim extraction endpoint detail
 
@@ -166,7 +198,7 @@ Claims are typed using a Pydantic `Literal` validated at extraction time:
 | Tier | Purpose | Config key | Default |
 |---|---|---|---|
 | T1 | Embedding (local) | `settings.t1_model` | `BAAI/bge-small-en-v1.5` |
-| T2 | Claim extraction | `settings.t2_model` | `deepseek/deepseek-v4-flash` |
+| T2 | Claim extraction + chat answer | `settings.t2_model` | `deepseek/deepseek-v4-flash` |
 | T3 | Brief synthesis (Phase 4) | `settings.t3_model` | `deepseek/deepseek-v4-pro` |
 
 Cost is tracked per call: `0.30 / 1_000_000 * total_tokens` stored in the `agent_runs.cost_estimate` column.
@@ -182,6 +214,7 @@ Three asyncio-safe `ContextVar`s — `run_id_var`, `document_id_var`, `span_id_v
 | Context manager | Scope | Sets |
 |---|---|---|
 | `extraction_run(document_id)` | Full extraction graph | `run_id`, `document_id` |
+| `chat_run()` | Single chat answer | `run_id` |
 | `span_scope(span_id)` | Single span extraction | `span_id` |
 | `current_context()` | Any point | Returns `{run_id, document_id, span_id}` snapshot |
 

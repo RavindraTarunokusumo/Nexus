@@ -1,6 +1,6 @@
 # Commands
 
-> **Phase 3 Status: Claim extraction implemented**
+> **Phase 3 Status: Claim extraction + hybrid chatbot implemented**
 
 ## Prerequisites
 
@@ -165,6 +165,8 @@ The `nexus` command is installed as a console script by `pip install -e .`.
 | `status`, `sources`, `documents`, `document` | Direct Postgres | No |
 | `runs list`, `runs show` | Direct Postgres | No |
 | `search` | HTTP → FastAPI | Yes |
+| `chat` | HTTP → FastAPI | Yes |
+| `extract` | HTTP → FastAPI | Yes |
 | `ingest url / text / rss` | HTTP → FastAPI | Yes |
 
 **Universal flags** available on every command:
@@ -465,6 +467,54 @@ nexus chat "What changed in the latest ingested sources?"
 | Document not found | `Document <id> not found.` + exit 1 |
 | No embedded documents for search | Empty results table (not an error) |
 | Invalid `--since` format | `Invalid --since value '...': ...` (Typer validation error) |
+
+---
+
+## Chat Answer API (Phase 3)
+
+Use `nexus chat` for CLI access (see above). The raw HTTP endpoint is also available directly.
+
+### Ask a grounded question
+
+```sh
+curl -X POST "http://localhost:8000/chat/answer" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"What changed in recent open-source LLM releases?","top_k":8}'
+```
+
+Response (200):
+
+```json
+{
+  "answer": "Grounded answer text.",
+  "citations": [
+    {
+      "document_id": "<uuid>",
+      "span_id": "<uuid>",
+      "document_title": "Document title",
+      "url": "https://example.com/article",
+      "score": 0.82,
+      "claim_ids": ["<uuid>"]
+    }
+  ],
+  "retrieved_context_count": 3,
+  "run_id": "<uuid>",
+  "tokens_used": 900,
+  "cost_estimate_usd": 0.000126
+}
+```
+
+| Status | Meaning |
+|---|---|
+| 200 | Returns a grounded answer or the insufficient-evidence fallback |
+| 422 | Blank question or invalid `top_k` |
+| 503 | Embedder not initialised or OpenRouter/chat execution failed |
+
+Citation safety behavior:
+
+- The model may cite only retrieved labels such as `C1`.
+- The API normalizes and validates returned labels against retrieved context.
+- Unknown labels are dropped, and if no valid citations remain the route falls back to the insufficient-evidence answer.
 
 ---
 
