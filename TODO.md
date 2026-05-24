@@ -59,3 +59,30 @@
   Update `record_agent_run` to compute cost from `prompt_tokens` × input_rate +
   `completion_tokens` × output_rate, configurable via `app/config.py`.
   Reference: `app/observability/tracer.py::record_agent_run`.
+
+## Eval Framework — Deferred
+
+- [ ] **Activate BriefSynthesisJudge** — remove `NotImplementedError`; wire Phase-4 brief
+  synthesis rubric once `POST /briefs/generate` ships.
+  Reference: `app/evaluation/judges.py::BriefSynthesisJudge`.
+
+- [ ] **Activate GroundedAnswerJudge** — wire Phase-4 grounded answer rubric once
+  `POST /query` ships.
+  Reference: `app/evaluation/judges.py::GroundedAnswerJudge`.
+
+- [ ] **SpanRetrievalJudge** — implement the LLM-judged relevance layer (graded 0–3)
+  for span retrieval; currently only text-overlap alignment exists.
+  Reference: `app/evaluation/judges.py`, `app/evaluation/runner.py`.
+
+- [ ] **Extend human_labels to ≥50 pairs** — current seed has 6; κ estimate unreliable
+  below 30 pairs. Run `nexus eval calibrate claim_extraction` after extending.
+  Reference: `evals/human_labels/claim_extraction.yaml`.
+
+- [ ] **Baseline run** — after manual corpus ingestion, run `nexus eval run claim_extraction ai_tech_v1`
+  and record the run_id in `docs/insights.md` as the v1 baseline reference.
+
+- [ ] **Statistical significance** — add bootstrap CIs on aggregate scores across runs.
+
+- [ ] **Multi-judge ensembling** — run 2+ judge models, majority-vote verdicts.
+
+- [ ] **Dashboard** — web UI over `eval_runs` + `eval_results` for cross-run visualization.
