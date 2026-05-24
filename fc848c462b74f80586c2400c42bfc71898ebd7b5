@@ -1,0 +1,9 @@
+Summary: Pre-commit lint and ruff-format fixes across evaluation framework and tests. No logic changes — formatting normalization and noqa/type:ignore annotations.
+
+Scope: app/cli/eval.py, app/evaluation/datasets.py, app/intelligence/extraction.py, ruff-format on 14 other files.
+
+Tests: All 194 tests passing (pytest fast unit).
+
+Risk: None — comment-only and formatting changes.
+
+Docs: N/A
