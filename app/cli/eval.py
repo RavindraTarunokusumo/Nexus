@@ -31,14 +31,24 @@ def _get_session_factory(db_url: str):
     return make_session_factory(engine)
 
 
+_VALID_DB_SCHEMES = ("postgresql://", "postgresql+asyncpg://", "postgresql+psycopg2://")
+
+
 def _require_db_url(cfg: CLISettings) -> str:
-    if not cfg.database_url.strip():
+    url = cfg.database_url.strip()
+    if not url:
         typer.echo(
             "DATABASE_URL is required for eval commands. Set it in .env or pass --db-url.",
             err=True,
         )
         raise typer.Exit(code=1)
-    return cfg.database_url
+    if not any(url.startswith(s) for s in _VALID_DB_SCHEMES):
+        typer.echo(
+            f"--db-url must start with one of: {', '.join(_VALID_DB_SCHEMES)}",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    return url
 
 
 @eval_app.command("register-dataset")
@@ -69,7 +79,7 @@ def register_dataset(
                 existing.example_count = len(ds.examples)
                 existing.path = str(path.resolve())
                 await session.commit()
-                return f"Updated: {ds.name} (task={ds.task}, v{ds.version})"
+                return f"Updated: {ds.name} (task={ds.task.value}, v{ds.version})"
             session.add(
                 EvalDatasetModel(
                     name=ds.name,
@@ -81,7 +91,7 @@ def register_dataset(
                 )
             )
             await session.commit()
-            return f"Registered: {ds.name} (task={ds.task}, v{ds.version}, {len(ds.examples)} examples)"
+            return f"Registered: {ds.name} (task={ds.task.value}, v{ds.version}, {len(ds.examples)} examples)"
 
     msg = asyncio.run(_insert())
     typer.echo(msg)
@@ -251,7 +261,7 @@ def eval_show(
         "sut_model": run.sut_model,
         "judge_model": run.judge_model,
         "aggregate_scores": run.aggregate_scores,
-        "total_cost_usd": run.total_cost_usd,
+        "total_cost_usd": float(run.total_cost_usd),  # Numeric→Decimal from ORM; cast for json.dumps
         "started_at": run.started_at.isoformat() if run.started_at else None,
         "per_example": results,
     }

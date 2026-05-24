@@ -28,9 +28,6 @@ except ImportError:
     )
     _HAS_PRODUCTION_PROMPT = False
 
-from app.evaluation.prompts.claim_extraction_judge import JUDGE_SYSTEM_PROMPT as SYSTEM_PROMPT
-
-
 @dataclass
 class SUTConfig:
     """Configuration for the System Under Test (SUT)."""
@@ -194,7 +191,9 @@ async def _score_example(
         gold_claims=gold_claims,
         pred_claims=pred_claims,
     )
+    judge_tokens: int = verdict.pop("total_judge_tokens", 0)
     det_metrics = {k: v for k, v in verdict.items() if k != "per_pair_verdicts"}
+    total_tokens = sut_tokens + judge_tokens
 
     await _persist_result(
         run_id=run_id,
@@ -206,7 +205,7 @@ async def _score_example(
         error_message=None,
         session_factory=session_factory,
     )
-    return {"status": "scored", "deterministic_metrics": det_metrics, "cost": sut_tokens * _COST_PER_TOKEN_USD}
+    return {"status": "scored", "deterministic_metrics": det_metrics, "cost": total_tokens * _COST_PER_TOKEN_USD}
 
 
 async def _persist_result(
