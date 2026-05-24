@@ -60,6 +60,14 @@
   `completion_tokens` × output_rate, configurable via `app/config.py`.
   Reference: `app/observability/tracer.py::record_agent_run`.
 
+## Eval Framework — Technical Debt
+
+- [ ] **CLI plumbing consolidation** — `eval.py` re-implements `_require_db_url` (with scheme validation), `_get_session_factory`, and the `CLISettings` boilerplate 5×. Move the scheme-aware `_require_db_url` into `app/cli/main.py` (or `app/cli/_common.py`) and reuse `_with_session` from `app/cli/db.py` so engines are disposed. Also consolidate the `asyncio.run(...)` calls to use the existing `_run()` helper from `main.py`.
+  Reference: `app/cli/eval.py:29-51`, `app/cli/main.py:69-115`, `app/cli/db.py:16-24`.
+
+- [ ] **render.py reuse** — eval CLI uses inline `typer.echo(json.dumps(...))` and ad-hoc Rich `Table` construction in 5 commands. Move to `app/cli/render.py` (e.g. `render_eval_run`, `render_eval_diff`, `render_eval_datasets`, `render_eval_calibration`) matching the pattern of `render_runs_list`. Also replace manual `.isoformat()` / `float()` casts with `_to_jsonable()` from `render.py`.
+  Reference: `app/cli/eval.py:131-142`, `app/cli/render.py`.
+
 ## Eval Framework — Deferred
 
 - [ ] **Activate BriefSynthesisJudge** — remove `NotImplementedError`; wire Phase-4 brief
