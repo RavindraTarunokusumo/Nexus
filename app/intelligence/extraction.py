@@ -196,7 +196,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                     client,
                     state["model"],
                     session_factory,
-                    run_id=run_id,
+                    run_id=run_id,  # type: ignore[arg-type]
                     document_id=state["document_id"],
                 )
 

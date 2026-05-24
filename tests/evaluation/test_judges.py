@@ -20,12 +20,9 @@ class TestClaimExtractionJudge:
         mock_client = MagicMock()
         # complete_json returns (ClaimPairVerdict, total_tokens)
         from app.evaluation.prompts.claim_extraction_judge import ClaimPairVerdict
-        verdicts = [
-            ClaimPairVerdict(**v) for v in mock_verdicts
-        ]
-        mock_client.complete_json = AsyncMock(side_effect=[
-            (v, 100) for v in verdicts
-        ])
+
+        verdicts = [ClaimPairVerdict(**v) for v in mock_verdicts]
+        mock_client.complete_json = AsyncMock(side_effect=[(v, 100) for v in verdicts])
         return ClaimExtractionJudge(model="test-model", llm_client=mock_client)
 
     @pytest.mark.asyncio
@@ -35,19 +32,25 @@ class TestClaimExtractionJudge:
     @pytest.mark.asyncio
     async def test_perfect_match_score(self):
         """One gold, one pred, exact match — should return high scores."""
-        judge = self._make_judge([
-            {
-                "match_status": "exact",
-                "type_correct": True,
-                "groundedness": 1.0,
-                "factuality": 1.0,
-                "rationale": "Perfect match.",
-            }
-        ])
+        judge = self._make_judge(
+            [
+                {
+                    "match_status": "exact",
+                    "type_correct": True,
+                    "groundedness": 1.0,
+                    "factuality": 1.0,
+                    "rationale": "Perfect match.",
+                }
+            ]
+        )
         result = await judge.score(
             document_text="Anthropic released Claude 4.",
-            gold_claims=[{"claim_text": "Anthropic released Claude 4", "claim_type": "model_release"}],
-            pred_claims=[{"claim_text": "Anthropic released Claude 4", "claim_type": "model_release"}],
+            gold_claims=[
+                {"claim_text": "Anthropic released Claude 4", "claim_type": "model_release"}
+            ],
+            pred_claims=[
+                {"claim_text": "Anthropic released Claude 4", "claim_type": "model_release"}
+            ],
         )
         assert result["precision"] == pytest.approx(1.0)
         assert result["recall"] == pytest.approx(1.0)
@@ -62,7 +65,9 @@ class TestClaimExtractionJudge:
         judge = self._make_judge([])  # no LLM calls for missing claims
         result = await judge.score(
             document_text="Anthropic released Claude 4.",
-            gold_claims=[{"claim_text": "Anthropic released Claude 4", "claim_type": "model_release"}],
+            gold_claims=[
+                {"claim_text": "Anthropic released Claude 4", "claim_type": "model_release"}
+            ],
             pred_claims=[],
         )
         assert result["recall"] == pytest.approx(0.0)
@@ -83,15 +88,17 @@ class TestClaimExtractionJudge:
     @pytest.mark.asyncio
     async def test_returns_per_pair_verdicts(self):
         """score() result must include per_pair_verdicts list."""
-        judge = self._make_judge([
-            {
-                "match_status": "exact",
-                "type_correct": True,
-                "groundedness": 0.9,
-                "factuality": 0.9,
-                "rationale": "Good.",
-            }
-        ])
+        judge = self._make_judge(
+            [
+                {
+                    "match_status": "exact",
+                    "type_correct": True,
+                    "groundedness": 0.9,
+                    "factuality": 0.9,
+                    "rationale": "Good.",
+                }
+            ]
+        )
         result = await judge.score(
             document_text="doc",
             gold_claims=[{"claim_text": "x", "claim_type": "other"}],

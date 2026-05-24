@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,8 +11,8 @@ import pytest
 from app.evaluation.datasets import ClaimExtractionExample, Dataset, EvalTask, GoldClaim
 from app.evaluation.runner import EvalRunResult, SUTConfig, _aggregate_scores, execute_run
 
-
 # ── helpers ──────────────────────────────────────────────────────────────────
+
 
 def _make_dataset(n_examples: int = 2) -> Dataset:
     examples = [
@@ -64,6 +63,7 @@ def _make_session_factory(dataset_row_id: uuid.UUID | None = None):
 
 # ── SUTConfig ─────────────────────────────────────────────────────────────────
 
+
 class TestSUTConfig:
     def test_defaults(self):
         cfg = SUTConfig(model="my-model", prompt_version="abc")
@@ -73,14 +73,29 @@ class TestSUTConfig:
 
 # ── _aggregate_scores ─────────────────────────────────────────────────────────
 
+
 class TestAggregateScores:
     def test_empty_returns_empty(self):
         assert _aggregate_scores([]) == {}
 
     def test_averages_metrics(self):
         scores = [
-            {"precision": 1.0, "recall": 0.5, "f1": 0.67, "type_accuracy": 1.0, "mean_groundedness": 0.8, "mean_factuality": 0.9},
-            {"precision": 0.5, "recall": 1.0, "f1": 0.67, "type_accuracy": 0.5, "mean_groundedness": 0.6, "mean_factuality": 0.7},
+            {
+                "precision": 1.0,
+                "recall": 0.5,
+                "f1": 0.67,
+                "type_accuracy": 1.0,
+                "mean_groundedness": 0.8,
+                "mean_factuality": 0.9,
+            },
+            {
+                "precision": 0.5,
+                "recall": 1.0,
+                "f1": 0.67,
+                "type_accuracy": 0.5,
+                "mean_groundedness": 0.6,
+                "mean_factuality": 0.7,
+            },
         ]
         agg = _aggregate_scores(scores)
         assert agg["precision"] == pytest.approx(0.75)
@@ -90,6 +105,7 @@ class TestAggregateScores:
 
 
 # ── execute_run ───────────────────────────────────────────────────────────────
+
 
 class TestExecuteRun:
     @pytest.mark.asyncio
@@ -116,14 +132,21 @@ class TestExecuteRun:
 
         # Mock judge to return fixed scores
         mock_judge = AsyncMock()
-        mock_judge.score = AsyncMock(return_value={
-            "precision": 1.0, "recall": 1.0, "f1": 1.0,
-            "type_accuracy": 1.0, "mean_groundedness": 1.0, "mean_factuality": 1.0,
-            "per_pair_verdicts": [],
-        })
+        mock_judge.score = AsyncMock(
+            return_value={
+                "precision": 1.0,
+                "recall": 1.0,
+                "f1": 1.0,
+                "type_accuracy": 1.0,
+                "mean_groundedness": 1.0,
+                "mean_factuality": 1.0,
+                "per_pair_verdicts": [],
+            }
+        )
 
         # Mock SUT (LLMClient) to return ExtractionOutput
         from app.intelligence.llm_client import ExtractionOutput
+
         mock_client = MagicMock()
         mock_client.complete_json = AsyncMock(return_value=(ExtractionOutput(claims=[]), 50))
 

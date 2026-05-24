@@ -24,11 +24,7 @@ def precision_recall_f1(
     tp = len(gold_ids & pred_ids)
     precision = tp / len(pred_ids)
     recall = tp / len(gold_ids)
-    f1 = (
-        2 * precision * recall / (precision + recall)
-        if (precision + recall) > 0
-        else 0.0
-    )
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
     return precision, recall, f1
 
 
@@ -53,11 +49,9 @@ def ndcg_at_k(graded_relevances: list[float], k: int) -> float:
     graded_relevances: list of relevance scores in ranked order (e.g. [1, 0, 1]).
     Returns 0.0 if ideal DCG is 0.
     """
+
     def _dcg(rels: list[float], cutoff: int) -> float:
-        return sum(
-            rel / math.log2(i + 2)
-            for i, rel in enumerate(rels[:cutoff])
-        )
+        return sum(rel / math.log2(i + 2) for i, rel in enumerate(rels[:cutoff]))
 
     dcg = _dcg(graded_relevances, k)
     ideal = _dcg(sorted(graded_relevances, reverse=True), k)

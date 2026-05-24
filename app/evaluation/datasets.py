@@ -70,7 +70,7 @@ def load_dataset(path: Path) -> Dataset:
     except ValueError:
         raise ValueError(
             f"Unknown eval task '{task_str}'. Valid tasks: {[t.value for t in EvalTask]}"
-        )
+        ) from None
 
     raw_examples = data.get("examples") or []
     examples: list[ClaimExtractionExample | SpanRetrievalExample] = []

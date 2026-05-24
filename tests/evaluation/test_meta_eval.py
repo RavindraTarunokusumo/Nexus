@@ -1,5 +1,6 @@
 # tests/evaluation/test_meta_eval.py
 """Unit tests for judge calibration (Cohen's κ, Pearson r)."""
+
 import pytest
 
 from app.evaluation.meta_eval import compute_kappa, compute_pearson

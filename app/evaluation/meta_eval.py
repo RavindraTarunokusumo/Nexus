@@ -35,13 +35,10 @@ def compute_kappa(judge_labels: list[str], human_labels: list[str]) -> float:
     categories = list(set(judge_labels) | set(human_labels))
 
     # Observed agreement
-    po = sum(j == h for j, h in zip(judge_labels, human_labels)) / n
+    po = sum(j == h for j, h in zip(judge_labels, human_labels, strict=False)) / n
 
     # Expected agreement by chance
-    pe = sum(
-        (judge_labels.count(c) / n) * (human_labels.count(c) / n)
-        for c in categories
-    )
+    pe = sum((judge_labels.count(c) / n) * (human_labels.count(c) / n) for c in categories)
 
     return (po - pe) / (1.0 - pe) if pe < 1.0 else 1.0
 
@@ -53,8 +50,6 @@ def compute_pearson(x: list[float], y: list[float]) -> float:
         raise ValueError("Both lists must have equal length > 1")
     mx = sum(x) / n
     my = sum(y) / n
-    num = sum((xi - mx) * (yi - my) for xi, yi in zip(x, y))
-    den = math.sqrt(
-        sum((xi - mx) ** 2 for xi in x) * sum((yi - my) ** 2 for yi in y)
-    )
+    num = sum((xi - mx) * (yi - my) for xi, yi in zip(x, y, strict=False))
+    den = math.sqrt(sum((xi - mx) ** 2 for xi in x) * sum((yi - my) ** 2 for yi in y))
     return num / den if den > 0 else 0.0

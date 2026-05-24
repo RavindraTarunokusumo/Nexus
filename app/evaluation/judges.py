@@ -73,28 +73,18 @@ class ClaimExtractionJudge:
 
         precision = n_matched / n_pred if n_pred > 0 else 0.0
         recall = n_matched / n_gold if n_gold > 0 else 0.0
-        f1 = (
-            2 * precision * recall / (precision + recall)
-            if (precision + recall) > 0
-            else 0.0
-        )
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
         if n_gold == 0 and n_pred == 0:
             precision = recall = f1 = 1.0
 
         type_accuracy = (
-            sum(type_correct_flags) / len(type_correct_flags)
-            if type_correct_flags
-            else 0.0
+            sum(type_correct_flags) / len(type_correct_flags) if type_correct_flags else 0.0
         )
         mean_groundedness = (
-            sum(groundedness_scores) / len(groundedness_scores)
-            if groundedness_scores
-            else 0.0
+            sum(groundedness_scores) / len(groundedness_scores) if groundedness_scores else 0.0
         )
         mean_factuality = (
-            sum(factuality_scores) / len(factuality_scores)
-            if factuality_scores
-            else 0.0
+            sum(factuality_scores) / len(factuality_scores) if factuality_scores else 0.0
         )
 
         return {

@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import textwrap
 from pathlib import Path
 
 import pytest
@@ -12,14 +10,13 @@ import yaml
 
 from app.evaluation.datasets import (
     ClaimExtractionExample,
-    Dataset,
     GoldClaim,
     SpanRetrievalExample,
     load_dataset,
 )
 
-
 # ── helpers ──────────────────────────────────────────────────────────────────
+
 
 def _write_yaml(tmp_path: Path, data: dict, filename: str = "test.yaml") -> Path:
     p = tmp_path / filename
@@ -28,6 +25,7 @@ def _write_yaml(tmp_path: Path, data: dict, filename: str = "test.yaml") -> Path
 
 
 # ── GoldClaim ─────────────────────────────────────────────────────────────────
+
 
 class TestGoldClaim:
     def test_minimal(self):
@@ -43,6 +41,7 @@ class TestGoldClaim:
 
 
 # ── ClaimExtractionExample ────────────────────────────────────────────────────
+
 
 class TestClaimExtractionExample:
     def test_with_document_text(self):
@@ -66,6 +65,7 @@ class TestClaimExtractionExample:
 
 # ── SpanRetrievalExample ──────────────────────────────────────────────────────
 
+
 class TestSpanRetrievalExample:
     def test_minimal(self):
         ex = SpanRetrievalExample(
@@ -88,6 +88,7 @@ class TestSpanRetrievalExample:
 
 
 # ── load_dataset ──────────────────────────────────────────────────────────────
+
 
 class TestLoadDataset:
     def test_load_claim_extraction(self, tmp_path):

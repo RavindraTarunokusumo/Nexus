@@ -27,7 +27,12 @@ def upgrade() -> None:
         sa.Column("checksum", sa.Text(), nullable=False),
         sa.Column("example_count", sa.Integer(), nullable=False),
         sa.Column("path", sa.Text(), nullable=False),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.TIMESTAMP(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("name", "task", "version", name="uq_eval_datasets_name_task_version"),
     )
@@ -46,7 +51,12 @@ def upgrade() -> None:
         sa.Column("aggregate_scores", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("total_cost_usd", sa.Numeric(precision=12, scale=6), nullable=False),
         sa.Column("notes", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.TIMESTAMP(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.ForeignKeyConstraint(["dataset_id"], ["eval_datasets.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -57,12 +67,15 @@ def upgrade() -> None:
         sa.Column("example_id", sa.Text(), nullable=False),
         sa.Column("sut_output", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("judge_verdict", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column(
-            "deterministic_metrics", postgresql.JSONB(astext_type=sa.Text()), nullable=True
-        ),
+        sa.Column("deterministic_metrics", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("status", sa.Text(), nullable=False),
         sa.Column("error_message", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.TIMESTAMP(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.ForeignKeyConstraint(["run_id"], ["eval_runs.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )

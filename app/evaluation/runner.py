@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -14,12 +14,13 @@ from app.db.models import EvalDataset as EvalDatasetModel
 from app.db.models import EvalResult, EvalRun
 from app.evaluation.datasets import ClaimExtractionExample, Dataset
 from app.evaluation.judges import ClaimExtractionJudge
-from app.intelligence.llm_client import ExtractionOutput, _COST_PER_TOKEN_USD
+from app.intelligence.llm_client import _COST_PER_TOKEN_USD, ExtractionOutput
 
 # Import the SUT prompt. Use production prompt if available, fallback otherwise.
 try:
-    from app.intelligence.prompts.extract_claims import build_user_prompt as _build_sut_prompt
     from app.intelligence.prompts.extract_claims import SYSTEM_PROMPT as SUT_SYSTEM_PROMPT
+    from app.intelligence.prompts.extract_claims import build_user_prompt as _build_sut_prompt
+
     _HAS_PRODUCTION_PROMPT = True
 except ImportError:
     SUT_SYSTEM_PROMPT = (
@@ -28,9 +29,11 @@ except ImportError:
     )
     _HAS_PRODUCTION_PROMPT = False
 
+
 @dataclass
 class SUTConfig:
     """Configuration for the System Under Test (SUT)."""
+
     model: str
     prompt_version: str
     temperature: float = 0.0
@@ -39,6 +42,7 @@ class SUTConfig:
 @dataclass
 class EvalRunResult:
     """Summary of a completed eval run."""
+
     run_id: uuid.UUID
     status: str
     aggregate_scores: dict
@@ -162,7 +166,9 @@ async def _score_example(
         if _HAS_PRODUCTION_PROMPT:
             user_prompt = _build_sut_prompt(document_text, {})
         else:
-            user_prompt = f"Extract all factual claims from the following document:\n\n{document_text}"
+            user_prompt = (
+                f"Extract all factual claims from the following document:\n\n{document_text}"
+            )
 
         sut_output, sut_tokens = await llm_client.complete_json(
             model=sut_config.model,
@@ -205,7 +211,11 @@ async def _score_example(
         error_message=None,
         session_factory=session_factory,
     )
-    return {"status": "scored", "deterministic_metrics": det_metrics, "cost": total_tokens * _COST_PER_TOKEN_USD}
+    return {
+        "status": "scored",
+        "deterministic_metrics": det_metrics,
+        "cost": total_tokens * _COST_PER_TOKEN_USD,
+    }
 
 
 async def _persist_result(
@@ -241,9 +251,7 @@ def _aggregate_scores(score_list: list[dict]) -> dict:
         return {}
     keys = ["precision", "recall", "f1", "type_accuracy", "mean_groundedness", "mean_factuality"]
     return {
-        k: round(
-            sum(s[k] for s in score_list if k in s) / len(score_list), 4
-        )
+        k: round(sum(s[k] for s in score_list if k in s) / len(score_list), 4)
         for k in keys
         if any(k in s for s in score_list)
     }

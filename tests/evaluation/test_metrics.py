@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import math
-
 import pytest
 
 from app.evaluation.metrics import (
@@ -36,10 +34,10 @@ class TestPrecisionRecallF1:
         gold = {"a", "b", "c"}
         pred = {"a", "d"}
         p, r, f = precision_recall_f1(gold, pred)
-        assert p == pytest.approx(0.5)   # 1/2 pred correct
-        assert r == pytest.approx(1/3)   # 1/3 gold found
+        assert p == pytest.approx(0.5)  # 1/2 pred correct
+        assert r == pytest.approx(1 / 3)  # 1/3 gold found
         # F1 = 2*(0.5*(1/3))/(0.5+(1/3))
-        expected_f = 2 * (0.5 * (1/3)) / (0.5 + (1/3))
+        expected_f = 2 * (0.5 * (1 / 3)) / (0.5 + (1 / 3))
         assert f == pytest.approx(expected_f)
 
     def test_empty_gold(self):
@@ -75,7 +73,7 @@ class TestPrecisionAtK:
     def test_k_larger_than_pred(self):
         gold = {"a"}
         pred = ["a", "b"]
-        assert precision_at_k(gold, pred, k=10) == pytest.approx(1/2)
+        assert precision_at_k(gold, pred, k=10) == pytest.approx(1 / 2)
 
     def test_k_zero_returns_zero(self):
         gold = {"a"}
@@ -118,16 +116,16 @@ class TestAlignClaims:
         pred = []
         pairs = align_claims(gold, pred)
         assert len(pairs) == 1
-        assert pairs[0][0] is not None   # gold present
-        assert pairs[0][1] is None       # no pred match → missing
+        assert pairs[0][0] is not None  # gold present
+        assert pairs[0][1] is None  # no pred match → missing
 
     def test_unmatched_pred_is_spurious(self):
         gold = []
         pred = [{"claim_text": "Some hallucinated claim", "claim_type": "other"}]
         pairs = align_claims(gold, pred)
         assert len(pairs) == 1
-        assert pairs[0][0] is None       # no gold → spurious
-        assert pairs[0][1] is not None   # pred present
+        assert pairs[0][0] is None  # no gold → spurious
+        assert pairs[0][1] is not None  # pred present
 
     def test_empty_both(self):
         pairs = align_claims([], [])

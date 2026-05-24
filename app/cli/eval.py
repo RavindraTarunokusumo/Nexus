@@ -149,7 +149,9 @@ def eval_run(
     dataset_version: int = typer.Option(1, "--version", "-v"),
     dataset_path: Path = typer.Option(..., "--path", help="Path to the gold-set YAML."),
     sut_model: Optional[str] = typer.Option(None, "--sut-model", help="Override T2 model."),
-    judge_model: Optional[str] = typer.Option(None, "--judge-model", help="Override T3 judge model."),
+    judge_model: Optional[str] = typer.Option(
+        None, "--judge-model", help="Override T3 judge model."
+    ),
     note: Optional[str] = typer.Option(None, "--note"),
     max_cost: float = typer.Option(1.0, "--max-cost", help="Budget gate in USD."),
     db_url: Optional[str] = typer.Option(None, "--db-url"),
@@ -176,8 +178,9 @@ def eval_run(
         )
 
     try:
-        prompt_sha = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"], text=True
+        prompt_sha = subprocess.check_output(  # noqa: S603
+            ["git", "rev-parse", "--short", "HEAD"],  # noqa: S607
+            text=True,
         ).strip()
     except Exception:
         prompt_sha = "unknown"
@@ -211,7 +214,9 @@ def eval_run(
         return
 
     typer.echo(f"\n✓ Eval run {result.run_id} [{result.status}]")
-    typer.echo(f"  Examples: {result.example_count}  Errors: {result.error_count}  Cost: ${result.total_cost_usd:.4f}")
+    typer.echo(
+        f"  Examples: {result.example_count}  Errors: {result.error_count}  Cost: ${result.total_cost_usd:.4f}"
+    )
     for k, v in result.aggregate_scores.items():
         typer.echo(f"  {k}: {v:.4f}" if isinstance(v, float) else f"  {k}: {v}")
 
@@ -261,7 +266,9 @@ def eval_show(
         "sut_model": run.sut_model,
         "judge_model": run.judge_model,
         "aggregate_scores": run.aggregate_scores,
-        "total_cost_usd": float(run.total_cost_usd),  # Numeric→Decimal from ORM; cast for json.dumps
+        "total_cost_usd": float(
+            run.total_cost_usd
+        ),  # Numeric→Decimal from ORM; cast for json.dumps
         "started_at": run.started_at.isoformat() if run.started_at else None,
         "per_example": results,
     }
@@ -331,7 +338,7 @@ def eval_diff(
     typer.echo(f"\nDiff: {run_a[:8]}… (A) vs {run_b[:8]}… (B)")
     typer.echo(f"{'Metric':<25} {'A':>8} {'B':>8} {chr(916):>8}")
     typer.echo("-" * 55)
-    deltas: dict[str, dict[str, float | None]] = output["deltas"]
+    deltas: dict[str, dict[str, float | None]] = output["deltas"]  # type: ignore[assignment]
     for k, vals in deltas.items():
         va = f"{vals['a']:.4f}" if vals["a"] is not None else "—"
         vb = f"{vals['b']:.4f}" if vals["b"] is not None else "—"
@@ -352,12 +359,20 @@ def eval_calibrate(
         typer.echo("No labels found in file.", err=True)
         raise typer.Exit(code=1)
 
-    judge_vals = [l["judge_match_status"] for l in labels]
-    human_vals = [l["human_match_status"] for l in labels]
+    judge_vals = [lbl["judge_match_status"] for lbl in labels]
+    human_vals = [lbl["human_match_status"] for lbl in labels]
     kappa = compute_kappa(judge_vals, human_vals)
 
-    judge_gnd: list[float] = [float(l["judge_groundedness"]) for l in labels if l.get("judge_groundedness") is not None]
-    human_gnd: list[float] = [float(l["human_groundedness"]) for l in labels if l.get("human_groundedness") is not None]
+    judge_gnd: list[float] = [
+        float(lbl["judge_groundedness"])
+        for lbl in labels
+        if lbl.get("judge_groundedness") is not None
+    ]
+    human_gnd: list[float] = [
+        float(lbl["human_groundedness"])
+        for lbl in labels
+        if lbl.get("human_groundedness") is not None
+    ]
     pearson_gnd = compute_pearson(judge_gnd, human_gnd) if len(judge_gnd) > 1 else None
 
     output = {

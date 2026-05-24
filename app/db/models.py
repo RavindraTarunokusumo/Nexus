@@ -238,7 +238,9 @@ class EvalRun(Base):
     completed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
     aggregate_scores: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    total_cost_usd: Mapped[float] = mapped_column(Numeric(precision=12, scale=6), nullable=False, default=0.0)
+    total_cost_usd: Mapped[float] = mapped_column(
+        Numeric(precision=12, scale=6), nullable=False, default=0.0
+    )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, default=_utcnow
