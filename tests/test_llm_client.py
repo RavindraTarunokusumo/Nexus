@@ -143,7 +143,7 @@ async def test_complete_json_4xx_raises_llm_error(client):
 
 
 @pytest.mark.asyncio
-async def test_complete_json_invalid_json_raises_schema_error(client):
+async def test_complete_json_invalid_json_raises_schema_error(client, fake_session_factory):
     openrouter_response = {
         "choices": [{"message": {"content": "not-json"}}],
         "usage": {"total_tokens": 10},
@@ -162,9 +162,12 @@ async def test_complete_json_invalid_json_raises_schema_error(client):
                 response_model=_SimpleOutput,
             )
 
+    agent_run = fake_session_factory.return_value.add.call_args[0][0]
+    assert agent_run.status == "schema_error"
+
 
 @pytest.mark.asyncio
-async def test_complete_json_schema_mismatch_raises_schema_error(client):
+async def test_complete_json_schema_mismatch_raises_schema_error(client, fake_session_factory):
     openrouter_response = {
         "choices": [{"message": {"content": '{"wrong_field": 123}'}}],
         "usage": {"total_tokens": 10},
@@ -182,6 +185,9 @@ async def test_complete_json_schema_mismatch_raises_schema_error(client):
                 user="u",
                 response_model=_SimpleOutput,
             )
+
+    agent_run = fake_session_factory.return_value.add.call_args[0][0]
+    assert agent_run.status == "schema_error"
 
 
 # ---------------------------------------------------------------------------
