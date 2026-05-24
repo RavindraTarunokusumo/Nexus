@@ -2,7 +2,9 @@
 
 Project: `Nexus`
 
-Follow the 7-Step Workflow strictly for feature implementation. Do not start implementation until Steps 1-5 are complete unless the user explicitly authorizes a different flow. Before editing, state which step you are on. Before finishing, confirm Step 6 and Step 7.
+**Follow the [Workflow](#workflow) strictly for feature implementation**. Do not start implementation until Steps 1-5 are complete. Before editing, show which step you are on. Before finishing, confirm Step 6 and Step 7. Finally, do Step 8 and 9 to wrap up the session.
+
+Any change made to `AGENTS.md` should also be applied to `CLAUDE.md`.
 
 ## Project Map
 
@@ -11,74 +13,61 @@ Follow the 7-Step Workflow strictly for feature implementation. Do not start imp
 - Patterns: [docs/patterns.md](docs/patterns.md)
 - Testing: [docs/testing.md](docs/testing.md)
 - Commands: [docs/commands.md](docs/commands.md)
+- CLI: [docs/cli.md](docs/cli.md)
 - Agent Harness: [docs/agent-harness.md](docs/agent-harness.md)
+- Insights: [docs/insights.md](docs/insights.md)
 - Full Index: [docs/index.md](docs/index.md)
 
 ## Code Graph / Repo Map
 
 This repo is indexed by **GitNexus** — see the GitNexus section below for all rules and resources.
 
-## 7-Step Workflow
+## Workflow
 
-1. **Preamble**
-   - Work in a dedicated local branch or worktree.
-   - Activate the project environment.
-   - Confirm repo status before editing.
+1. (Preamble) Ensure you're in a dedicated local branch/worktree under `.worktree/<session-name>` and activate the virtual environment `.venv` located in the root directory. Read the `docs/insights.md` file and the [Workflow Rules](#workflow-rules).
+2. (GitNexus) Read the [GitNexus](#gitnexus--code-intelligence) section at the start of every session.
+3. (Planning) Brainstorm implementation plan and spec using the `/brainstorming` skill; read the docs (see [Project Map](#project-map)) and use GitNexus as your primary means to understand the codebase.
+4. (Implementing) After you get permission from user, log tasks and sub-items in `TODO.md` first before you start, then use the `/subagent-driven-development` skill to implement the tasks.
+5. (Commit) Run `pre-commit run --all-files` before each commit and attach a git note afterwards using the [template](.github/git_notes_template.md). Cross each sub-items and items once done.
+6. (Pre-PR) Once every items are crossed, do the [Pre-PR](#pre-pr) workflow.
+7. (Submit PR) Finally, follow the instructions in the [Submit PR](#submit-pr) workflow and notify the user once every step have been completed.
+8. (Post-PR) Archive completed TODO items from `TODO.md` into `docs/iterations/archive/` and ensure each subitem in the TODO are tagged with the commmit hash and each session are tagged with the merge ID. `TODO.md` should only contain **active or future** work only.
+9. (Reflection) Conclude the session by doing the [Reflection](#reflection) exercise. After receiving confirmation from the user, delete the worktree and branch.
 
-2. **Repo Map**
-   - Read `gitnexus://repo/Nexus/context` — confirms index freshness and shows clusters/flows.
-   - Use `gitnexus_query({query: "concept"})` to find relevant execution flows.
-   - Use docs and graph output to understand the relevant area before reading files.
-
-3. **Planning**
-   - Read `CLAUDE.md`, `docs/index.md`, and relevant technical docs.
-   - Use the `brainstorming` skill for implementation planning if available.
-   - Produce a concise plan and scope.
-   - Do not edit until the plan is accepted unless the user explicitly granted autonomous execution.
-
-4. **Implementation**
-   - Log tasks and sub-items in `TODO.md` before editing.
-   - Use the `subagent-driven-development` skill where applicable.
-   - Keep edits focused.
-
-5. **Commit**
-   - Run pre-commit checks before each commit.
-   - Each meaningful TODO sub-item should land as its own commit.
-   - Use specific staging; never use `git add -A`.
-   - Attach a git note using `.github/git_notes_template.md`.
-   - Mark completed TODO sub-items with the commit hash.
-
-6. **Pre-PR**
-   - Run the `simplify` skill if available.
-   - Run the `doc-updater` skill or subagent if available.
-   - Invoke `test-plan-writer` if behavior, state, API, tests, or architecture changed.
-   - Invoke `security-review` if the change touches auth, secrets, network calls, privileged operations, user input, money movement, broker/payment logic, or security-sensitive architecture.
-   - Run full validation.
-
-7. **Submit PR**
-   - Use `.github/pull_request_template.md`.
-   - Fill out summary, scope, test plan, risk, rollback, docs, backlog, and targeted UI checks.
-   - Address automated review with the `receiving-code-review` skill if available.
-   - Notify the user when all steps are complete.
-
-*Once everything is done: Do [Post-PR](#post-pr)*
-
-## Workflow Rules
+### Workflow Rules
 
 1. Every TODO sub-item should land as its own commit.
-2. Any extension or modification to the task must be logged in `TODO.md`.
+2. Any extension or modification to the task should be logged in the TODO.
 3. Use specific staging, never `git add -A`.
+4. Never force-push, reset `--hard`, merge or amend unless explicitly asked.
+5. Keep comments sparse, naming clear, abstractions minimal, and avoid compatibility shims.
 
-## Post-PR
+### Pre-PR
 
-- `TODO.md` contains **active or future** work only.
-- Archive completed TODO items from `TODO.md` into `docs/iterations/archive/`.
-- Each subitem in the TODO must be tagged with the commmit hash and each session must be tagged with the merge ID.
+Use the following as the final steps before submitting a PR:
+
+- `/simplify` (skill)
+- `doc-updater` (subagent)
+
+**Invoke the following subagents IF changes affect security or significant architectural changes (or explicitly stated). Always cite your justification on why you decide to invoke them:**
+
+- `test-plan-writer` (subagent)
+- `security-review` (skill)
+
+### Submit PR
+
+- Fill out the **[Template](.github/pull_request_template.md)**.
+- Submit the PR and wait for about 20m for the GitHub Copilot Code Review agent to finish writing the reviews.
+- Use the `/receiving-code-review` skill to address the issues in the Copilot Code Review.
+
+## Reflection
+
+After every session completion, you reflect on how the workflow pertaining to the workflow and agent harness - the commands you executed (and which failed consistently), the tools you used, skills invoked, MCP accessed, etc. **Do not include anything feature-specific**. For example, when the Graphify output is too verbose or if certain powershell commands keeps failing. This is not about the features you implemented, but about *how* you implemented them. Write this down in [Insights](docs/insights.md) and then report it to the user in chat. Wait until user gives explicit permission to conclude the session.
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **Nexus** (2007 symbols, 3023 relationships, 61 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **Nexus** (2230 symbols, 3366 relationships, 66 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
