@@ -11,6 +11,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.routes_chat import router as chat_router
+from app.api.routes_chat_sessions import router as chat_sessions_router
 from app.api.routes_claims import router as claims_router
 from app.api.routes_documents import router as documents_router
 from app.api.routes_ingestion import router as ingestion_router
@@ -124,16 +125,18 @@ async def clean_db(async_engine):
 # ---------------------------------------------------------------------------
 
 
-def _build_app(async_engine, session_factory, embedder=None) -> FastAPI:
+def _build_app(async_engine, session_factory, embedder=None, memory_graph=None) -> FastAPI:
     test_app = FastAPI()
     test_app.state.engine = async_engine
     test_app.state.session_factory = session_factory
     test_app.state.embedder = embedder
+    test_app.state.memory_graph = memory_graph
     test_app.include_router(sources_router)
     test_app.include_router(ingestion_router)
     test_app.include_router(documents_router)
     test_app.include_router(claims_router)
     test_app.include_router(chat_router)
+    test_app.include_router(chat_sessions_router)
     return test_app
 
 

@@ -1,0 +1,120 @@
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+
+export type ApiError = {
+  status: number | null
+  message: string
+}
+
+export type ChatSessionSummary = {
+  id: string
+  title: string | null
+  status: 'active' | 'archived'
+  created_at: string
+  updated_at: string
+  message_count: number
+  last_message_preview: string | null
+}
+
+export type ChatCitation = {
+  document_id: string
+  span_id: string
+  document_title: string | null
+  url: string | null
+  score: number
+  claim_ids: string[]
+}
+
+export type ChatMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  created_at: string
+  run_id?: string
+  citations?: ChatCitation[]
+  retrieved_context_count?: number
+  tokens_used?: number
+  cost_estimate_usd?: number
+}
+
+export type ChatSessionDetail = ChatSessionSummary & {
+  messages: ChatMessage[]
+}
+
+export type SendMessageResponse = {
+  session: ChatSessionSummary
+  user_message: ChatMessage
+  assistant_message: ChatMessage
+}
+
+class ApiCallError extends Error {
+  readonly apiError: ApiError
+  constructor(apiError: ApiError, message: string) {
+    super(message)
+    this.apiError = apiError
+  }
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      headers: { 'Content-Type': 'application/json', ...init?.headers },
+      ...init,
+    })
+  } catch {
+    throw new ApiCallError({ status: null, message: 'Network error — is the server running?' }, 'Network error')
+  }
+
+  if (!response.ok) {
+    let message = `HTTP ${response.status}`
+    try {
+      const body = (await response.json()) as { detail?: string }
+      if (body.detail) message = body.detail
+    } catch {
+      // ignore parse errors
+    }
+    throw new ApiCallError({ status: response.status, message }, message)
+  }
+
+  return response.json() as Promise<T>
+}
+
+export function normalizeApiError(err: unknown): ApiError {
+  if (err instanceof ApiCallError) return err.apiError
+  if (err instanceof Error) return { status: null, message: err.message }
+  return { status: null, message: 'Unknown error' }
+}
+
+export const api = {
+  listSessions(status: 'active' | 'archived' = 'active', limit = 30): Promise<ChatSessionSummary[]> {
+    return request(`/chat/sessions?status=${status}&limit=${limit}`)
+  },
+
+  getSession(id: string): Promise<ChatSessionDetail> {
+    return request(`/chat/sessions/${id}`)
+  },
+
+  createSession(title?: string): Promise<ChatSessionSummary> {
+    return request('/chat/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ title: title ?? null }),
+    })
+  },
+
+  sendMessage(sessionId: string, content: string, topK = 8): Promise<SendMessageResponse> {
+    return request(`/chat/sessions/${sessionId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ content, top_k: topK }),
+    })
+  },
+
+  patchSession(
+    id: string,
+    patch: { title?: string; status?: 'active' | 'archived' },
+  ): Promise<ChatSessionSummary> {
+    return request(`/chat/sessions/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    })
+  },
+}

@@ -1,6 +1,6 @@
 # Database / Persistence
 
-> **Phase 3 Status: Implemented** — migration 0001 creates all 8 tables; migration 0002 extends `agent_runs` and `documents` with correlation/timestamp columns and adds `span_extractions`; migration 0003 adds the 3 eval tables. `sources`, `documents`, `spans`, `claims`, `claim_evidence`, `agent_runs`, and `span_extractions` are actively populated by the pipeline. `eval_datasets`, `eval_runs`, and `eval_results` are populated by the `nexus eval` CLI.
+> **Phase 3 Status: Implemented** — migration 0001 creates all 8 tables; migration 0002 extends `agent_runs` and `documents` with correlation/timestamp columns and adds `span_extractions`; migration 0003 adds the 3 eval tables; migration 0004 adds `chat_sessions` and `chat_messages`. `sources`, `documents`, `spans`, `claims`, `claim_evidence`, `agent_runs`, and `span_extractions` are actively populated by the pipeline. `eval_datasets`, `eval_runs`, and `eval_results` are populated by the `nexus eval` CLI. `chat_sessions` and `chat_messages` are populated by `POST /chat/sessions/{id}/messages`.
 
 The persistence layer is PostgreSQL 16 with the `pgvector` extension. SQLAlchemy 2.x async ORM + asyncpg is used throughout. Alembic manages migrations.
 
@@ -29,6 +29,7 @@ alembic upgrade head
 | 0001 | Initial schema: all 8 tables + `CREATE EXTENSION IF NOT EXISTS vector` |
 | 0002 | Observability: adds `run_id`, `document_id`, `span_id`, `prompt_tokens`, `completion_tokens` to `agent_runs`; adds `chunked_at`, `embedded_at`, `extraction_started_at`, `extraction_completed_at` to `documents`; creates `span_extractions` table |
 | 0003 | Evaluation: creates `eval_datasets`, `eval_runs`, `eval_results` tables |
+| 0004 | Chat sessions: creates `chat_sessions` and `chat_messages` tables with status/updated_at indexes on sessions and compound (session_id, created_at, id) index on messages |
 
 ## Schema
 
@@ -248,6 +249,43 @@ One row per (run, example) pair. Stores raw SUT output, judge verdict, and deter
 | created_at | TIMESTAMPTZ | Auto-set |
 
 No explicit indexes beyond the primary key and FK.
+
+### `chat_sessions`
+
+Persistent multi-turn chat sessions. Each session has a thread ID used by the LangGraph `AsyncPostgresSaver` checkpointer.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key; also used as LangGraph `thread_id` |
+| title | TEXT | Nullable; auto-derived from first user message (≤60 chars) |
+| status | TEXT | `active` or `archived`; default `active` |
+| created_at | TIMESTAMPTZ | Auto-set |
+| updated_at | TIMESTAMPTZ | Updated on each new message |
+| archived_at | TIMESTAMPTZ | Nullable; set when status transitions to `archived` |
+
+Indexes: `status`, `updated_at DESC`.
+
+### `chat_messages`
+
+Individual turns within a chat session, both user and assistant roles.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| session_id | UUID | FK → chat_sessions (CASCADE) |
+| role | TEXT | `user` or `assistant` |
+| content | TEXT | Message text |
+| run_id | UUID | Nullable; links to `agent_runs` for the LLM call |
+| citations_json | JSONB | Nullable; array of `{document_id, span_id, document_title, url, score, claim_ids}` |
+| retrieved_context_count | INTEGER | Nullable; number of spans retrieved for this turn |
+| prompt_tokens | INTEGER | Nullable |
+| completion_tokens | INTEGER | Nullable |
+| tokens_used | INTEGER | Nullable; `prompt_tokens + completion_tokens` |
+| cost_estimate_usd | FLOAT | Nullable |
+| error | TEXT | Nullable; populated if the assistant turn failed |
+| created_at | TIMESTAMPTZ | Auto-set |
+
+Indexes: `(session_id, created_at, id)` compound, `run_id`.
 
 ## Core Invariant
 
