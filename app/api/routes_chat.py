@@ -367,15 +367,27 @@ async def send_message(
             detail=f"Session turn failed: {exc}",
         ) from exc
 
+    if result.get("error"):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Chat answer failed: {result['error']}",
+        )
+
     tokens = int(result.get("tokens_used") or 0)
     cost = round(tokens * _COST_PER_TOKEN_USD, 6)
     now = _utcnow()
 
     async with request.app.state.session_factory() as db:
-        # Reload session inside transaction to check title
+        # Reload inside transaction — re-check archived status to close the race
+        # between the pre-flight check above and this write.
         session = await db.get(ChatSession, session_id)
         if session is None:
-            raise HTTPException(status_code=404, detail="Session not found.")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
+        if session.status == "archived":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot send messages to an archived session.",
+            )
 
         user_msg = ChatMessage(
             session_id=session_id,

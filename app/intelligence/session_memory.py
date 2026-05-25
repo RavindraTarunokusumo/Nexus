@@ -30,9 +30,12 @@ class _MemoryState(TypedDict):
     answer_result: dict[str, Any] | None
 
 
-def _to_psycopg_url(asyncpg_url: str) -> str:
-    """Convert postgresql+asyncpg://... to postgresql://... for psycopg3."""
-    return asyncpg_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+def _to_psycopg_url(db_url: str) -> str:
+    """Normalise any supported SQLAlchemy DB URL to a bare psycopg3 URL."""
+    for dialect in ("postgresql+asyncpg://", "postgresql+psycopg2://"):
+        if db_url.startswith(dialect):
+            return "postgresql://" + db_url[len(dialect) :]
+    return db_url
 
 
 def _derive_title(text: str, max_len: int = 60) -> str:
