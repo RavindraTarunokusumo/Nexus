@@ -2,8 +2,8 @@
 
 **Branch:** `claude/workflow-implementation-OZJ8O`
 **PR:** [#13](https://github.com/RavindraTarunokusumo/Nexus/pull/13)
-**Merge commit:** [pending]
-**Merged at:** [pending]
+**Merge commit:** `dc06b13bef52c8024b3f834f40eada7656a8221b`
+**Merged at:** 2026-05-25
 **Merged by:** RavindraTarunokusumo
 
 ## Summary
@@ -31,3 +31,15 @@ Implemented two paired specs: persistent multi-turn chat sessions (backend) and 
 
 - Backend: 226 passed (4 pre-existing embedder failures in network-restricted remote env)
 - Frontend: 23 passed, clean TypeScript build
+
+## Post-Merge Review Fixes (Copilot Code Review)
+
+Six findings addressed in commits `a691fcd`–`9e8e9b4`:
+
+- `a691fcd` — `Composer.tsx`: replaced `React.KeyboardEvent` with named `type KeyboardEvent` import (TypeScript namespace error under `jsx:react-jsx`)
+- `0b942ed` — `App.tsx`: stashed first message in `pendingMessageRef`; `useEffect` dispatches it after `activeId` is set by session creation
+- `fa48717` — `useSessions.ts`: `setError(null)` at start of `load()` to clear stale errors on success
+- `db86e9e` — `client.test.ts`: `fetchMock.mockReset()` in `beforeEach` to prevent call-history leakage
+- `312fa08` — `routes_chat_sessions.py`: replaced N+1 `_session_summary` calls in `list_sessions` with a single correlated-subquery SELECT
+- `e7fc7ab` — `ChatPanel.tsx`: disabled `Composer` when `loading || !detail` to prevent dropped messages during session fetch
+- `9e8e9b4` — Docs: updated `architecture.md`, `database.md`, `patterns.md` for all Phase 3 additions
