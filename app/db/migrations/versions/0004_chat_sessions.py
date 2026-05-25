@@ -81,5 +81,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.drop_index("ix_chat_messages_run_id", table_name="chat_messages")
+    op.drop_index("ix_chat_messages_session_created", table_name="chat_messages")
     op.drop_table("chat_messages")
+    op.drop_index("ix_chat_sessions_updated_at_desc", table_name="chat_sessions")
+    op.drop_index("ix_chat_sessions_status", table_name="chat_sessions")
     op.drop_table("chat_sessions")

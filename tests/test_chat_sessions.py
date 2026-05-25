@@ -1,87 +1,32 @@
-"""Integration tests for chat session memory API endpoints."""
+"""Tests for chat session memory API: session CRUD and message flow."""
 
 from __future__ import annotations
 
 import uuid
 
 import pytest
-from fastapi import FastAPI
-from httpx import ASGITransport, AsyncClient
-
-from app.api.routes_chat_sessions import router as chat_sessions_router
+from httpx import AsyncClient
 
 # ---------------------------------------------------------------------------
-# Helpers / fixtures
+# Helpers
 # ---------------------------------------------------------------------------
 
-INSUFFICIENT = "I do not have enough evidence to answer that from the current corpus."
 
-
-class _FakeMemoryGraph:
-    """Minimal stub for app.state.memory_graph in tests."""
-
-    def __init__(self, result: dict | None = None, raise_exc: Exception | None = None) -> None:
-        self._result = result or {
-            "answer": "Test answer.",
-            "citations": [],
-            "context_blocks": [],
-            "run_id": uuid.uuid4(),
-            "tokens_used": 50,
-            "error": None,
-        }
-        self._raise = raise_exc
-        self.calls: list[dict] = []
-
-    async def ainvoke(self, state: dict, config: dict) -> dict:
-        self.calls.append({"state": state, "config": config})
-        if self._raise:
-            raise self._raise
-        return {**state, "chat_result": self._result, "messages": state["messages"]}
-
-
-def _build_sessions_app(
-    async_engine,
-    session_factory,
-    memory_graph=None,
-) -> FastAPI:
-    app = FastAPI()
-    app.state.engine = async_engine
-    app.state.session_factory = session_factory
-    app.state.embedder = object()  # truthy non-None sentinel
-    app.state.memory_graph = memory_graph
-    app.include_router(chat_sessions_router)
-    return app
-
-
-@pytest.fixture
-def fake_graph():
-    return _FakeMemoryGraph()
-
-
-@pytest.fixture
-def fake_graph_insufficient():
-    return _FakeMemoryGraph(
-        result={
-            "answer": INSUFFICIENT,
-            "citations": [],
-            "context_blocks": [],
-            "run_id": uuid.uuid4(),
-            "tokens_used": 0,
-            "error": None,
-        }
-    )
+def _session_payload(title: str | None = None) -> dict:
+    payload: dict = {}
+    if title is not None:
+        payload["title"] = title
+    return payload
 
 
 # ---------------------------------------------------------------------------
-# Session CRUD tests
+# Session creation
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_create_session_returns_201(async_engine, session_factory):
-    app = _build_sessions_app(async_engine, session_factory)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        resp = await c.post("/chat/sessions", json={})
+async def test_create_session_returns_201(client_with_embedder: AsyncClient):
+    resp = await client_with_embedder.post("/chat/sessions", json={})
     assert resp.status_code == 201
     data = resp.json()
     assert uuid.UUID(data["id"])
@@ -91,179 +36,302 @@ async def test_create_session_returns_201(async_engine, session_factory):
 
 
 @pytest.mark.asyncio
-async def test_create_session_with_title(async_engine, session_factory):
-    app = _build_sessions_app(async_engine, session_factory)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        resp = await c.post("/chat/sessions", json={"title": "My Session"})
+async def test_create_session_with_title(client_with_embedder: AsyncClient):
+    resp = await client_with_embedder.post("/chat/sessions", json={"title": "My session"})
     assert resp.status_code == 201
-    assert resp.json()["title"] == "My Session"
+    assert resp.json()["title"] == "My session"
+
+
+# ---------------------------------------------------------------------------
+# Session listing
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_list_sessions_empty(async_engine, session_factory):
-    app = _build_sessions_app(async_engine, session_factory)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        resp = await c.get("/chat/sessions")
+async def test_list_sessions_empty(client_with_embedder: AsyncClient):
+    resp = await client_with_embedder.get("/chat/sessions")
     assert resp.status_code == 200
     assert resp.json() == []
 
 
 @pytest.mark.asyncio
-async def test_list_sessions_filters_by_status(async_engine, session_factory):
-    app = _build_sessions_app(async_engine, session_factory)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        s1 = (await c.post("/chat/sessions", json={"title": "Active"})).json()
-        # Archive it
-        await c.patch(f"/chat/sessions/{s1['id']}", json={"status": "archived"})
+async def test_list_sessions_returns_active_by_default(client_with_embedder: AsyncClient):
+    await client_with_embedder.post("/chat/sessions", json={"title": "A"})
+    await client_with_embedder.post("/chat/sessions", json={"title": "B"})
 
-        active = await c.get("/chat/sessions?status=active")
-        archived = await c.get("/chat/sessions?status=archived")
-
-    assert active.json() == []
-    assert len(archived.json()) == 1
-    assert archived.json()[0]["id"] == s1["id"]
+    resp = await client_with_embedder.get("/chat/sessions")
+    assert resp.status_code == 200
+    titles = [s["title"] for s in resp.json()]
+    assert "A" in titles
+    assert "B" in titles
 
 
 @pytest.mark.asyncio
-async def test_get_session_404(async_engine, session_factory):
-    app = _build_sessions_app(async_engine, session_factory)
-    missing = str(uuid.uuid4())
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        resp = await c.get(f"/chat/sessions/{missing}")
+async def test_list_sessions_archived_filter(client_with_embedder: AsyncClient):
+    r = await client_with_embedder.post("/chat/sessions", json={"title": "To archive"})
+    session_id = r.json()["id"]
+    await client_with_embedder.patch(f"/chat/sessions/{session_id}", json={"status": "archived"})
+
+    active = await client_with_embedder.get("/chat/sessions?status=active")
+    archived = await client_with_embedder.get("/chat/sessions?status=archived")
+
+    assert not any(s["id"] == session_id for s in active.json())
+    assert any(s["id"] == session_id for s in archived.json())
+
+
+# ---------------------------------------------------------------------------
+# Session detail
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_session_not_found(client_with_embedder: AsyncClient):
+    resp = await client_with_embedder.get(f"/chat/sessions/{uuid.uuid4()}")
     assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_get_session_returns_empty_messages(async_engine, session_factory):
-    app = _build_sessions_app(async_engine, session_factory)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        session_id = (await c.post("/chat/sessions", json={})).json()["id"]
-        resp = await c.get(f"/chat/sessions/{session_id}")
+async def test_get_session_returns_messages(client_with_embedder: AsyncClient):
+    r = await client_with_embedder.post("/chat/sessions", json={})
+    session_id = r.json()["id"]
+
+    resp = await client_with_embedder.get(f"/chat/sessions/{session_id}")
     assert resp.status_code == 200
     data = resp.json()
     assert data["id"] == session_id
     assert data["messages"] == []
 
 
-@pytest.mark.asyncio
-async def test_patch_session_title_and_status(async_engine, session_factory):
-    app = _build_sessions_app(async_engine, session_factory)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        session_id = (await c.post("/chat/sessions", json={})).json()["id"]
-        resp = await c.patch(
-            f"/chat/sessions/{session_id}", json={"title": "Renamed", "status": "archived"}
-        )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["title"] == "Renamed"
-    assert data["status"] == "archived"
-
-
 # ---------------------------------------------------------------------------
-# Send message tests
+# Session update (rename / archive)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_send_message_creates_user_and_assistant_rows(
-    async_engine, session_factory, fake_graph
-):
-    app = _build_sessions_app(async_engine, session_factory, memory_graph=fake_graph)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        session_id = (await c.post("/chat/sessions", json={})).json()["id"]
-        resp = await c.post(
-            f"/chat/sessions/{session_id}/messages", json={"content": "What changed?"}
-        )
+async def test_patch_session_rename(client_with_embedder: AsyncClient):
+    r = await client_with_embedder.post("/chat/sessions", json={})
+    session_id = r.json()["id"]
+
+    resp = await client_with_embedder.patch(
+        f"/chat/sessions/{session_id}", json={"title": "New name"}
+    )
     assert resp.status_code == 200
-    data = resp.json()
-    assert data["user_message"]["role"] == "user"
-    assert data["user_message"]["content"] == "What changed?"
-    assert data["assistant_message"]["role"] == "assistant"
-    assert data["assistant_message"]["content"] == "Test answer."
+    assert resp.json()["title"] == "New name"
 
 
 @pytest.mark.asyncio
-async def test_send_message_derives_title_from_first_message(
-    async_engine, session_factory, fake_graph
-):
-    app = _build_sessions_app(async_engine, session_factory, memory_graph=fake_graph)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        session_id = (await c.post("/chat/sessions", json={})).json()["id"]
-        await c.post(
-            f"/chat/sessions/{session_id}/messages",
-            json={"content": "What changed in LLM releases?"},
-        )
-        detail = await c.get(f"/chat/sessions/{session_id}")
-    assert detail.json()["title"] == "What changed in LLM releases?"
+async def test_patch_session_archive(client_with_embedder: AsyncClient):
+    r = await client_with_embedder.post("/chat/sessions", json={})
+    session_id = r.json()["id"]
+
+    resp = await client_with_embedder.patch(
+        f"/chat/sessions/{session_id}", json={"status": "archived"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "archived"
+    assert resp.json()["archived_at"] is not None
 
 
 @pytest.mark.asyncio
-async def test_send_message_title_truncated_at_60_chars(async_engine, session_factory, fake_graph):
-    app = _build_sessions_app(async_engine, session_factory, memory_graph=fake_graph)
-    long_q = "A" * 80
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        session_id = (await c.post("/chat/sessions", json={})).json()["id"]
-        await c.post(f"/chat/sessions/{session_id}/messages", json={"content": long_q})
-        detail = await c.get(f"/chat/sessions/{session_id}")
-    title = detail.json()["title"]
-    assert title.endswith("...")
-    assert len(title) == 63  # 60 chars + "..."
+async def test_patch_session_not_found(client_with_embedder: AsyncClient):
+    resp = await client_with_embedder.patch(f"/chat/sessions/{uuid.uuid4()}", json={"title": "x"})
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Messages
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_send_message_to_archived_session_returns_409(async_engine, session_factory):
-    app = _build_sessions_app(async_engine, session_factory)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        session_id = (await c.post("/chat/sessions", json={})).json()["id"]
-        await c.patch(f"/chat/sessions/{session_id}", json={"status": "archived"})
-        resp = await c.post(f"/chat/sessions/{session_id}/messages", json={"content": "Hello?"})
+async def test_send_message_archived_session_returns_409(client_with_embedder: AsyncClient):
+    r = await client_with_embedder.post("/chat/sessions", json={})
+    session_id = r.json()["id"]
+    await client_with_embedder.patch(f"/chat/sessions/{session_id}", json={"status": "archived"})
+
+    resp = await client_with_embedder.post(
+        f"/chat/sessions/{session_id}/messages",
+        json={"content": "Hello?"},
+    )
     assert resp.status_code == 409
 
 
 @pytest.mark.asyncio
-async def test_send_message_no_memory_graph_returns_503(async_engine, session_factory):
-    app = _build_sessions_app(async_engine, session_factory, memory_graph=None)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        session_id = (await c.post("/chat/sessions", json={})).json()["id"]
-        resp = await c.post(f"/chat/sessions/{session_id}/messages", json={"content": "Hello?"})
+async def test_send_message_session_not_found(client_with_embedder: AsyncClient):
+    resp = await client_with_embedder.post(
+        f"/chat/sessions/{uuid.uuid4()}/messages",
+        json={"content": "Hello?"},
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_send_message_persists_user_and_assistant(
+    monkeypatch, client_with_embedder: AsyncClient
+):
+    fake_result = {
+        "answer": "Grounded answer.",
+        "citations": [],
+        "run_id": uuid.uuid4(),
+        "tokens_used": 10,
+        "prompt_tokens": 5,
+        "completion_tokens": 5,
+        "retrieved_context_count": 0,
+        "error": None,
+    }
+
+    async def fake_run_session_turn(**kwargs):
+        return fake_result
+
+    monkeypatch.setattr(
+        "app.api.routes_chat.run_session_turn",
+        fake_run_session_turn,
+    )
+
+    r = await client_with_embedder.post("/chat/sessions", json={})
+    session_id = r.json()["id"]
+
+    resp = await client_with_embedder.post(
+        f"/chat/sessions/{session_id}/messages",
+        json={"content": "What changed?"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["user_message"]["role"] == "user"
+    assert data["user_message"]["content"] == "What changed?"
+    assert data["assistant_message"]["role"] == "assistant"
+    assert data["assistant_message"]["content"] == "Grounded answer."
+    assert uuid.UUID(data["assistant_message"]["run_id"])
+
+
+@pytest.mark.asyncio
+async def test_send_first_message_derives_session_title(
+    monkeypatch, client_with_embedder: AsyncClient
+):
+    fake_result = {
+        "answer": "Answer.",
+        "citations": [],
+        "run_id": uuid.uuid4(),
+        "tokens_used": 5,
+        "prompt_tokens": 3,
+        "completion_tokens": 2,
+        "retrieved_context_count": 0,
+        "error": None,
+    }
+
+    async def fake_run_session_turn(**kwargs):
+        return fake_result
+
+    monkeypatch.setattr("app.api.routes_chat.run_session_turn", fake_run_session_turn)
+
+    r = await client_with_embedder.post("/chat/sessions", json={})
+    session_id = r.json()["id"]
+
+    await client_with_embedder.post(
+        f"/chat/sessions/{session_id}/messages",
+        json={"content": "What did the latest sources say?"},
+    )
+
+    detail = await client_with_embedder.get(f"/chat/sessions/{session_id}")
+    assert detail.json()["title"] == "What did the latest sources say?"
+
+
+@pytest.mark.asyncio
+async def test_send_message_memory_failure_returns_503(
+    monkeypatch, client_with_embedder: AsyncClient
+):
+    async def fake_run_session_turn(**kwargs):
+        raise RuntimeError("checkpointer unavailable")
+
+    monkeypatch.setattr("app.api.routes_chat.run_session_turn", fake_run_session_turn)
+
+    r = await client_with_embedder.post("/chat/sessions", json={})
+    session_id = r.json()["id"]
+
+    resp = await client_with_embedder.post(
+        f"/chat/sessions/{session_id}/messages",
+        json={"content": "What changed?"},
+    )
     assert resp.status_code == 503
 
 
 @pytest.mark.asyncio
-async def test_send_message_updates_message_count(async_engine, session_factory, fake_graph):
-    app = _build_sessions_app(async_engine, session_factory, memory_graph=fake_graph)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        session_id = (await c.post("/chat/sessions", json={})).json()["id"]
-        await c.post(f"/chat/sessions/{session_id}/messages", json={"content": "Q1"})
-        resp = await c.get(f"/chat/sessions/{session_id}")
-    assert resp.json()["message_count"] == 2  # user + assistant
-
-
-@pytest.mark.asyncio
-async def test_session_detail_shows_transcript(async_engine, session_factory, fake_graph):
-    app = _build_sessions_app(async_engine, session_factory, memory_graph=fake_graph)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        session_id = (await c.post("/chat/sessions", json={})).json()["id"]
-        await c.post(f"/chat/sessions/{session_id}/messages", json={"content": "Question"})
-        detail = await c.get(f"/chat/sessions/{session_id}")
-    msgs = detail.json()["messages"]
-    assert len(msgs) == 2
-    assert msgs[0]["role"] == "user"
-    assert msgs[1]["role"] == "assistant"
-
-
-@pytest.mark.asyncio
-async def test_insufficient_evidence_persisted_with_empty_citations(
-    async_engine, session_factory, fake_graph_insufficient
+async def test_send_message_failure_does_not_persist_messages(
+    monkeypatch, client_with_embedder: AsyncClient
 ):
-    app = _build_sessions_app(async_engine, session_factory, memory_graph=fake_graph_insufficient)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        session_id = (await c.post("/chat/sessions", json={})).json()["id"]
-        resp = await c.post(
-            f"/chat/sessions/{session_id}/messages", json={"content": "Unknown topic"}
-        )
+    async def fake_run_session_turn(**kwargs):
+        raise RuntimeError("checkpointer unavailable")
+
+    monkeypatch.setattr("app.api.routes_chat.run_session_turn", fake_run_session_turn)
+
+    r = await client_with_embedder.post("/chat/sessions", json={})
+    session_id = r.json()["id"]
+
+    await client_with_embedder.post(
+        f"/chat/sessions/{session_id}/messages",
+        json={"content": "What changed?"},
+    )
+
+    detail = await client_with_embedder.get(f"/chat/sessions/{session_id}")
+    assert detail.json()["messages"] == []
+
+
+@pytest.mark.asyncio
+async def test_send_message_error_dict_returns_503_and_no_persistence(
+    monkeypatch, client_with_embedder: AsyncClient
+):
+    async def fake_run_session_turn(**kwargs):
+        return {"error": "graph failed", "answer": None}
+
+    monkeypatch.setattr("app.api.routes_chat.run_session_turn", fake_run_session_turn)
+
+    r = await client_with_embedder.post("/chat/sessions", json={})
+    session_id = r.json()["id"]
+
+    resp = await client_with_embedder.post(
+        f"/chat/sessions/{session_id}/messages",
+        json={"content": "Hello"},
+    )
+    assert resp.status_code == 503
+
+    detail = await client_with_embedder.get(f"/chat/sessions/{session_id}")
+    assert detail.json()["messages"] == []
+
+
+@pytest.mark.asyncio
+async def test_session_message_count_updates(monkeypatch, client_with_embedder: AsyncClient):
+    fake_result = {
+        "answer": "A.",
+        "citations": [],
+        "run_id": uuid.uuid4(),
+        "tokens_used": 5,
+        "prompt_tokens": 3,
+        "completion_tokens": 2,
+        "retrieved_context_count": 0,
+        "error": None,
+    }
+
+    async def fake_run_session_turn(**kwargs):
+        return fake_result
+
+    monkeypatch.setattr("app.api.routes_chat.run_session_turn", fake_run_session_turn)
+
+    r = await client_with_embedder.post("/chat/sessions", json={})
+    session_id = r.json()["id"]
+
+    await client_with_embedder.post(f"/chat/sessions/{session_id}/messages", json={"content": "Q1"})
+    await client_with_embedder.post(f"/chat/sessions/{session_id}/messages", json={"content": "Q2"})
+
+    sessions = await client_with_embedder.get("/chat/sessions")
+    session = next(s for s in sessions.json() if s["id"] == session_id)
+    assert session["message_count"] == 4  # 2 user + 2 assistant
+
+
+@pytest.mark.asyncio
+async def test_existing_single_turn_endpoint_unchanged(client_with_embedder: AsyncClient):
+    """POST /chat/answer must still work unchanged."""
+    resp = await client_with_embedder.post("/chat/answer", json={"question": "What changed?"})
+    # No spans → insufficient evidence, but 200 (not 404 or 500)
     assert resp.status_code == 200
-    asst = resp.json()["assistant_message"]
-    assert INSUFFICIENT in asst["content"]
-    assert asst["citations"] == []
-    assert asst["tokens_used"] == 0
+    assert "evidence" in resp.json()["answer"].lower()

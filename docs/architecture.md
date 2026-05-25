@@ -1,6 +1,6 @@
 # Architecture
 
-> **Phase 3 Status: Claim extraction + observability + hybrid chatbot + LLM-as-a-Judge eval framework + chat session memory + React web UI implemented**
+> **Phase 3 Status: Claim extraction + observability + hybrid chatbot + LLM-as-a-Judge eval framework implemented**
 
 Nexus Lite is a private FastAPI application backed by PostgreSQL + pgvector, Redis, and local embeddings. The Phase 1 foundation covers source registration, document ingestion, and the full persistence schema.
 
@@ -20,10 +20,8 @@ Read [docs/specs/architecture.md](specs/architecture.md) for the full architectu
 | URL fetching / cleaning | httpx + trafilatura |
 | Cache / queue | Redis 7 |
 | Containers | Docker Compose (pgvector/pgvector:pg16, redis:7-alpine) |
-| LLM orchestration | LangGraph >= 0.2.0 + `langgraph-checkpoint-postgres` (Postgres checkpointer) |
+| LLM orchestration | LangGraph >= 0.2.0 |
 | LLM gateway | OpenRouter (T2: `deepseek/deepseek-v4-flash`) |
-| Session memory | `psycopg[binary,pool]` async pool → `AsyncPostgresSaver` LangGraph checkpointer |
-| Web UI | Vite + React 19 + TypeScript + Tailwind CSS 4 (workspace: `web/`) |
 
 ## Directory Layout
 
@@ -35,8 +33,9 @@ app/
     deps.py                # DbSession dependency (injects AsyncSession from request state)
     routes_sources.py      # GET/POST /sources, GET /sources/{id}
     routes_ingestion.py    # POST /ingest/rss/{source_id}, /ingest/url, /ingest/text
-    routes_chat.py         # POST /chat/answer
-    routes_chat_sessions.py  # POST/GET /chat/sessions, GET/POST/PATCH /chat/sessions/{id}[/messages]
+    routes_chat.py         # POST /chat/answer; POST /chat/sessions; GET /chat/sessions;
+                           #   GET /chat/sessions/{id}; POST /chat/sessions/{id}/messages;
+                           #   PATCH /chat/sessions/{id}
     routes_claims.py       # POST /documents/{id}/extract-claims, GET /claims
   observability/
     run_context.py         # asyncio-safe ContextVars (run_id, document_id, span_id);
@@ -48,7 +47,7 @@ app/
     tracer.py              # record_agent_run(), record_span_extraction(), mark_document_timestamp()
                            #   — all fire-and-forget, never raise
   db/
-    models.py              # SQLAlchemy ORM models (all 10 tables incl. ChatSession, ChatMessage)
+    models.py              # SQLAlchemy ORM models (all 10 tables)
     session.py             # make_engine / make_session_factory helpers
     migrations/
       env.py               # Alembic env wired to DATABASE_URL
@@ -56,15 +55,12 @@ app/
         0001_initial_schema.py  # All 8 tables + pgvector extension
         0002_observability.py   # Adds correlation ID columns to agent_runs/documents; new span_extractions table
         0003_evaluation.py      # Adds eval_datasets, eval_runs, eval_results tables
-        0004_chat_sessions.py   # Adds chat_sessions and chat_messages tables with indexes
+        0004_chat_sessions.py   # Adds chat_sessions and chat_messages tables
   ingestion/
     cleaner.py             # normalize_text, content_hash, normalize_url, extract_text
     rss.py                 # fetch_rss_entries (feedparser + async httpx)
     url_fetcher.py         # fetch_and_clean (httpx + trafilatura)
   intelligence/
-    session_memory.py      # LangGraph memory graph with AsyncPostgresSaver; _MemoryState TypedDict;
-                           #   make_memory_graph() factory; invoke_with_memory() entry point;
-                           #   conversation history injected as plain-text context per thread
     chat.py                # LangGraph chat answer graph (retrieve_spans → load_claims
                            #   → generate_answer → format_result); validates citation labels
                            #   against retrieved context; wraps graph in chat_run context
@@ -79,6 +75,8 @@ app/
                            #   wraps graph in extraction_run context; span_scope per span;
                            #   writes span_extractions rows; marks extraction timestamps;
                            #   run_with_context() entry point
+    session_memory.py      # run_session_turn() — LangGraph graph backed by AsyncPostgresSaver;
+                           #   thread_id = session_id; _to_psycopg_url(); _derive_title()
     prompts/
       chat_answer.py       # SYSTEM_PROMPT plus question/context prompt builder for grounded chat
       extract_claims.py    # SYSTEM_PROMPT, build_user_prompt, build_correction_prompt
@@ -116,26 +114,8 @@ tests/
   test_cli_db.py           # CLI DB reader unit tests (8 tests)
   test_chat_api.py         # Chat API integration tests
   test_chat_graph.py       # Chat graph integration tests
-  test_chat_sessions.py    # Chat session CRUD + send-message integration tests (15 tests)
   test_cli_render.py       # CLI render/formatter tests
   test_cli_e2e.py          # CLI end-to-end integration tests (10 tests)
-web/
-  vite.config.ts           # Vite + Vitest config (defineConfig from vitest/config)
-  src/
-    api/client.ts          # Typed fetch helpers; ApiError / ApiCallError; normalizeApiError
-    hooks/
-      useSessions.ts       # Session list, active selection, CRUD (create/rename/archive)
-      useChatSession.ts    # Per-session messages, send with optimistic pending bubble
-    components/
-      SessionSidebar.tsx   # Sidebar with "New chat" button and session list
-      ChatPanel.tsx        # Header (rename/archive), error banner, MessageList, Composer
-      MessageList.tsx      # Scroll-to-bottom list; "Thinking…" aria-live indicator
-      MessageBubble.tsx    # User (right/blue) vs assistant (white/border) with citations
-      CitationList.tsx     # Collapsible citation rows (title, score, host, shortId, claims)
-      Composer.tsx         # Textarea + Enter-submit; disabled while detail loading or archived
-    test/
-      client.test.ts       # 5 API client tests (fetch mock via vi.stubGlobal)
-      components.test.tsx  # 18 component tests (Vitest + Testing Library + jsdom)
 docker-compose.yml         # postgres (pgvector/pgvector:pg16), redis:7-alpine, app
 alembic.ini
 pyproject.toml
@@ -151,7 +131,11 @@ external source
 -> persist Document row
 -> chunking -> spans -> embeddings
 -> claim extraction (LangGraph, OpenRouter T2)
--> query answering (hybrid span + claim retrieval, LangGraph, OpenRouter T2)
+-> query answering:
+     single-turn  POST /chat/answer  (stateless, no session)
+     multi-turn   POST /chat/sessions/{id}/messages
+                    -> run_session_turn() (LangGraph + AsyncPostgresSaver checkpoint)
+                    -> persists chat_messages rows (user + assistant) atomically
 -> [future] brief synthesis
 ```
 
@@ -176,12 +160,12 @@ The `nexus` CLI uses a hybrid access strategy:
 | POST | /ingest/url | Fetch and ingest a single URL |
 | POST | /ingest/text | Ingest raw text directly |
 | POST | /search/spans | Semantic span search (query, top_k) |
-| POST | /chat/answer | Hybrid chatbot answer over embedded spans and active extracted claims |
+| POST | /chat/answer | Hybrid chatbot answer over embedded spans and active extracted claims (single-turn) |
 | POST | /chat/sessions | Create a new chat session |
-| GET | /chat/sessions | List sessions (status, limit, offset) |
-| GET | /chat/sessions/{id} | Get session detail with full message transcript |
-| POST | /chat/sessions/{id}/messages | Send a message; returns user + assistant rows |
-| PATCH | /chat/sessions/{id} | Update title, status, or archived_at |
+| GET | /chat/sessions | List sessions (`status`, `limit`, `offset` query params) |
+| GET | /chat/sessions/{id} | Session detail with full message transcript |
+| POST | /chat/sessions/{id}/messages | Send a user message and receive an assistant reply (persisted atomically) |
+| PATCH | /chat/sessions/{id} | Rename or archive a session |
 | POST | /documents/{id}/extract-claims | Run claim extraction for a document |
 | GET | /claims | List claims (filter by document_id, claim_type, status) |
 
@@ -223,23 +207,6 @@ Citation safety behavior: the model may reference only retrieved context labels 
 | 503 | OpenRouter unreachable |
 
 `GET /claims` query params: `document_id` (required UUID), `claim_type`, `status` (`active`\|`rejected`), `limit`, `offset`.
-
-### Chat session endpoints detail
-
-`POST /chat/sessions/{session_id}/messages`
-
-Request: `{"content": "...", "top_k": 8}`. Calls `invoke_with_memory` (LangGraph + Postgres checkpointer), persists user and assistant rows, derives title from first message (≤60 chars, collapsed whitespace).
-
-| Status | Meaning |
-|---|---|
-| 200 | Returns `{session, user_message, assistant_message}` |
-| 404 | Session not found |
-| 409 | Session is archived |
-| 503 | Embedder or memory graph not initialised, or LLM call failed |
-
-`PATCH /chat/sessions/{session_id}` accepts `{"title": "...", "status": "archived"}`. Setting `status: archived` also stamps `archived_at`.
-
-Session listing uses a single SQL query with correlated scalar subqueries for `message_count` and `last_message_preview` — no N+1.
 
 ## Document Status Lifecycle
 
@@ -346,6 +313,6 @@ The MVP implements the simplified hierarchy:
 Source -> Document -> Span -> Claim -> Brief
 ```
 
-All 8 core tables are schema-ready (migration 0001). Migration 0002 extends `agent_runs` and `documents` with correlation/timestamp columns and adds `span_extractions`. Migration 0003 adds the 3 eval tables. Migration 0004 adds `chat_sessions` and `chat_messages` for persistent multi-turn chat. Phases 1–3 populate `sources`, `documents`, `spans`, `claims`, `claim_evidence`, `agent_runs`, and `span_extractions`. The `eval_*` tables are populated by `nexus eval run`. The `chat_*` tables are populated by `POST /chat/sessions/{id}/messages`. Brief synthesis is Phase 4+.
+All 8 core tables are schema-ready (migration 0001). Migration 0002 extends `agent_runs` and `documents` with correlation/timestamp columns and adds `span_extractions`. Migration 0003 adds the 3 eval tables. Migration 0004 adds `chat_sessions` and `chat_messages` for multi-turn session memory. Phases 1–3 populate `sources`, `documents`, `spans`, `claims`, `claim_evidence`, `agent_runs`, and `span_extractions`. The `eval_*` tables are populated by `nexus eval run`. The `chat_sessions` and `chat_messages` tables are populated by the session chat endpoints. Brief synthesis is Phase 4+.
 
 The broader PoC hierarchy adds entities, relations, signals, clusters, theses, and decision artefacts. Those remain future-facing until the core ingestion-to-synthesis loop is stable.

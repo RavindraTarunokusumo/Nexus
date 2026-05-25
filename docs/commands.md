@@ -72,7 +72,7 @@ uvicorn app.main:app --reload
 alembic upgrade head
 ```
 
-Creates the `vector` extension and all tables. Migration `0001` creates the initial 8 tables; `0002` adds observability columns and `span_extractions`; `0003` adds the 3 eval tables (`eval_datasets`, `eval_runs`, `eval_results`). Each migration is idempotent — safe to re-run.
+Creates the `vector` extension and all tables. Migration `0001` creates the initial 8 tables; `0002` adds observability columns and `span_extractions`; `0003` adds the 3 eval tables (`eval_datasets`, `eval_runs`, `eval_results`); `0004` adds `chat_sessions` and `chat_messages` for multi-turn session memory. Each migration is idempotent — safe to re-run.
 
 ---
 
@@ -298,6 +298,8 @@ nexus chat "What changed?" --json
 | `--top-k N` | 8 | Maximum retrieved context spans to use, from 1 to 20 |
 
 The command POSTs to `/chat/answer` on the running FastAPI server. The server must have the embedder initialised. Human output prints the answer first and a compact citation table when citations are available; `--json` prints the raw API response.
+
+For multi-turn conversations with persistent history, use the web API session endpoints directly (`POST /chat/sessions`, `POST /chat/sessions/{id}/messages`, etc.). The CLI `nexus chat` command is single-turn only and does not interact with session state.
 
 ---
 
@@ -558,6 +560,8 @@ nexus chat "What changed in the latest ingested sources?"
 
 Use `nexus chat` for CLI access (see above). The raw HTTP endpoint is also available directly.
 
+The single-turn endpoint (`POST /chat/answer`) is stateless. For multi-turn conversations with server-side memory, use the session endpoints described below.
+
 ### Ask a grounded question
 
 ```sh
@@ -599,6 +603,57 @@ Citation safety behavior:
 - The model may cite only retrieved labels such as `C1`.
 - The API normalizes and validates returned labels against retrieved context.
 - Unknown labels are dropped, and if no valid citations remain the route falls back to the insufficient-evidence answer.
+
+### Chat session API
+
+Create a session and exchange multi-turn messages. Each session maps to a LangGraph thread (backed by `AsyncPostgresSaver`) so conversation history is checkpointed in Postgres.
+
+**Create a session:**
+
+```sh
+curl -X POST "http://localhost:8000/chat/sessions" \
+  -H "Content-Type: application/json"
+```
+
+Response (201): `{id, title, status, created_at, updated_at}`
+
+**List sessions:**
+
+```sh
+curl "http://localhost:8000/chat/sessions?status=active&limit=30&offset=0"
+```
+
+**Send a message (continues or starts a conversation):**
+
+```sh
+curl -X POST "http://localhost:8000/chat/sessions/<session_id>/messages" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"What changed in recent open-source LLM releases?","top_k":8}'
+```
+
+Response (200): `{session, user_message, assistant_message}` — both rows persisted atomically; `assistant_message` includes `content`, `citations`, `run_id`, `tokens_used`, and `cost_estimate_usd`.
+
+**Get session detail (with full transcript):**
+
+```sh
+curl "http://localhost:8000/chat/sessions/<session_id>"
+```
+
+**Rename or archive:**
+
+```sh
+curl -X PATCH "http://localhost:8000/chat/sessions/<session_id>" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"New title","status":"archived"}'
+```
+
+| Endpoint | Status codes |
+|---|---|
+| `POST /chat/sessions` | 201 created |
+| `GET /chat/sessions` | 200 |
+| `GET /chat/sessions/{id}` | 200 / 404 not found |
+| `POST /chat/sessions/{id}/messages` | 200 / 404 / 503 embedder or LLM error |
+| `PATCH /chat/sessions/{id}` | 200 / 404 |
 
 ---
 
