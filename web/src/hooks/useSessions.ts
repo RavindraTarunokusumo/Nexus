@@ -20,6 +20,7 @@ export function useSessions(): SessionsState {
 
   const load = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const list = await api.listSessions('active')
       setSessions(list)
