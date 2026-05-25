@@ -2,6 +2,16 @@
 
 ## Active
 
+### 2026-05-25 Chat Session Memory
+
+- [ ] Add ChatSession and ChatMessage SQLAlchemy models
+- [ ] Create Alembic migration 0004_chat_sessions
+- [ ] Write failing session API tests
+- [ ] Add session memory controller (session_memory.py)
+- [ ] Add session CRUD + messages API routes
+- [ ] Update pyproject.toml with new dependencies
+- [ ] Docs and validation
+
 ### Phase 2 validation harness
 
 - [ ] Create and run a destructive CLI validation script that resets local data and exercises text, RSS, status, document inspection, and semantic search paths.
