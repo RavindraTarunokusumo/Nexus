@@ -154,7 +154,8 @@ async def _build_session_summary(session: ChatSession, db_session_factory) -> Se
             .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
             .limit(1)
         )
-        last_preview_row = preview_result.scalar_one_or_none()
+        raw_preview = preview_result.scalar_one_or_none()
+        last_preview_row = raw_preview[:150] if raw_preview else None
 
     return SessionSummary(
         id=session.id,
@@ -194,15 +195,17 @@ async def answer_chat(payload: ChatAnswerRequest, request: Request) -> ChatAnswe
             top_k=payload.top_k,
         )
     except LLMError as exc:
+        logger.error("answer_chat.llm_error error=%s", exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Chat answer failed: {exc}",
+            detail="Chat answer failed. Please try again later.",
         ) from exc
 
     if final.get("error"):
+        logger.error("answer_chat.graph_error error=%s", final["error"])
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Chat answer failed: {final['error']}",
+            detail="Chat answer failed. Please try again later.",
         )
 
     tokens = int(final.get("tokens_used") or 0)
@@ -243,7 +246,7 @@ async def create_session(payload: SessionCreateRequest, request: Request) -> Ses
 @router.get("/chat/sessions", response_model=list[SessionSummary])
 async def list_sessions(
     request: Request,
-    status_filter: str = Query(default="active", alias="status"),
+    status_filter: str = Query(default="active", alias="status", pattern="^(active|archived)$"),
     limit: int = Query(default=30, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> list[SessionSummary]:
@@ -364,7 +367,7 @@ async def send_message(
         logger.error("session_message.failed session_id=%s error=%s", session_id, exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Session turn failed: {exc}",
+            detail="Session turn failed. Please try again later.",
         ) from exc
 
     if result.get("error"):

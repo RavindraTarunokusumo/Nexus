@@ -10,7 +10,8 @@
 - [x] Add session memory controller (session_memory.py) (ff7b743)
 - [x] Add session CRUD + messages API routes (bab5e4b)
 - [x] Update pyproject.toml with new dependencies (bab5e4b)
-- [ ] Docs and validation
+- [x] Docs and validation (437c92e, 987c018)
+- [x] Security review — fix F2 DSN leakage, F3 status param, F9 preview truncation
 
 ### Phase 2 validation harness
 
@@ -28,6 +29,12 @@
 ### Ongoing
 
 - [ ] HTTP Basic Auth / API key middleware (security gap, open since Phase 1)
+- [ ] Chat security F1 — multi-turn prompt injection: wrap user messages with untrusted-input marker in agent prompt; plan Llama Guard guardrail pass post-auth (see `docs/security-review-chat-sessions.md`)
+- [ ] Chat security F4 — rate limiting + session/message caps + move `checkpointer.setup()` to lifespan (`slowapi`, `MAX_SESSIONS`, `MAX_MESSAGES_PER_SESSION`)
+- [ ] Chat security F5 — pre-shared `X-API-Key` guard on all session endpoints before public exposure
+- [ ] Chat security F6 — strip non-printable chars from `_derive_title`; frontend must HTML-escape title field
+- [ ] Chat security F8 — move `checkpointer.setup()` to application lifespan handler (DDL on every request)
+- [ ] Chat security F10 — add `CHECK (role IN ('user', 'assistant'))` constraint in a future migration
 - [ ] Shared httpx.AsyncClient via lifespan (currently created per-request in ingestion)
 - [ ] Populate `docs/iterations/active/` with execution logs
 - [ ] Record durable workflow lessons in `docs/insights.md` as they appear.
