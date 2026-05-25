@@ -165,20 +165,41 @@ async def list_sessions(
     limit: int = Query(default=30, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> list[ChatSessionSummary]:
-    rows = (
-        (
-            await db.execute(
-                select(ChatSession)
-                .where(ChatSession.status == session_status)
-                .order_by(ChatSession.updated_at.desc(), ChatSession.id.desc())
-                .limit(limit)
-                .offset(offset)
-            )
-        )
-        .scalars()
-        .all()
+    count_sq = (
+        select(func.count())
+        .where(ChatMessage.session_id == ChatSession.id)
+        .correlate(ChatSession)
+        .scalar_subquery()
     )
-    return [await _session_summary(row, db) for row in rows]
+    last_msg_sq = (
+        select(ChatMessage.content)
+        .where(ChatMessage.session_id == ChatSession.id)
+        .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+        .limit(1)
+        .correlate(ChatSession)
+        .scalar_subquery()
+    )
+    rows = (
+        await db.execute(
+            select(ChatSession, count_sq.label("message_count"), last_msg_sq.label("last_preview"))
+            .where(ChatSession.status == session_status)
+            .order_by(ChatSession.updated_at.desc(), ChatSession.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+    ).all()
+    return [
+        ChatSessionSummary(
+            id=row.ChatSession.id,
+            title=row.ChatSession.title,
+            status=row.ChatSession.status,
+            created_at=row.ChatSession.created_at,
+            updated_at=row.ChatSession.updated_at,
+            message_count=row.message_count or 0,
+            last_message_preview=row.last_preview[:100] if row.last_preview else None,
+        )
+        for row in rows
+    ]
 
 
 @router.get("/sessions/{session_id}", response_model=ChatSessionDetail)
