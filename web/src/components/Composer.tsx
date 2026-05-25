@@ -1,4 +1,4 @@
-import { type FormEvent, useRef, useState } from 'react'
+import { type FormEvent, type KeyboardEvent, useRef, useState } from 'react'
 
 type Props = {
   disabled: boolean
@@ -20,7 +20,7 @@ export function Composer({ disabled, sending, archived, onSubmit }: Props) {
     textareaRef.current?.focus()
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+  function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSubmit(e as unknown as FormEvent)
