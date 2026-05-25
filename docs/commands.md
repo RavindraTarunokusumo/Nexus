@@ -567,7 +567,7 @@ The single-turn endpoint (`POST /chat/answer`) is stateless. For multi-turn conv
 ```sh
 curl -X POST "http://localhost:8000/chat/answer" \
   -H "Content-Type: application/json" \
-  -d '{"content":"What changed in recent open-source LLM releases?","top_k":8}'
+  -d '{"question":"What changed in recent open-source LLM releases?","top_k":8}'
 ```
 
 Response (200):
