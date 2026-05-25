@@ -4,12 +4,12 @@
 
 ### 2026-05-25 Chat Session Memory
 
-- [ ] Add ChatSession and ChatMessage SQLAlchemy models
-- [ ] Create Alembic migration 0004_chat_sessions
-- [ ] Write failing session API tests
-- [ ] Add session memory controller (session_memory.py)
-- [ ] Add session CRUD + messages API routes
-- [ ] Update pyproject.toml with new dependencies
+- [x] Add ChatSession and ChatMessage SQLAlchemy models (d217d24)
+- [x] Create Alembic migration 0004_chat_sessions (d217d24)
+- [x] Write failing session API tests (bc68825)
+- [x] Add session memory controller (session_memory.py) (ff7b743)
+- [x] Add session CRUD + messages API routes (bab5e4b)
+- [x] Update pyproject.toml with new dependencies (bab5e4b)
 - [ ] Docs and validation
 
 ### Phase 2 validation harness

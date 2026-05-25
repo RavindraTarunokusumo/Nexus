@@ -67,7 +67,7 @@ async def run_session_turn(
 
     async def _answer_node(state: _MemoryState) -> dict:
         human_msgs = [m for m in state["messages"] if isinstance(m, HumanMessage)]
-        q = human_msgs[-1].content
+        q = str(human_msgs[-1].content)
 
         llm_client = LLMClient(openrouter_api_key, session_factory)
         graph = make_chat_graph(session_factory, llm_client, embedder)
