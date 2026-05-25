@@ -6,6 +6,24 @@
 
 - [ ] Create and run a destructive CLI validation script that resets local data and exercises text, RSS, status, document inspection, and semantic search paths.
 
+### Web UI + Chat Session Memory (2026-05-25)
+
+**Phase A — Backend: Chat Session Memory**
+- [ ] A1: pyproject.toml — add langchain, langgraph-checkpoint-postgres, psycopg deps
+- [ ] A2: ORM models (ChatSession, ChatMessage) + Alembic migration 0004
+- [ ] A3: session_memory.py — LangGraph memory controller with Postgres checkpointer
+- [ ] A4: routes_chat_sessions.py — session CRUD + message endpoints
+- [ ] A5: app/main.py — CORS + include session router
+- [ ] A6: tests/test_chat_sessions.py — backend integration tests
+
+**Phase B — Frontend: React Web UI**
+- [ ] B1: web/ workspace scaffold (Vite + React + TypeScript + Tailwind + Vitest)
+- [ ] B2: API client + types (web/src/api/client.ts)
+- [ ] B3: hooks (useSessions.ts, useChatSession.ts)
+- [ ] B4: components (SessionSidebar, ChatPanel, MessageList, MessageBubble, CitationList, Composer)
+- [ ] B5: App.tsx layout + main.tsx bootstrap
+- [ ] B6: Vitest component tests
+
 ## Future
 
 ### Phase 4 — Brief Synthesis + Query Answering
