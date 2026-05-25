@@ -43,6 +43,9 @@ This repo is indexed by **GitNexus** — see the GitNexus section below for all 
 5. Keep comments sparse, naming clear, abstractions minimal, and avoid compatibility shims.
 6. When `pre-commit run --all-files` fails only on files you did not touch, note it as pre-existing and proceed — do not attempt workarounds that affect other files.
 7. After subscribing to PR activity, wait for Copilot Code Review (allow ~20 min) and address all findings before marking the session complete.
+8. After context compaction resumes, run `git status` before any other action — the summary describes intent, not exact commit state.
+9. Commit any files written by subagents (doc-updater, security-review, etc.) immediately; do not advance the workflow with a dirty tree.
+10. `gitnexus_impact` requires the exact function/class name, not the module or file name. Use the symbol name as indexed (e.g. `answer_chat`, not `routes_chat`).
 
 ### Pre-PR
 
