@@ -166,14 +166,18 @@ async def list_sessions(
     offset: int = Query(default=0, ge=0),
 ) -> list[ChatSessionSummary]:
     rows = (
-        await db.execute(
-            select(ChatSession)
-            .where(ChatSession.status == session_status)
-            .order_by(ChatSession.updated_at.desc(), ChatSession.id.desc())
-            .limit(limit)
-            .offset(offset)
+        (
+            await db.execute(
+                select(ChatSession)
+                .where(ChatSession.status == session_status)
+                .order_by(ChatSession.updated_at.desc(), ChatSession.id.desc())
+                .limit(limit)
+                .offset(offset)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [await _session_summary(row, db) for row in rows]
 
 
@@ -184,13 +188,19 @@ async def get_session(session_id: uuid.UUID, db: DbSession) -> ChatSessionDetail
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
     summary = await _session_summary(row, db)
     messages_rows = (
-        await db.execute(
-            select(ChatMessage)
-            .where(ChatMessage.session_id == session_id)
-            .order_by(ChatMessage.created_at, ChatMessage.id)
+        (
+            await db.execute(
+                select(ChatMessage)
+                .where(ChatMessage.session_id == session_id)
+                .order_by(ChatMessage.created_at, ChatMessage.id)
+            )
         )
-    ).scalars().all()
-    return ChatSessionDetail(**summary.model_dump(), messages=[_message_out(m) for m in messages_rows])
+        .scalars()
+        .all()
+    )
+    return ChatSessionDetail(
+        **summary.model_dump(), messages=[_message_out(m) for m in messages_rows]
+    )
 
 
 @router.post("/sessions/{session_id}/messages", response_model=SendMessageResponse)

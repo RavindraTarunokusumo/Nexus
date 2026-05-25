@@ -1,4 +1,5 @@
 """Integration tests for chat session memory API endpoints."""
+
 from __future__ import annotations
 
 import uuid
@@ -197,16 +198,12 @@ async def test_send_message_derives_title_from_first_message(
 
 
 @pytest.mark.asyncio
-async def test_send_message_title_truncated_at_60_chars(
-    async_engine, session_factory, fake_graph
-):
+async def test_send_message_title_truncated_at_60_chars(async_engine, session_factory, fake_graph):
     app = _build_sessions_app(async_engine, session_factory, memory_graph=fake_graph)
     long_q = "A" * 80
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         session_id = (await c.post("/chat/sessions", json={})).json()["id"]
-        await c.post(
-            f"/chat/sessions/{session_id}/messages", json={"content": long_q}
-        )
+        await c.post(f"/chat/sessions/{session_id}/messages", json={"content": long_q})
         detail = await c.get(f"/chat/sessions/{session_id}")
     title = detail.json()["title"]
     assert title.endswith("...")
@@ -219,9 +216,7 @@ async def test_send_message_to_archived_session_returns_409(async_engine, sessio
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         session_id = (await c.post("/chat/sessions", json={})).json()["id"]
         await c.patch(f"/chat/sessions/{session_id}", json={"status": "archived"})
-        resp = await c.post(
-            f"/chat/sessions/{session_id}/messages", json={"content": "Hello?"}
-        )
+        resp = await c.post(f"/chat/sessions/{session_id}/messages", json={"content": "Hello?"})
     assert resp.status_code == 409
 
 
@@ -230,9 +225,7 @@ async def test_send_message_no_memory_graph_returns_503(async_engine, session_fa
     app = _build_sessions_app(async_engine, session_factory, memory_graph=None)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         session_id = (await c.post("/chat/sessions", json={})).json()["id"]
-        resp = await c.post(
-            f"/chat/sessions/{session_id}/messages", json={"content": "Hello?"}
-        )
+        resp = await c.post(f"/chat/sessions/{session_id}/messages", json={"content": "Hello?"})
     assert resp.status_code == 503
 
 
@@ -263,9 +256,7 @@ async def test_session_detail_shows_transcript(async_engine, session_factory, fa
 async def test_insufficient_evidence_persisted_with_empty_citations(
     async_engine, session_factory, fake_graph_insufficient
 ):
-    app = _build_sessions_app(
-        async_engine, session_factory, memory_graph=fake_graph_insufficient
-    )
+    app = _build_sessions_app(async_engine, session_factory, memory_graph=fake_graph_insufficient)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         session_id = (await c.post("/chat/sessions", json={})).json()["id"]
         resp = await c.post(

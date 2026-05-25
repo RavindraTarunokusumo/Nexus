@@ -41,6 +41,36 @@ When a new import from `app.observability` is added between two `app.ingestion` 
 
 Printing `CliRunner.invoke().output` via `print()` in a cp1252 shell raises `UnicodeEncodeError` because Rich emits box-drawing characters. Inspect `result.output` programmatically (e.g., `"Usage" in result.output`) rather than printing it to avoid the error.
 
+## Session: web-ui-chat-session-memory (2026-05-25)
+
+### `feedparser` incompatible with Python 3.11 in network-restricted remote env
+
+`feedparser>=6.0.11` depends on `sgmllib3k` which requires a C extension build. In the remote env, `sgmllib3k` fails to build and `feedparser` itself fails to import due to the missing `sgmllib` stdlib module (removed in Python 3). Workaround: create a minimal `sgmllib.py` stub at `/usr/local/lib/python3.11/dist-packages/sgmllib.py` exporting the regex variables (`entityref`, `incomplete`, `interesting`, `shorttag`, `shorttagopen`, `starttagopen`) and a `SGMLParser` class that delegates to `html.parser.HTMLParser`. This unblocks all tests that import via conftest.
+
+### `langgraph-checkpoint-postgres` lives at `langgraph.checkpoint.postgres`, not a separate package
+
+Despite being installed via `pip install langgraph-checkpoint-postgres`, the module is part of the `langgraph` namespace: `from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver`. Trying to import `langgraph_checkpoint_postgres` directly fails.
+
+### Vitest `getByLabelText` regex matches both label text and aria-label on other elements
+
+When a `<label>Message</label>` is associated with a textarea AND a nearby button has `aria-label="Send message"`, `getByLabelText(/message/i)` throws "Found multiple elements" because RTL also matches elements whose own `aria-label` satisfies the query. Fix: use `getByRole('textbox', { name: /message/i })` for the input, and anchor the button query with `^send message$` to avoid partial matches.
+
+### `erasableSyntaxOnly: true` in TypeScript 6 disallows constructor parameter properties
+
+TypeScript 6 (shipped with the Vite React-TS template) enables `erasableSyntaxOnly`, which bans `public readonly` shorthand in constructors. Replace with an explicit property declaration + manual assignment in the constructor body.
+
+### Vite `defineConfig` from `vite` doesn't accept `test` property; use `vitest/config`
+
+When adding Vitest config to `vite.config.ts`, the `test` field causes a TypeScript error if `defineConfig` is imported from `vite` instead of `vitest/config`. Always use `import { defineConfig } from 'vitest/config'` when Vitest options are present.
+
+### jsdom (Vitest) doesn't implement `scrollIntoView`
+
+`element.scrollIntoView()` throws `TypeError: is not a function` in jsdom. Add `window.HTMLElement.prototype.scrollIntoView = () => {}` in the Vitest setup file (`src/test/setup.ts`).
+
+### PostgreSQL service needs manual start in remote env + pgvector must be installed separately
+
+The remote container has PostgreSQL 16 but it's not running and `pgvector` extension is absent. Run `service postgresql start` and `apt-get install -y postgresql-16-pgvector` before the first migration, then create the user and database via `sudo -u postgres psql`.
+
 ## Session: chat-session-memory-spec (2026-05-24)
 
 ### `apply_patch` uses the agent process directory, not the command workdir

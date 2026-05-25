@@ -1,4 +1,5 @@
 """Session memory controller — wraps the grounded chat graph with LangGraph persistence."""
+
 from __future__ import annotations
 
 import logging
