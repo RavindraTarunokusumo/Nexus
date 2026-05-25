@@ -43,3 +43,33 @@ Six findings addressed in commits `a691fcd`–`9e8e9b4`:
 - `312fa08` — `routes_chat_sessions.py`: replaced N+1 `_session_summary` calls in `list_sessions` with a single correlated-subquery SELECT
 - `e7fc7ab` — `ChatPanel.tsx`: disabled `Composer` when `loading || !detail` to prevent dropped messages during session fetch
 - `9e8e9b4` — Docs: updated `architecture.md`, `database.md`, `patterns.md` for all Phase 3 additions
+
+---
+
+## Parallel Session — PR #12
+
+**Branch:** `claude/web-ui-chat-specs-fUwKz`
+**PR:** [#12](https://github.com/RavindraTarunokusumo/Nexus/pull/12)
+**Merge commit:** `000e266e4404b6e616d9b96626c7d7efb7278814`
+**Merged at:** 2026-05-25
+
+A parallel session implementing the same chat session memory spec independently, contributing additional security hardening, a Copilot code review pass, a test plan doc, and a security review doc.
+
+### Tasks Completed
+
+- [x] Add ChatSession and ChatMessage SQLAlchemy models (d217d24)
+- [x] Create Alembic migration 0004_chat_sessions (d217d24)
+- [x] Write failing session API tests — 18 tests, monkeypatch approach (bc68825)
+- [x] Add LangGraph session memory controller with AsyncPostgresSaver (ff7b743)
+- [x] Add session CRUD + messages API routes to routes_chat.py (bab5e4b)
+- [x] Update pyproject.toml with new dependencies (bab5e4b)
+- [x] Docs: architecture, commands, database updated (437c92e)
+- [x] Docs: test-plan-chat-session-memory.md — 42 gaps identified (987c018)
+- [x] Security review — fix F2 DSN leakage, F3 status param validation, F9 preview truncation; add security-review-chat-sessions.md (1e20d19)
+- [x] Copilot review pass — title blank validator, N+1 query fix, error propagation, test coverage (75938f7)
+- [x] Docs: fix /chat/answer curl example field name (3e57b1b)
+
+### Security Findings (3 fixed, 7 deferred to TODO)
+
+Fixed: F2 (DSN leakage in 503), F3 (unvalidated status param), F9 (unbounded preview).
+Deferred to Ongoing TODO: F1 (prompt injection), F4 (rate limiting), F5 (API key guard), F6 (XSS in title), F8 (checkpointer.setup per request), F10 (role CHECK constraint).

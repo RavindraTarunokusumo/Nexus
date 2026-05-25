@@ -2,17 +2,6 @@
 
 ## Active
 
-### 2026-05-25 Chat Session Memory
-
-- [x] Add ChatSession and ChatMessage SQLAlchemy models (d217d24)
-- [x] Create Alembic migration 0004_chat_sessions (d217d24)
-- [x] Write failing session API tests (bc68825)
-- [x] Add session memory controller (session_memory.py) (ff7b743)
-- [x] Add session CRUD + messages API routes (bab5e4b)
-- [x] Update pyproject.toml with new dependencies (bab5e4b)
-- [x] Docs and validation (437c92e, 987c018)
-- [x] Security review — fix F2 DSN leakage, F3 status param, F9 preview truncation
-
 ### Phase 2 validation harness
 
 - [ ] Create and run a destructive CLI validation script that resets local data and exercises text, RSS, status, document inspection, and semantic search paths.
