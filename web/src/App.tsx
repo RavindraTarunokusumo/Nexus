@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { ChatPanel } from './components/ChatPanel'
 import { SessionSidebar } from './components/SessionSidebar'
 import { useChatSession } from './hooks/useChatSession'
@@ -29,13 +29,23 @@ export default function App() {
     onSessionUpdate,
   )
 
+  const pendingMessageRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (activeId && pendingMessageRef.current) {
+      const msg = pendingMessageRef.current
+      pendingMessageRef.current = null
+      void sendMessage(msg)
+    }
+  }, [activeId, sendMessage])
+
   async function handleNewChat() {
     await createSession()
   }
 
   async function handleSend(content: string) {
     if (!activeId) {
-      // Auto-create session on first message then send
+      pendingMessageRef.current = content
       await createSession()
       return
     }
