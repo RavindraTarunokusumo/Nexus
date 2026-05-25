@@ -1,9 +1,9 @@
 # Eval Framework — LLM-as-a-Judge
 
 **Branch:** `feature/eval-framework-impl`
-**PR:** [pending]
-**Merge commit:** [pending]
-**Merged at:** [pending]
+**PR:** [#11](https://github.com/RavindraTarunokusumo/Nexus/pull/11)
+**Merge commit:** `4c9dd25`
+**Merged at:** 2026-05-24
 **Merged by:** RavindraTarunokusumo
 
 ## Summary
