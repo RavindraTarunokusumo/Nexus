@@ -57,3 +57,38 @@
   Update `record_agent_run` to compute cost from `prompt_tokens` × input_rate +
   `completion_tokens` × output_rate, configurable via `app/config.py`.
   Reference: `app/observability/tracer.py::record_agent_run`.
+
+## Eval Framework — Technical Debt
+
+- [ ] **CLI plumbing consolidation** — `eval.py` re-implements `_require_db_url` (with scheme validation), `_get_session_factory`, and the `CLISettings` boilerplate 5×. Move the scheme-aware `_require_db_url` into `app/cli/main.py` (or `app/cli/_common.py`) and reuse `_with_session` from `app/cli/db.py` so engines are disposed. Also consolidate the `asyncio.run(...)` calls to use the existing `_run()` helper from `main.py`.
+  Reference: `app/cli/eval.py:29-51`, `app/cli/main.py:69-115`, `app/cli/db.py:16-24`.
+
+- [ ] **render.py reuse** — eval CLI uses inline `typer.echo(json.dumps(...))` and ad-hoc Rich `Table` construction in 5 commands. Move to `app/cli/render.py` (e.g. `render_eval_run`, `render_eval_diff`, `render_eval_datasets`, `render_eval_calibration`) matching the pattern of `render_runs_list`. Also replace manual `.isoformat()` / `float()` casts with `_to_jsonable()` from `render.py`.
+  Reference: `app/cli/eval.py:131-142`, `app/cli/render.py`.
+
+## Eval Framework — Deferred
+
+- [ ] **Activate BriefSynthesisJudge** — remove `NotImplementedError`; wire Phase-4 brief
+  synthesis rubric once `POST /briefs/generate` ships.
+  Reference: `app/evaluation/judges.py::BriefSynthesisJudge`.
+
+- [ ] **Activate GroundedAnswerJudge** — wire Phase-4 grounded answer rubric once
+  `POST /query` ships.
+  Reference: `app/evaluation/judges.py::GroundedAnswerJudge`.
+
+- [ ] **SpanRetrievalJudge** — implement the LLM-judged relevance layer (graded 0–3)
+  for span retrieval; currently only text-overlap alignment exists.
+  Reference: `app/evaluation/judges.py`, `app/evaluation/runner.py`.
+
+- [ ] **Extend human_labels to ≥50 pairs** — current seed has 6; κ estimate unreliable
+  below 30 pairs. Run `nexus eval calibrate claim_extraction` after extending.
+  Reference: `evals/human_labels/claim_extraction.yaml`.
+
+- [ ] **Baseline run** — after manual corpus ingestion, run `nexus eval run claim_extraction ai_tech_v1`
+  and record the run_id in `docs/insights.md` as the v1 baseline reference.
+
+- [ ] **Statistical significance** — add bootstrap CIs on aggregate scores across runs.
+
+- [ ] **Multi-judge ensembling** — run 2+ judge models, majority-vote verdicts.
+
+- [ ] **Dashboard** — web UI over `eval_runs` + `eval_results` for cross-run visualization.

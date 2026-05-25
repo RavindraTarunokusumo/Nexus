@@ -1,6 +1,6 @@
 # Commands
 
-> **Phase 3 Status: Claim extraction + hybrid chatbot implemented**
+> **Phase 3 Status: Claim extraction + hybrid chatbot + Eval framework implemented.**
 
 ## Prerequisites
 
@@ -72,7 +72,7 @@ uvicorn app.main:app --reload
 alembic upgrade head
 ```
 
-Creates the `vector` extension and all 8 tables (`sources`, `documents`, `spans`, `claims`, `claim_evidence`, `briefs`, `brief_items`, `agent_runs`). Migration `0001` is idempotent — safe to re-run.
+Creates the `vector` extension and all tables. Migration `0001` creates the initial 8 tables; `0002` adds observability columns and `span_extractions`; `0003` adds the 3 eval tables (`eval_datasets`, `eval_runs`, `eval_results`). Each migration is idempotent — safe to re-run.
 
 ---
 
@@ -164,6 +164,8 @@ The `nexus` command is installed as a console script by `pip install -e .`.
 |---|---|---|
 | `status`, `sources`, `documents`, `document` | Direct Postgres | No |
 | `runs list`, `runs show` | Direct Postgres | No |
+| `eval register-dataset`, `eval list-datasets`, `eval run`, `eval show`, `eval diff` | Direct Postgres | No |
+| `eval calibrate` | Local computation only | No |
 | `search` | HTTP → FastAPI | Yes |
 | `chat` | HTTP → FastAPI | Yes |
 | `extract` | HTTP → FastAPI | Yes |
@@ -420,6 +422,88 @@ nexus runs show <run_id> --json
 | `--db-url <url>` | `$DATABASE_URL` | Override the Postgres connection string |
 
 Displays the run record including correlation IDs (`run_id`, `document_id`, `span_id`), token split (`prompt_tokens`, `completion_tokens`), status, cost estimate, and associated `span_extractions` rows.
+
+---
+
+### `nexus eval`
+
+LLM-as-a-Judge evaluation commands — all read directly from Postgres (no server required) except `calibrate`, which is purely local computation. All commands accept `--db-url` and `--json`.
+
+#### `nexus eval register-dataset <yaml-path>`
+
+Register or update a gold-set YAML file in `eval_datasets`. Computes a SHA-256 checksum of the file. If the (name, task, version) triple already exists the row is updated in place (checksum, example_count, path).
+
+```sh
+nexus eval register-dataset evals/gold/claim_extraction/ai_tech_v1.yaml
+nexus eval register-dataset evals/gold/span_retrieval/queries_v1.yaml
+```
+
+#### `nexus eval list-datasets`
+
+List all registered gold-set datasets.
+
+```sh
+nexus eval list-datasets
+nexus eval list-datasets --json
+```
+
+Columns: name, task, version, examples, checksum (first 12 chars).
+
+#### `nexus eval run <task> <dataset-name> --path <yaml>`
+
+Execute one eval run. Invokes the SUT (system under test) on each example, calls the LLM judge, persists per-example results to `eval_results`, and writes aggregate scores to `eval_runs`.
+
+```sh
+nexus eval run claim_extraction ai_tech_v1 --path evals/gold/claim_extraction/ai_tech_v1.yaml
+nexus eval run claim_extraction ai_tech_v1 --path evals/gold/claim_extraction/ai_tech_v1.yaml \
+    --sut-model deepseek/deepseek-v4-flash \
+    --judge-model deepseek/deepseek-v4-pro \
+    --max-cost 2.0 \
+    --note "baseline before prompt change"
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--path <yaml>` | required | Path to the gold-set YAML |
+| `--version N` | `1` | Dataset version |
+| `--sut-model` | `settings.t2_model` | Override the system-under-test model |
+| `--judge-model` | `settings.t3_model` | Override the judge model |
+| `--max-cost <usd>` | `1.0` | Budget gate — stops when cumulative cost exceeds this value |
+| `--note` | none | Free-text note stored on the run row |
+
+The dataset must have been registered first with `register-dataset`. The run status is `completed` when all examples score without error; `partial` if any example errored.
+
+Aggregate scores reported: `precision`, `recall`, `f1`, `type_accuracy`, `mean_groundedness`, `mean_factuality`.
+
+#### `nexus eval show <run-id>`
+
+Show aggregate scores for a run. With `--per-example`, also prints per-example status and metrics.
+
+```sh
+nexus eval show <run-uuid>
+nexus eval show <run-uuid> --per-example
+nexus eval show <run-uuid> --json
+```
+
+#### `nexus eval diff <run-a-id> <run-b-id>`
+
+Compare aggregate scores between two runs. Prints a delta table (B − A) for every metric present in either run.
+
+```sh
+nexus eval diff <baseline-uuid> <candidate-uuid>
+nexus eval diff <baseline-uuid> <candidate-uuid> --json
+```
+
+#### `nexus eval calibrate <task> --labels-path <yaml>`
+
+Compute Cohen's kappa between judge verdicts and human labels stored in a YAML file. Used to validate the judge before relying on it for gating decisions. A kappa >= 0.6 is considered a pass.
+
+```sh
+nexus eval calibrate claim_extraction --labels-path evals/human_labels/claim_extraction.yaml
+nexus eval calibrate claim_extraction --labels-path evals/human_labels/claim_extraction.yaml --json
+```
+
+Output includes `match_status_kappa`, `groundedness_pearson_r` (if groundedness scores are present in the label file), and a PASS/FAIL recommendation.
 
 ---
 
