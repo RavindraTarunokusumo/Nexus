@@ -71,6 +71,32 @@ When adding Vitest config to `vite.config.ts`, the `test` field causes a TypeScr
 
 The remote container has PostgreSQL 16 but it's not running and `pgvector` extension is absent. Run `service postgresql start` and `apt-get install -y postgresql-16-pgvector` before the first migration, then create the user and database via `sudo -u postgres psql`.
 
+## Session: chat-session-memory-pr12 (2026-05-25)
+
+### Resume after context compaction: check `git status` first
+
+When a session resumes from a compacted summary, the summary accurately describes which files were edited but may not be precise about commit state. `git status` immediately after resuming is the reliable source of truth for what's staged vs. committed.
+
+### Stop hooks fire on agent-written files — commit immediately after any agent output
+
+The stop-hook git-check script fires when any agent (doc-updater, security-review) writes files to disk. Commit agent output immediately after it lands, before the next workflow step, to avoid the hook blocking session close.
+
+### `/security-review` skill fails with `fatal: ambiguous argument 'origin/HEAD...'`
+
+The skill uses `git log origin/HEAD..HEAD` to scope the diff, which fails in remote environments where `origin/HEAD` is not set. Workaround: run security review as a manual `Agent` call instead of invoking the skill directly. The underlying logic is identical.
+
+### GitNexus impact analysis requires the exact function name, not the module name
+
+`npx gitnexus impact --repo . routes_chat` returns "target not found". The tool indexes symbols, not module paths. Use the function name: `npx gitnexus impact --repo . answer_chat`.
+
+### doc-updater can confuse field names across endpoints in the same file
+
+When a file has multiple endpoints with different schema fields (`question` vs. `content`), the doc-updater agent may conflate them in curl examples. Always self-review doc changes for field name correctness, especially when one file serves multiple endpoints.
+
+### Parallel session collision: rebase is clean if additions are orthogonal
+
+When two sessions implement the same feature in parallel, rebasing the later branch onto main (which contains the earlier merge) produces only small add/add conflicts. Taking the more complete version (`--theirs` for implementation files, manual merge for shared config like pyproject.toml) resolves them cleanly. The result composes correctly on the merged base.
+
 ## Session: chat-session-memory-spec (2026-05-24)
 
 ### `apply_patch` uses the agent process directory, not the command workdir
