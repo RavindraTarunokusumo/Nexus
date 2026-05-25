@@ -122,7 +122,7 @@ export function ChatPanel({
 
       {/* Composer */}
       <Composer
-        disabled={!session}
+        disabled={!session || loading || !detail}
         sending={sending}
         archived={isArchived ?? false}
         onSubmit={onSend}
