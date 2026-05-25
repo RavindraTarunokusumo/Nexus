@@ -41,6 +41,8 @@ This repo is indexed by **GitNexus** — see the GitNexus section below for all 
 3. Use specific staging, never `git add -A`.
 4. Never force-push, reset `--hard`, merge or amend unless explicitly asked.
 5. Keep comments sparse, naming clear, abstractions minimal, and avoid compatibility shims.
+6. When `pre-commit run --all-files` fails only on files you did not touch, note it as pre-existing and proceed — do not attempt workarounds that affect other files.
+7. After subscribing to PR activity, wait for Copilot Code Review (allow ~20 min) and address all findings before marking the session complete.
 
 ### Pre-PR
 

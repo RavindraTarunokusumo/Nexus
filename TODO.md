@@ -23,6 +23,11 @@
 - [ ] Record durable workflow lessons in `docs/insights.md` as they appear.
 - [ ] `nexus document <id>` CLI command — show extracted claims inline (deferred from Phase 2.5)
 - [ ] `nexus extract <doc_id>` CLI command — trigger extraction from the CLI
+- [ ] **Fix mypy pre-commit hook** — add `types-PyYAML` to `additional_dependencies` in `.pre-commit-config.yaml` so the hook's isolated env resolves the `yaml` stubs; eliminates the false failure on `app/evaluation/*.py` every session.
+  Reference: `.pre-commit-config.yaml`, mypy hook, `language: system` → `language: python` or add `additional_dependencies: [types-PyYAML]`
+- [ ] **Session-start hook for PostgreSQL** — add a Claude Code `SessionStart` hook that runs `service postgresql start` so integration tests work immediately without manual intervention each session.
+  Reference: `.claude/settings.json` hooks, `session-start-hook` skill
+- [ ] **CORS origins via env var** — `app/main.py` hardcodes `localhost:5173`; add a `CORS_ORIGINS` setting to `app/config.py` so staging/production origins can be configured without code changes.
 
 ## Observability — Deferred
 
