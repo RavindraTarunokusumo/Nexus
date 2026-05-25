@@ -71,6 +71,13 @@ class ChatAnswerResponse(BaseModel):
 class SessionCreateRequest(BaseModel):
     title: str | None = Field(default=None, max_length=_MAX_TITLE_LEN)
 
+    @field_validator("title")
+    @classmethod
+    def title_not_blank(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            raise ValueError("Title must not be blank.")
+        return v
+
 
 class SessionSummary(BaseModel):
     id: uuid.UUID
@@ -250,25 +257,47 @@ async def list_sessions(
     limit: int = Query(default=30, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> list[SessionSummary]:
-    async with request.app.state.session_factory() as db:
-        rows = (
-            (
-                await db.execute(
-                    select(ChatSession)
-                    .where(ChatSession.status == status_filter)
-                    .order_by(ChatSession.updated_at.desc(), ChatSession.id.desc())
-                    .limit(limit)
-                    .offset(offset)
-                )
-            )
-            .scalars()
-            .all()
+    count_sq = (
+        select(func.count())
+        .where(ChatMessage.session_id == ChatSession.id)
+        .correlate(ChatSession)
+        .scalar_subquery()
+    )
+    preview_sq = (
+        select(ChatMessage.content)
+        .where(ChatMessage.session_id == ChatSession.id)
+        .correlate(ChatSession)
+        .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+    stmt = (
+        select(
+            ChatSession,
+            count_sq.label("message_count"),
+            preview_sq.label("last_preview"),
         )
+        .where(ChatSession.status == status_filter)
+        .order_by(ChatSession.updated_at.desc(), ChatSession.id.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    async with request.app.state.session_factory() as db:
+        rows = (await db.execute(stmt)).all()
 
-    result = []
-    for row in rows:
-        result.append(await _build_session_summary(row, request.app.state.session_factory))
-    return result
+    return [
+        SessionSummary(
+            id=row.ChatSession.id,
+            title=row.ChatSession.title,
+            status=row.ChatSession.status,
+            created_at=row.ChatSession.created_at,
+            updated_at=row.ChatSession.updated_at,
+            archived_at=row.ChatSession.archived_at,
+            message_count=row.message_count,
+            last_message_preview=row.last_preview[:150] if row.last_preview else None,
+        )
+        for row in rows
+    ]
 
 
 @router.get("/chat/sessions/{session_id}", response_model=SessionDetail)
@@ -371,9 +400,12 @@ async def send_message(
         ) from exc
 
     if result.get("error"):
+        logger.error(
+            "session_message.graph_error session_id=%s error=%s", session_id, result["error"]
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Chat answer failed: {result['error']}",
+            detail="Chat answer failed. Please try again later.",
         )
 
     tokens = int(result.get("tokens_used") or 0)

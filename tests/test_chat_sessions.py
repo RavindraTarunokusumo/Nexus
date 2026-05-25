@@ -278,6 +278,28 @@ async def test_send_message_failure_does_not_persist_messages(
 
 
 @pytest.mark.asyncio
+async def test_send_message_error_dict_returns_503_and_no_persistence(
+    monkeypatch, client_with_embedder: AsyncClient
+):
+    async def fake_run_session_turn(**kwargs):
+        return {"error": "graph failed", "answer": None}
+
+    monkeypatch.setattr("app.api.routes_chat.run_session_turn", fake_run_session_turn)
+
+    r = await client_with_embedder.post("/chat/sessions", json={})
+    session_id = r.json()["id"]
+
+    resp = await client_with_embedder.post(
+        f"/chat/sessions/{session_id}/messages",
+        json={"content": "Hello"},
+    )
+    assert resp.status_code == 503
+
+    detail = await client_with_embedder.get(f"/chat/sessions/{session_id}")
+    assert detail.json()["messages"] == []
+
+
+@pytest.mark.asyncio
 async def test_session_message_count_updates(monkeypatch, client_with_embedder: AsyncClient):
     fake_result = {
         "answer": "A.",

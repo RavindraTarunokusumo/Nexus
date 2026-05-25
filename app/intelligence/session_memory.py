@@ -80,6 +80,8 @@ async def run_session_turn(
             logger.error("session_turn.graph_error session_id=%s error=%s", session_id, exc)
             raise
 
+        if result.get("error"):
+            raise RuntimeError(f"Chat graph error: {result['error']}")
         ai_msg = AIMessage(content=result.get("answer", ""))
         return {"messages": [ai_msg], "answer_result": result}
 
@@ -96,9 +98,11 @@ async def run_session_turn(
                 {"messages": [HumanMessage(content=question)], "answer_result": None},
                 config={"configurable": {"thread_id": str(session_id)}},
             )
+    except RuntimeError:
+        raise
     except Exception as exc:
         logger.error("session_turn.checkpointer_error session_id=%s error=%s", session_id, exc)
-        raise RuntimeError(f"Session memory unavailable: {exc}") from exc
+        raise RuntimeError("Session memory unavailable.") from exc
 
     result = final.get("answer_result") or {}
     logger.info(
