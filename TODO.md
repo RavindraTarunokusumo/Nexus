@@ -9,20 +9,20 @@
 ### Web UI + Chat Session Memory (2026-05-25)
 
 **Phase A — Backend: Chat Session Memory**
-- [ ] A1: pyproject.toml — add langchain, langgraph-checkpoint-postgres, psycopg deps
-- [ ] A2: ORM models (ChatSession, ChatMessage) + Alembic migration 0004
-- [ ] A3: session_memory.py — LangGraph memory controller with Postgres checkpointer
-- [ ] A4: routes_chat_sessions.py — session CRUD + message endpoints
-- [ ] A5: app/main.py — CORS + include session router
-- [ ] A6: tests/test_chat_sessions.py — backend integration tests
+- [x] A1: pyproject.toml — add langchain, langgraph-checkpoint-postgres, psycopg deps <!-- eaa4dfa -->
+- [x] A2: ORM models (ChatSession, ChatMessage) + Alembic migration 0004 <!-- 356293d -->
+- [x] A3: session_memory.py — LangGraph memory controller with Postgres checkpointer <!-- 570b122 -->
+- [x] A4: routes_chat_sessions.py — session CRUD + message endpoints <!-- 4c252f5 -->
+- [x] A5: app/main.py — CORS + include session router <!-- 33e5418 -->
+- [x] A6: tests/test_chat_sessions.py — backend integration tests (15 passed) <!-- abc64fe -->
 
 **Phase B — Frontend: React Web UI**
-- [ ] B1: web/ workspace scaffold (Vite + React + TypeScript + Tailwind + Vitest)
-- [ ] B2: API client + types (web/src/api/client.ts)
-- [ ] B3: hooks (useSessions.ts, useChatSession.ts)
-- [ ] B4: components (SessionSidebar, ChatPanel, MessageList, MessageBubble, CitationList, Composer)
-- [ ] B5: App.tsx layout + main.tsx bootstrap
-- [ ] B6: Vitest component tests
+- [x] B1: web/ workspace scaffold (Vite + React + TypeScript + Tailwind + Vitest) <!-- 101ee33 -->
+- [x] B2: API client + types (web/src/api/client.ts) <!-- 101ee33 -->
+- [x] B3: hooks (useSessions.ts, useChatSession.ts) <!-- 101ee33 -->
+- [x] B4: components (SessionSidebar, ChatPanel, MessageList, MessageBubble, CitationList, Composer) <!-- 101ee33 -->
+- [x] B5: App.tsx layout + main.tsx bootstrap <!-- 101ee33 -->
+- [x] B6: Vitest component tests (23 passed) <!-- 101ee33 -->
 
 ## Future
 
