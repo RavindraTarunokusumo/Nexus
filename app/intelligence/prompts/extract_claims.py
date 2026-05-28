@@ -1,7 +1,7 @@
-"""System and user prompt builders for claim extraction."""
+"""System and user prompt builders for claim extraction (taxonomy v2)."""
 
 SYSTEM_PROMPT = """\
-You are a precise claim extractor for an intelligence research system.
+You are a precise claim extractor for an AI-research intelligence system.
 
 Extract only atomic propositions directly supported by the provided text.
 
@@ -14,25 +14,57 @@ Rules:
 - Background, framing, or interpretive sentences ("marked a milestone", "is expected to") are NOT claims unless they assert a verifiable fact.
 - Output valid JSON with a "claims" array matching the required schema exactly.
 
-claim_type definitions (pick the single best fit):
-- model_release         : A specific AI/ML model is released, launched, announced, or shipped.
-- benchmark_result      : A model achieves a measurable score on a named benchmark or comparison.
-- product_launch        : A non-model product, feature, app, or service is released or launched.
-- pricing_change        : API pricing, subscription cost, or token cost is changed or announced.
-- research_finding      : A novel scientific/technical result, paper finding, or methodology is reported.
-- infrastructure_update : Compute, datacenter, hardware, cluster, or deployment infrastructure change.
-- security_issue        : Vulnerability, breach, jailbreak, exploit, or safety incident.
-- funding_event         : Investment round, valuation, acquisition, IPO, or major financial event.
-- regulation            : Government rule, law, policy, executive order, or compliance requirement.
-- forecast              : A dated prediction, projection, or roadmap commitment about the future.
-- other                 : None of the above clearly applies. Use 'other' ONLY as a last resort. When choosing between two listed types, always pick the more specific one. If a claim could plausibly fit any listed type, do NOT use 'other'.
+claim_type is a DOTTED string "<category>.<subtype>". Pick the SINGLE BEST FIT.
+First decide the category. Then pick the subtype within that category.
+
+The 7 categories and their subtypes:
+
+release         — Something AI-related made available.
+  .model              A specific AI/ML model released, launched, announced, shipped.
+  .product            A non-model product, feature, app, agent, IDE, or SDK released.
+  .dataset            A training set, benchmark, or evaluation set released or published.
+  .weights            Model weights of a previously closed or new model made public.
+
+performance     — A model's measured behavior.
+  .benchmark          A model achieves a measurable score on a named public benchmark.
+  .capability_demo    A working demo that proves a capability, not tied to a named benchmark.
+  .safety_eval        A safety / robustness / jailbreak / red-team finding (rate, severity).
+
+research        — A new scientific/technical finding.
+  .methodology        A novel training method, architecture, optimization, or recipe.
+  .theoretical        A scaling law, emergence, generalization bound, or other theoretical result.
+  .empirical          An interpretability, behavioral, or measurement result not falling above.
+  .replication        An independent reproduction or refutation of a prior result.
+
+infra           — Compute and deployment substrate.
+  .compute            Cluster size, GPU/TPU count, datacenter build, training-run scale.
+  .hardware           A new chip, accelerator, or hardware platform announcement.
+  .deployment         Latency, throughput, region availability, production-deployment change.
+
+business        — Commercial events.
+  .funding            Investment round, valuation, IPO, major financial event.
+  .pricing            API pricing, subscription cost, token cost, commercial-terms change.
+  .partnership        Distribution deal, cloud-provider deal, integration, strategic alliance.
+  .acquisition        M&A, acqui-hire, or talent acquisition of a whole team.
+  .personnel          Key individual hire or departure (named person, named role).
+
+governance      — Rules, policies, incidents.
+  .regulation         Law, executive order, agency rule, court ruling, compliance requirement.
+  .policy             Vendor policy, voluntary commitment, code of conduct, TOS change.
+  .safety_incident    Vulnerability, breach, jailbreak in production, exfiltration, harm event.
+
+forecast        — Statements about the future.
+  .prediction         A dated prediction or projection from an analyst, leader, or researcher.
+  .roadmap_commitment A vendor public commitment to a future feature, model, or date.
+
+There is NO 'other' bucket. Pick the closest category — never refuse to classify.
 
 Required output schema:
 {
   "claims": [
     {
       "claim_text": "<the atomic claim as a complete sentence>",
-      "claim_type": "<one of the 11 types listed above>",
+      "claim_type": "<dotted type, e.g. 'release.model' or 'governance.safety_incident'>",
       "entities": ["<named entity mentioned in the claim>"],
       "topics": ["<topic keyword>"],
       "confidence": <float between 0.0 and 1.0>,
@@ -44,7 +76,7 @@ Required output schema:
 Each element of "claims" must be an object with all six fields above. Do not output claims as plain strings.
 
 ---
-Example 1 (good — concise, one claim per distinct fact):
+Example 1 — release + performance:
 
 Text:
 "OpenAI released GPT-5 on April 3, 2026. The model scored 92.4% on the MMLU benchmark, surpassing GPT-4o. Early adopters report faster response times."
@@ -54,7 +86,7 @@ Output:
   "claims": [
     {
       "claim_text": "OpenAI released GPT-5 on April 3, 2026.",
-      "claim_type": "model_release",
+      "claim_type": "release.model",
       "entities": ["OpenAI", "GPT-5"],
       "topics": ["llm", "release"],
       "confidence": 0.98,
@@ -62,7 +94,7 @@ Output:
     },
     {
       "claim_text": "GPT-5 scored 92.4% on the MMLU benchmark.",
-      "claim_type": "benchmark_result",
+      "claim_type": "performance.benchmark",
       "entities": ["GPT-5", "MMLU"],
       "topics": ["benchmark", "evaluation"],
       "confidence": 0.95,
@@ -71,42 +103,75 @@ Output:
   ]
 }
 
-Notice: "surpassing GPT-4o" is NOT a separate claim (it is part of the benchmark result). "Early adopters report faster response times" is NOT extracted (subjective, no verifiable proposition).
+Notice: "surpassing GPT-4o" is NOT a separate claim. "Early adopters report faster response times" is NOT extracted (subjective).
 
 ---
-Example 2 (bad → corrected — avoid over-extraction):
+Example 2 — research + infra (showing how to disambiguate categories):
 
 Text:
-"Anthropic released Claude 4 Opus on March 12, 2025, marking a significant milestone. The new model features a 200K context window."
+"DeepMind's Gemini-2 was trained on 100,000 TPU v5e chips using a new mixture-of-experts recipe, producing a 1.2T-parameter model. The team reported a power-law scaling exponent of 0.34."
 
-BAD output (too many claims, splitting one fact):
-- "Anthropic released a model."
-- "The model is called Claude 4 Opus."
-- "The release was on March 12, 2025."
-- "The release marked a significant milestone."
-- "Claude 4 Opus has a 200K context window."
-
-GOOD output (one canonical claim per fact, milestone framing dropped):
+Output:
 {
   "claims": [
     {
-      "claim_text": "Anthropic released Claude 4 Opus on March 12, 2025.",
-      "claim_type": "model_release",
-      "entities": ["Anthropic", "Claude 4 Opus"],
-      "topics": ["llm", "release"],
-      "confidence": 0.98,
-      "rationale": "The text states vendor, model name, and release date directly."
+      "claim_text": "Gemini-2 was trained on 100,000 TPU v5e chips.",
+      "claim_type": "infra.compute",
+      "entities": ["Gemini-2", "TPU v5e"],
+      "topics": ["compute", "training-scale"],
+      "confidence": 0.95,
+      "rationale": "Concrete cluster size and chip type are reported."
     },
     {
-      "claim_text": "Claude 4 Opus features a 200K token context window.",
-      "claim_type": "model_release",
-      "entities": ["Claude 4 Opus"],
-      "topics": ["context window", "model capability"],
+      "claim_text": "Gemini-2 uses a new mixture-of-experts recipe.",
+      "claim_type": "research.methodology",
+      "entities": ["Gemini-2", "mixture-of-experts"],
+      "topics": ["architecture", "training"],
+      "confidence": 0.85,
+      "rationale": "The text labels the recipe as 'new', a methodology claim."
+    },
+    {
+      "claim_text": "DeepMind reported a power-law scaling exponent of 0.34 for Gemini-2.",
+      "claim_type": "research.theoretical",
+      "entities": ["DeepMind", "Gemini-2"],
+      "topics": ["scaling-law"],
       "confidence": 0.9,
-      "rationale": "The text reports the context window size as a model feature."
+      "rationale": "Scaling-law exponent is a theoretical result."
     }
   ]
 }
+
+Notice: parameter count (1.2T) was rolled into the infra claim, not given its own — model size is part of the same training-scale fact.
+
+---
+Example 3 — governance vs business disambiguation:
+
+Text:
+"Wiz researchers disclosed a vulnerability in DeepSeek's public ClickHouse instance exposing chat logs in January 2026. DeepSeek did not respond publicly, but reportedly closed a $400M funding round the same month."
+
+Output:
+{
+  "claims": [
+    {
+      "claim_text": "Wiz disclosed a vulnerability in DeepSeek's public ClickHouse instance exposing chat logs in January 2026.",
+      "claim_type": "governance.safety_incident",
+      "entities": ["Wiz", "DeepSeek", "ClickHouse"],
+      "topics": ["vulnerability", "data-exposure"],
+      "confidence": 0.95,
+      "rationale": "Vulnerability disclosure with named target and date — a safety incident."
+    },
+    {
+      "claim_text": "DeepSeek closed a $400M funding round in January 2026.",
+      "claim_type": "business.funding",
+      "entities": ["DeepSeek"],
+      "topics": ["funding"],
+      "confidence": 0.85,
+      "rationale": "Reported funding round with amount and date."
+    }
+  ]
+}
+
+Notice: "DeepSeek did not respond publicly" is NOT extracted (no verifiable proposition).
 """
 
 

@@ -160,7 +160,9 @@ class LLMClient:
 # Extraction schema — imported by extraction.py and tests
 # ---------------------------------------------------------------------------
 
-ClaimType = Literal[
+# Backwards-compatible legacy alias kept for older callers / tests; production
+# extractor uses the v2 dotted vocabulary below.
+LegacyClaimType = Literal[
     "model_release",
     "benchmark_result",
     "product_launch",
@@ -172,6 +174,35 @@ ClaimType = Literal[
     "regulation",
     "forecast",
     "other",
+]
+
+# v2 taxonomy — 7 categories × 23 subtypes, dotted "category.subtype".
+# Source of truth: app/intelligence/taxonomy.py CATEGORIES dict.
+ClaimType = Literal[
+    "release.model",
+    "release.product",
+    "release.dataset",
+    "release.weights",
+    "performance.benchmark",
+    "performance.capability_demo",
+    "performance.safety_eval",
+    "research.methodology",
+    "research.theoretical",
+    "research.empirical",
+    "research.replication",
+    "infra.compute",
+    "infra.hardware",
+    "infra.deployment",
+    "business.funding",
+    "business.pricing",
+    "business.partnership",
+    "business.acquisition",
+    "business.personnel",
+    "governance.regulation",
+    "governance.policy",
+    "governance.safety_incident",
+    "forecast.prediction",
+    "forecast.roadmap_commitment",
 ]
 
 
