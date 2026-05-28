@@ -30,6 +30,21 @@ from app.intelligence.prompts.extract_claims_sentence_bounded import (
 )
 
 
+def _resolve_extractor() -> str:
+    """Env override (EXTRACTOR) wins; otherwise fall back to settings.extractor."""
+    import os
+
+    env_val = os.environ.get("EXTRACTOR")
+    if env_val:
+        return env_val
+    try:
+        from app.config import settings as _settings
+
+        return getattr(_settings, "extractor", "llm")
+    except Exception:
+        return "llm"
+
+
 @dataclass
 class SUTConfig:
     """Configuration for the System Under Test (SUT)."""
@@ -162,7 +177,7 @@ async def _score_example(
     document_text = example.document_text or ""
 
     try:
-        if __import__("os").environ.get("EXTRACTOR", "llm") == "gliner":
+        if _resolve_extractor() == "gliner":
             # T1 — local GLiNER2 extraction. No tokens, no API.
             from app.intelligence.gliner_extractor import extract_claims as _gliner_extract
 

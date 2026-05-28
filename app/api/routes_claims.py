@@ -88,7 +88,11 @@ async def extract_claims(
         api_key=settings.openrouter_api_key,
         session_factory=request.app.state.session_factory,
     )
-    graph = make_extraction_graph(request.app.state.session_factory, llm_client)
+    graph = make_extraction_graph(
+        request.app.state.session_factory,
+        llm_client,
+        embedder=getattr(request.app.state, "embedder", None),
+    )
     final = await run_with_context(graph, document_id, settings.t2_model)
 
     if final.get("error"):

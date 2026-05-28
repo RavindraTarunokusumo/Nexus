@@ -138,7 +138,11 @@ async def _extract_one_span(
     return {"span_id": span["id"], "claims": [], "tokens": total_tokens, "error": "unreachable"}
 
 
-def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # noqa: C901
+def make_extraction_graph(
+    session_factory: async_sessionmaker,
+    client: Any,
+    embedder: Any | None = None,
+):  # noqa: C901
     """Build and compile the LangGraph extraction graph bound to session_factory and client.
 
     Cyclomatic complexity is C90-flagged because the factory defines four nested node
@@ -209,31 +213,51 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         return {"run_id": run_id, "results": results, "total_tokens": total}
 
     async def store_claims(state: ExtractionState) -> dict:
+        # Collect claim_texts first for batch embedding (S5).
+        flat_claim_texts: list[str] = []
+        for result in state.get("results", []):
+            if result.get("error"):
+                continue
+            for claim_data in result.get("claims", []):
+                flat_claim_texts.append(claim_data.get("claim_text", ""))
+        if embedder is not None and flat_claim_texts:
+            try:
+                claim_vectors = embedder.embed(flat_claim_texts)
+            except Exception:  # noqa: BLE001 — embedding is non-critical, never fail extraction over it
+                claim_vectors = [None] * len(flat_claim_texts)
+        else:
+            claim_vectors = [None] * len(flat_claim_texts)
+
         async with session_factory() as session:
             claims_to_add: list[Claim] = []
             evidence_to_add: list[ClaimEvidence] = []
             stored_ids: list[uuid.UUID] = []
+            vec_idx = 0
 
             for result in state.get("results", []):
                 if result.get("error"):
                     continue
                 span_id = uuid.UUID(result["span_id"])
                 for claim_data in result.get("claims", []):
-                    # Pre-assign UUIDs so we can build ClaimEvidence rows without
-                    # an extra flush per claim.
                     claim_id = uuid.uuid4()
+                    from app.intelligence.taxonomy import category_of
+
+                    claim_type = claim_data["claim_type"]
                     claims_to_add.append(
                         Claim(
                             id=claim_id,
                             document_id=state["document_id"],
                             claim_text=claim_data["claim_text"],
-                            claim_type=claim_data["claim_type"],
+                            claim_type=claim_type,
+                            category=category_of(claim_type) or None,
                             entities_json=claim_data.get("entities"),
                             topics_json=claim_data.get("topics"),
                             confidence=claim_data.get("confidence"),
+                            claim_embedding=claim_vectors[vec_idx],
                             status="active",
                         )
                     )
+                    vec_idx += 1
                     evidence_to_add.append(
                         ClaimEvidence(
                             claim_id=claim_id,

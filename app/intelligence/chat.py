@@ -52,42 +52,106 @@ def _normalize_citation_label(label: str) -> str:
 
 def make_chat_graph(session_factory: async_sessionmaker, client: Any, embedder: Any):  # noqa: C901
     async def retrieve_spans(state: ChatState) -> dict:
+        """Hybrid retrieval over span and claim embeddings (S5).
+
+        Strategy:
+          1. Query top-K spans by Span.embedding cosine similarity.
+          2. Query top-K claims by Claim.claim_embedding cosine similarity; map
+             each claim back to its supporting span via ClaimEvidence.
+          3. Merge by span_id, keep max(span_score, claim_score).
+          4. Sort by the merged score, take top-K.
+
+        If no claim has an embedding (S5 not yet populated), step 2 is a no-op
+        and behavior collapses to the prior span-only path.
+        """
         async with session_factory() as session:
             sentinel = await session.scalar(select(Span).where(Span.embedding.isnot(None)).limit(1))
             if sentinel is None:
                 return {"context_blocks": []}
 
             query_vec = embedder.embed_one(state["question"])
-            distance = Span.embedding.cosine_distance(query_vec)
-            rows = (
+            top_k = state["top_k"]
+
+            # --- Span-side retrieval ---
+            span_distance = Span.embedding.cosine_distance(query_vec)
+            span_rows = (
                 await session.execute(
                     select(
                         Span.id,
                         Span.document_id,
                         Span.text,
-                        (1 - distance).label("score"),
+                        (1 - span_distance).label("score"),
                         Document.title.label("title"),
                         Document.url.label("url"),
                     )
                     .join(Document, Span.document_id == Document.id)
                     .where(Span.embedding.isnot(None))
-                    .order_by(distance, Document.id, Span.span_index, Span.id)
-                    .limit(state["top_k"])
+                    .order_by(span_distance, Document.id, Span.span_index, Span.id)
+                    .limit(top_k)
                 )
             ).all()
 
-        blocks = [
-            {
-                "label": f"C{index}",
-                "document_id": row.document_id,
+            # --- Claim-side retrieval (S5) ---
+            # Resolve each top claim back to its supporting span. A claim may
+            # appear via multiple ClaimEvidence rows; take the best span score
+            # per claim, but we'll merge on span_id below.
+            claim_rows: list = []
+            claim_sentinel = await session.scalar(
+                select(Claim).where(Claim.claim_embedding.isnot(None)).limit(1)
+            )
+            if claim_sentinel is not None:
+                claim_distance = Claim.claim_embedding.cosine_distance(query_vec)
+                claim_rows = (
+                    await session.execute(
+                        select(
+                            Span.id.label("span_id"),
+                            Span.document_id,
+                            Span.text,
+                            (1 - claim_distance).label("score"),
+                            Document.title.label("title"),
+                            Document.url.label("url"),
+                        )
+                        .join(ClaimEvidence, ClaimEvidence.claim_id == Claim.id)
+                        .join(Span, ClaimEvidence.span_id == Span.id)
+                        .join(Document, Span.document_id == Document.id)
+                        .where(Claim.claim_embedding.isnot(None))
+                        .where(Claim.status == "active")
+                        .order_by(claim_distance)
+                        .limit(top_k)
+                    )
+                ).all()
+
+        # --- Merge by span_id, keeping max score ---
+        merged: dict[uuid.UUID, dict[str, Any]] = {}
+        for row in span_rows:
+            merged[row.id] = {
                 "span_id": row.id,
+                "document_id": row.document_id,
                 "document_title": row.title,
                 "url": row.url,
-                "score": float(row.score),
                 "text": row.text,
-                "claims": [],
+                "score": float(row.score),
             }
-            for index, row in enumerate(rows, start=1)
+        for row in claim_rows:
+            existing = merged.get(row.span_id)
+            score = float(row.score)
+            if existing is None:
+                merged[row.span_id] = {
+                    "span_id": row.span_id,
+                    "document_id": row.document_id,
+                    "document_title": row.title,
+                    "url": row.url,
+                    "text": row.text,
+                    "score": score,
+                }
+            elif score > existing["score"]:
+                existing["score"] = score
+
+        # Rank by the merged score and label.
+        ranked = sorted(merged.values(), key=lambda b: b["score"], reverse=True)[:top_k]
+        blocks = [
+            {**b, "label": f"C{i}", "claims": []}
+            for i, b in enumerate(ranked, start=1)
         ]
         return {"context_blocks": blocks}
 
