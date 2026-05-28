@@ -138,11 +138,11 @@ async def _extract_one_span(
     return {"span_id": span["id"], "claims": [], "tokens": total_tokens, "error": "unreachable"}
 
 
-def make_extraction_graph(
+def make_extraction_graph(  # noqa: C901
     session_factory: async_sessionmaker,
     client: Any,
     embedder: Any | None = None,
-):  # noqa: C901
+):
     """Build and compile the LangGraph extraction graph bound to session_factory and client.
 
     Cyclomatic complexity is C90-flagged because the factory defines four nested node

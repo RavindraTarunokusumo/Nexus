@@ -17,7 +17,6 @@ from __future__ import annotations
 import re
 import uuid
 from collections import defaultdict
-from datetime import datetime
 from typing import Iterable
 
 from sqlalchemy import select, update
@@ -151,7 +150,7 @@ async def canonicalize(session: AsyncSession, *, dry_run: bool = False) -> dict:
 
     reassigned = 0
     canonical_count = 0
-    for sig, members in buckets.items():
+    for _sig, members in buckets.items():
         if not members:
             continue
         canonical = members[0]
@@ -200,9 +199,7 @@ async def supersede_check(session: AsyncSession, *, dry_run: bool = False) -> di
             if older.superseded_by != newest.id:
                 if not dry_run:
                     await session.execute(
-                        update(Claim)
-                        .where(Claim.id == older.id)
-                        .values(superseded_by=newest.id)
+                        update(Claim).where(Claim.id == older.id).values(superseded_by=newest.id)
                     )
                 superseded += 1
 

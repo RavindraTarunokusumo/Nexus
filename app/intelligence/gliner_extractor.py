@@ -37,10 +37,10 @@ _ENTITY_VOCAB = [
 # Sentence-role classes for Option A — multi-class semantic labels.
 # Replaces the ambiguous binary `is_claim` with discriminative roles.
 _SENTENCE_ROLES = [
-    "atomic_fact",   # a verifiable factual proposition
-    "framing",       # commentary or interpretation ("marking a milestone")
-    "opinion",       # subjective assertion ("experts say")
-    "background",    # orientation context, not the main point
+    "atomic_fact",  # a verifiable factual proposition
+    "framing",  # commentary or interpretation ("marking a milestone")
+    "opinion",  # subjective assertion ("experts say")
+    "background",  # orientation context, not the main point
 ]
 
 # Only sentences whose role is `atomic_fact` become extracted claims.
@@ -95,8 +95,8 @@ class GLiNERClaim:
 
     claim_text: str
     claim_type: str
-    entities: list[str] = field(default_factory=list)         # canonical
-    raw_entities: list[str] = field(default_factory=list)     # as extracted
+    entities: list[str] = field(default_factory=list)  # canonical
+    raw_entities: list[str] = field(default_factory=list)  # as extracted
     topics: list[str] = field(default_factory=list)
     confidence: float = 0.0  # filled from classifier softmax when available
     rationale: str = ""

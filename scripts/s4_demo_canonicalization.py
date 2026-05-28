@@ -5,6 +5,7 @@ main claims table, so we seed a few synthetic Claim rows representing the same
 fact phrased differently and across different documents, then run the
 canonicalization job and supersede check.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -19,11 +20,8 @@ from app.db.session import make_engine, make_session_factory
 from app.intelligence.canonicalization import (
     canonicalize,
     claim_signature,
-    extract_date_anchor,
-    normalize_entity,
     supersede_check,
 )
-
 
 SYNTHETIC = [
     # Same fact, three phrasings, three different docs, different dates.
@@ -63,9 +61,7 @@ SYNTHETIC = [
 
 
 async def main() -> int:
-    sf = make_session_factory(
-        make_engine("postgresql+asyncpg://nexus:nexus@localhost:55432/nexus")
-    )
+    sf = make_session_factory(make_engine("postgresql+asyncpg://nexus:nexus@localhost:55432/nexus"))
 
     # 0) Demonstrate the signature builder
     print("=== signature samples ===")
@@ -76,13 +72,13 @@ async def main() -> int:
 
     async with sf() as session:
         # Clean prior demo rows.
-        await session.execute(delete(Claim).where(Claim.claim_text.in_([s["text"] for s in SYNTHETIC])))
+        await session.execute(
+            delete(Claim).where(Claim.claim_text.in_([s["text"] for s in SYNTHETIC]))
+        )
         await session.commit()
 
         # Need a source + document.
-        src = (
-            await session.execute(select(Source).limit(1))
-        ).scalar_one_or_none()
+        src = (await session.execute(select(Source).limit(1))).scalar_one_or_none()
         if src is None:
             src = Source(
                 id=uuid.uuid4(),

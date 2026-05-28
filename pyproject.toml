@@ -74,6 +74,12 @@ max-complexity = 15
 # S324: md5/sha1 used in test fixtures for deterministic IDs, not crypto.
 # S603: subprocess calls in conftest for test infrastructure setup.
 "tests/**" = ["C901", "S101", "S324", "S603"]
+# scripts/ are one-off CLI utilities — synchronous file I/O is fine here
+# because they aren't on the request hot path.
+# ASYNC230: open() inside async function — acceptable for short-lived CLI scripts.
+# E731: lambdas in stat-printing helpers — readable enough at this scale.
+# E402: in-file imports occasionally used to declare BaseModel models near use.
+"scripts/**" = ["ASYNC230", "E731", "E402", "S101"]
 
 [tool.mypy]
 python_version = "3.11"

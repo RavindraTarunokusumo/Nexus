@@ -3,15 +3,14 @@
 Use GLiNER2's strengths: entity extraction and classification.
 The claim_text is the source sentence itself (verbatim quote, no rewriting).
 """
+
 from __future__ import annotations
 
-import json
 import re
 import sys
 import time
 
 from gliner2 import GLiNER2
-
 
 SAMPLES = [
     (
@@ -41,14 +40,30 @@ SAMPLES = [
 ]
 
 CLAIM_TYPES = [
-    "release.model", "release.product", "release.dataset", "release.weights",
-    "performance.benchmark", "performance.capability_demo", "performance.safety_eval",
-    "research.methodology", "research.theoretical", "research.empirical", "research.replication",
-    "infra.compute", "infra.hardware", "infra.deployment",
-    "business.funding", "business.pricing", "business.partnership",
-    "business.acquisition", "business.personnel",
-    "governance.regulation", "governance.policy", "governance.safety_incident",
-    "forecast.prediction", "forecast.roadmap_commitment",
+    "release.model",
+    "release.product",
+    "release.dataset",
+    "release.weights",
+    "performance.benchmark",
+    "performance.capability_demo",
+    "performance.safety_eval",
+    "research.methodology",
+    "research.theoretical",
+    "research.empirical",
+    "research.replication",
+    "infra.compute",
+    "infra.hardware",
+    "infra.deployment",
+    "business.funding",
+    "business.pricing",
+    "business.partnership",
+    "business.acquisition",
+    "business.personnel",
+    "governance.regulation",
+    "governance.policy",
+    "governance.safety_incident",
+    "forecast.prediction",
+    "forecast.roadmap_commitment",
 ]
 
 
@@ -71,9 +86,7 @@ def main() -> int:
         doc_t0 = time.perf_counter()
         for sent in sentences:
             # Skip framing-only sentences via a quick classification.
-            cls_claim = model.classify_text(
-                sent, {"is_claim": ["yes", "no"]}
-            )
+            cls_claim = model.classify_text(sent, {"is_claim": ["yes", "no"]})
             per_doc_calls += 1
             if cls_claim.get("is_claim") != "yes":
                 print(f"  [skip] {sent[:80]!r}")

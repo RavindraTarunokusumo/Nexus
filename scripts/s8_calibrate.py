@@ -1,4 +1,5 @@
 """S8 — fit confidence→P(match) calibration from existing eval data."""
+
 from __future__ import annotations
 
 import asyncio
@@ -17,9 +18,7 @@ OUT = Path(__file__).resolve().parents[1] / "evals" / "confidence_calibration.js
 
 
 async def main() -> int:
-    sf = make_session_factory(
-        make_engine("postgresql+asyncpg://nexus:nexus@localhost:55432/nexus")
-    )
+    sf = make_session_factory(make_engine("postgresql+asyncpg://nexus:nexus@localhost:55432/nexus"))
     async with sf() as session:
         pairs = await collect_calibration_pairs(session)
         summary = fit_and_summarize(pairs)

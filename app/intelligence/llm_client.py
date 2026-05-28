@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal, TypeVar
 
 import httpx
-from pydantic import BaseModel, ValidationError, model_validator
+from pydantic import BaseModel, ValidationError
 
 from app.observability.tracer import record_agent_run
 
@@ -16,7 +16,7 @@ _COST_PER_TOKEN_USD = 0.14 / 1_000_000
 T = TypeVar("T", bound=BaseModel)
 
 
-def _schema_is_strict_safe(model_cls: type[BaseModel]) -> bool:
+def _schema_is_strict_safe(model_cls: type[BaseModel]) -> bool:  # noqa: C901
     """Return True if the model's JSON Schema satisfies OpenAI strict mode.
 
     Strict requires every property in 'required' and no Optional/null fields.
@@ -103,7 +103,9 @@ class LLMClient:
         """
         import os as _os
 
-        if _os.environ.get("EVAL_JSON_SCHEMA", "0") == "1" and _schema_is_strict_safe(response_model):
+        if _os.environ.get("EVAL_JSON_SCHEMA", "0") == "1" and _schema_is_strict_safe(
+            response_model
+        ):
             response_format: dict = {
                 "type": "json_schema",
                 "json_schema": {

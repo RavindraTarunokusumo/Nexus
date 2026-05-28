@@ -4,6 +4,7 @@ Reads the gold dataset to get document_text per example_id, then invokes the
 current judge on each (gold_claim, pred_claim) pair from the labels file,
 writes the verdict back into the YAML in-place, and prints kappa.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -34,9 +35,7 @@ async def main() -> int:
     with open(LABELS_PATH, "r", encoding="utf-8") as f:
         labels_doc = yaml.safe_load(f)
 
-    sf = make_session_factory(
-        make_engine("postgresql+asyncpg://nexus:nexus@localhost:55432/nexus")
-    )
+    sf = make_session_factory(make_engine("postgresql+asyncpg://nexus:nexus@localhost:55432/nexus"))
     llm = LLMClient(api_key=app_settings.openrouter_api_key, session_factory=sf)
     judge = ClaimExtractionJudge(model=app_settings.t3_model, llm_client=llm)
 

@@ -1,4 +1,5 @@
 """Unit tests for app.evaluation.metrics — Sørensen-Dice alignment."""
+
 from __future__ import annotations
 
 from app.evaluation.metrics import _dice, _jaccard, align_claims
@@ -15,7 +16,9 @@ def test_dice_disjoint_strings_is_zero() -> None:
 def test_dice_substring_above_jaccard() -> None:
     """The motivating case: gold is a substring of pred, Jaccard fails, Dice succeeds."""
     gold = "Anthropic released Claude 4 Opus on March 12, 2025."
-    pred = "Anthropic released Claude 4 Opus on March 12, 2025, marking a milestone for the company."
+    pred = (
+        "Anthropic released Claude 4 Opus on March 12, 2025, marking a milestone for the company."
+    )
     d = _dice(gold, pred)
     j = _jaccard(gold, pred)
     # Dice >= 2*Jaccard/(1+Jaccard); for J≈0.5, D≈0.67. We just assert ordering.
@@ -60,8 +63,8 @@ def test_align_claims_missing_and_spurious() -> None:
     # Dice between disjoint phrases is below 0.5 — no match. Both go to leftovers.
     assert len(pairs) == 2
     shapes = {(g is None, p is None) for g, p in pairs}
-    assert (False, True) in shapes   # gold missing
-    assert (True, False) in shapes   # pred spurious
+    assert (False, True) in shapes  # gold missing
+    assert (True, False) in shapes  # pred spurious
 
 
 def test_align_claims_threshold_respected() -> None:

@@ -454,26 +454,47 @@ Columns: name, task, version, examples, checksum (first 12 chars).
 Execute one eval run. Invokes the SUT (system under test) on each example, calls the LLM judge, persists per-example results to `eval_results`, and writes aggregate scores to `eval_runs`.
 
 ```sh
-nexus eval run claim_extraction ai_tech_v1 --path evals/gold/claim_extraction/ai_tech_v1.yaml
-nexus eval run claim_extraction ai_tech_v1 --path evals/gold/claim_extraction/ai_tech_v1.yaml \
+nexus eval run --path evals/gold/claim_extraction/ai_tech_v4.yaml
+nexus eval run --path evals/gold/claim_extraction/ai_tech_v4.yaml \
     --sut-model deepseek/deepseek-v4-flash \
-    --judge-model deepseek/deepseek-v4-pro \
+    --judge-model google/gemini-2.5-flash \
     --max-cost 2.0 \
-    --note "baseline before prompt change"
+    --note "baseline before prompt change" \
+    -v
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `--path <yaml>` | required | Path to the gold-set YAML |
-| `--version N` | `1` | Dataset version |
-| `--sut-model` | `settings.t2_model` | Override the system-under-test model |
-| `--judge-model` | `settings.t3_model` | Override the judge model |
+| `--sut-model` | `settings.t2_model` | Override the system-under-test model (LLM path only) |
+| `--judge-model` | `settings.judge_model` (`google/gemini-2.5-flash`) | Override the judge model. Cross-family judges (e.g. gemini) inflate scores ~0.04 less than in-family deepseek-pro per S7 |
 | `--max-cost <usd>` | `1.0` | Budget gate — stops when cumulative cost exceeds this value |
 | `--note` | none | Free-text note stored on the run row |
+| `--verbose / -v` | off | Show per-call HTTP/INFO logs. Default suppresses logs and prints only final scores. Also available on `show`, `diff`, `calibrate` |
 
 The dataset must have been registered first with `register-dataset`. The run status is `completed` when all examples score without error; `partial` if any example errored.
 
 Aggregate scores reported: `precision`, `recall`, `f1`, `type_accuracy`, `mean_groundedness`, `mean_factuality`.
+
+**Extractor selection.** The SUT defaults to `settings.extractor` (default `"gliner"` — local CPU, $0 marginal cost). Override per-run via env:
+
+```sh
+EXTRACTOR=llm    nexus eval run ...     # T2 LLM via OpenRouter
+EXTRACTOR=gliner nexus eval run ...     # T1 GLiNER2 local (default)
+```
+
+**Other eval env knobs:**
+
+| Env var | Default | Effect |
+|---|---|---|
+| `EXTRACTOR` | `gliner` (from `settings.extractor`) | `gliner` = local T1; `llm` = T2 via OpenRouter |
+| `EVAL_JSON_SCHEMA` | `0` | When `1`, force OpenAI strict json_schema mode where the response_model supports it (auto-falls back to json_object for models with Optional fields) |
+| `EVAL_CONFIDENCE_THRESHOLD` | `0` | Drop pred claims below this confidence before judging. **Empirically uninformative — leave 0** |
+| `EVAL_ATOMICITY` | `0` | Drop pred claims that look compound by regex heuristic |
+| `EVAL_DEDUP` | `0` | Drop near-duplicate pred claims (Jaccard ≥ 0.8) |
+| `EVAL_DISTILL_PASS` | `0` | Two-pass extract → distill via LLM. Skipped silently when `EXTRACTOR=gliner` (would defeat the local-cost win) |
+| `EVAL_TOP_K` | `0` | Cap kept pred claims to first-N. `1` matches the v3 single-claim gold annotation style; harmful on v4 |
+| `EVAL_SENTENCE_BOUNDED` | `0` | Use the sentence-bounded LLM prompt (one claim per sentence schema). Deferred — regresses on this dataset shape |
 
 #### `nexus eval show <run-id>`
 

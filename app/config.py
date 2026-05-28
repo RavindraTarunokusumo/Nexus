@@ -14,11 +14,11 @@ class Settings(BaseSettings):
     #   T1: local encoder models (embedding + claim extraction, no API key needed)
     #   T2: fast LLM via OpenRouter (chat answer, extraction fallback)
     #   T3: strong LLM via OpenRouter (synthesis, eval judge)
-    t1_embedding_model: str = "BAAI/bge-small-en-v1.5"   # 384-dim sentence transformer
+    t1_embedding_model: str = "BAAI/bge-small-en-v1.5"  # 384-dim sentence transformer
     t1_extractor_model: str = "fastino/gliner2-base-v1"  # GLiNER2 encoder for claim extraction
     t2_model: str = "deepseek/deepseek-v4-flash"
     t3_model: str = "deepseek/deepseek-v4-pro"
-    judge_model: str = "google/gemini-2.5-flash"          # cross-family judge (S7 finding)
+    judge_model: str = "google/gemini-2.5-flash"  # cross-family judge (S7 finding)
 
     # Back-compat alias — older callers expect settings.t1_model to be the embedding model.
     @property

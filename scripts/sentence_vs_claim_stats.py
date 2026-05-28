@@ -9,6 +9,7 @@ Three perspectives:
 
 Comparing the three reveals what each agent thinks the claim density is.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -24,7 +25,7 @@ from app.db.models import EvalResult
 from app.db.session import make_engine, make_session_factory
 
 GOLD_PATH = "evals/gold/claim_extraction/ai_tech_v3.yaml"
-LLM_RUN_ID = uuid.UUID("6ca8abd3-8cc9-43b2-95ae-3583bc50fabd")   # taxonomy v2 + cross-family judge
+LLM_RUN_ID = uuid.UUID("6ca8abd3-8cc9-43b2-95ae-3583bc50fabd")  # taxonomy v2 + cross-family judge
 GLINER_RUN_ID = uuid.UUID("1211d83e-72ee-4af2-9ede-b6beb3607749")  # gliner SUT
 
 
@@ -35,9 +36,7 @@ def split_sentences(text: str) -> list[str]:
 
 
 async def main() -> int:
-    sf = make_session_factory(
-        make_engine("postgresql+asyncpg://nexus:nexus@localhost:55432/nexus")
-    )
+    sf = make_session_factory(make_engine("postgresql+asyncpg://nexus:nexus@localhost:55432/nexus"))
 
     with open(GOLD_PATH, "r", encoding="utf-8") as f:
         ds = yaml.safe_load(f)
@@ -58,14 +57,10 @@ async def main() -> int:
 
     async with sf() as session:
         # LLM run
-        res = await session.execute(
-            select(EvalResult).where(EvalResult.run_id == LLM_RUN_ID)
-        )
+        res = await session.execute(select(EvalResult).where(EvalResult.run_id == LLM_RUN_ID))
         llm_rows = res.scalars().all()
         # GLiNER run
-        res = await session.execute(
-            select(EvalResult).where(EvalResult.run_id == GLINER_RUN_ID)
-        )
+        res = await session.execute(select(EvalResult).where(EvalResult.run_id == GLINER_RUN_ID))
         gliner_rows = res.scalars().all()
 
     llm_emit_total = 0

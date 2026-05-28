@@ -12,14 +12,13 @@ Usage:
     python scripts/opus_label_pairs.py --n 60 \
         --out evals/human_labels/claim_extraction_opus_v1.yaml
 """
+
 from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import random
 import sys
-import uuid
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +26,7 @@ import yaml
 from sqlalchemy import select
 
 from app.config import settings as app_settings
-from app.db.models import Claim, Document, EvalResult, EvalRun
+from app.db.models import EvalResult
 from app.db.session import make_engine, make_session_factory
 from app.evaluation.prompts.claim_extraction_judge import (
     JUDGE_SYSTEM_PROMPT,
@@ -54,7 +53,7 @@ async def _probe_model(client: LLMClient, model: str) -> bool:
     try:
         await client.complete_json(
             model=model,
-            system="Return JSON: {\"ok\": true}.",
+            system='Return JSON: {"ok": true}.',
             user="ping",
             response_model=_PingOut,
             temperature=0.0,
@@ -81,8 +80,14 @@ async def pick_opus(client: LLMClient) -> str:
     on a tiny synthetic (gold, pred) pair.
     """
     print("Probing OpenRouter for an available labeller model …", file=sys.stderr)
-    warmup_gold = {"claim_text": "OpenAI released GPT-5 in April 2026.", "claim_type": "release.model"}
-    warmup_pred = {"claim_text": "OpenAI released GPT-5 in April 2026.", "claim_type": "release.model"}
+    warmup_gold = {
+        "claim_text": "OpenAI released GPT-5 in April 2026.",
+        "claim_type": "release.model",
+    }
+    warmup_pred = {
+        "claim_text": "OpenAI released GPT-5 in April 2026.",
+        "claim_type": "release.model",
+    }
     user = build_judge_prompt(
         "OpenAI released GPT-5 in April 2026, marking a milestone.",
         warmup_gold,
@@ -211,9 +216,7 @@ async def main(argv: list[str] | None = None) -> int:
     )
     args = ap.parse_args(argv)
 
-    sf = make_session_factory(
-        make_engine("postgresql+asyncpg://nexus:nexus@localhost:55432/nexus")
-    )
+    sf = make_session_factory(make_engine("postgresql+asyncpg://nexus:nexus@localhost:55432/nexus"))
     client = LLMClient(api_key=app_settings.openrouter_api_key, session_factory=sf)
     opus_model = await pick_opus(client)
 

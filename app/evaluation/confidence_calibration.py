@@ -42,7 +42,7 @@ def _fit_logistic(
     a, b = 1.0, 0.0
     for _ in range(n_iter):
         ga, gb = 0.0, 0.0
-        for x, y in zip(xs, ys):
+        for x, y in zip(xs, ys, strict=False):
             p = sigmoid(a * x + b)
             err = p - y
             ga += err * x
@@ -102,9 +102,7 @@ def fit_and_summarize(pairs: list[tuple[float, int]]) -> dict[str, Any]:
     neg = [x for x, y in pairs if y == 0]
     raw_threshold = 0.7
     raw_above = [y for x, y in pairs if x >= raw_threshold]
-    raw_precision_at_0_7 = (
-        sum(raw_above) / len(raw_above) if raw_above else None
-    )
+    raw_precision_at_0_7 = sum(raw_above) / len(raw_above) if raw_above else None
 
     return {
         "n": len(pairs),

@@ -4,6 +4,7 @@ Replaces the binary is_claim with sentence_role ∈
 {atomic_fact, framing, opinion, background}. Reports the actual
 distribution across the 116 sentences in the corpus.
 """
+
 from __future__ import annotations
 
 import sys
@@ -14,7 +15,6 @@ import yaml
 
 from app.intelligence.gliner_extractor import (
     classify_all_sentence_roles,
-    split_sentences,
 )
 
 GOLD_PATH = Path("evals/gold/claim_extraction/ai_tech_v3.yaml")

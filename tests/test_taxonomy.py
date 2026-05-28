@@ -1,4 +1,5 @@
 """Unit tests for app.intelligence.taxonomy — pure data, no DB or LLM."""
+
 from __future__ import annotations
 
 import pytest

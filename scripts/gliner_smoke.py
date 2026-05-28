@@ -1,4 +1,5 @@
 """GLiNER2 smoke test — load the model and run extract_json on one example."""
+
 from __future__ import annotations
 
 import json
@@ -6,7 +7,6 @@ import sys
 import time
 
 from gliner2 import GLiNER2
-
 
 SAMPLE = (
     "Anthropic released Claude 4 Opus on March 12, 2025, marking a significant "
@@ -51,13 +51,30 @@ def main() -> int:
                 first_text,
                 {
                     "claim_type": [
-                        "release.model", "release.product", "release.dataset", "release.weights",
-                        "performance.benchmark", "performance.capability_demo", "performance.safety_eval",
-                        "research.methodology", "research.theoretical", "research.empirical", "research.replication",
-                        "infra.compute", "infra.hardware", "infra.deployment",
-                        "business.funding", "business.pricing", "business.partnership", "business.acquisition", "business.personnel",
-                        "governance.regulation", "governance.policy", "governance.safety_incident",
-                        "forecast.prediction", "forecast.roadmap_commitment",
+                        "release.model",
+                        "release.product",
+                        "release.dataset",
+                        "release.weights",
+                        "performance.benchmark",
+                        "performance.capability_demo",
+                        "performance.safety_eval",
+                        "research.methodology",
+                        "research.theoretical",
+                        "research.empirical",
+                        "research.replication",
+                        "infra.compute",
+                        "infra.hardware",
+                        "infra.deployment",
+                        "business.funding",
+                        "business.pricing",
+                        "business.partnership",
+                        "business.acquisition",
+                        "business.personnel",
+                        "governance.regulation",
+                        "governance.policy",
+                        "governance.safety_incident",
+                        "forecast.prediction",
+                        "forecast.roadmap_commitment",
                     ]
                 },
             )

@@ -29,6 +29,7 @@ alembic upgrade head
 | 0001 | Initial schema: all 8 tables + `CREATE EXTENSION IF NOT EXISTS vector` |
 | 0002 | Observability: adds `run_id`, `document_id`, `span_id`, `prompt_tokens`, `completion_tokens` to `agent_runs`; adds `chunked_at`, `embedded_at`, `extraction_started_at`, `extraction_completed_at` to `documents`; creates `span_extractions` table |
 | 0003 | Evaluation: creates `eval_datasets`, `eval_runs`, `eval_results` tables |
+| 0004 | System tuning: adds `claims.category`, `claims.claim_embedding` (Vector 384), `claims.valid_from`, `claims.valid_to`, `claims.superseded_by` (self-FK), `claims.canonical_claim_id` (self-FK); indexes on category, canonical_claim_id, and a partial validity index |
 
 ## Schema
 
@@ -97,14 +98,20 @@ Extracted factual claims linked to a document. Populated by Phase 3 claim extrac
 | id | UUID | Primary key |
 | document_id | UUID | FK → documents (CASCADE) |
 | claim_text | TEXT | |
-| claim_type | TEXT | One of the 11 taxonomy values (`model_release`, `benchmark_result`, `product_launch`, `pricing_change`, `research_finding`, `infrastructure_update`, `security_issue`, `funding_event`, `regulation`, `forecast`, `other`) |
+| claim_type | TEXT | Taxonomy v2 dotted form (`release.model`, `performance.benchmark`, `governance.safety_incident`, …). 24 valid subtypes across 7 categories — see `app/intelligence/taxonomy.py` |
+| category | TEXT | Top-level category split off from `claim_type` for easy filtering. Migration 0004. Populated at extraction time |
 | entities_json | JSONB | Nullable |
 | topics_json | JSONB | Nullable |
-| confidence | FLOAT | Nullable |
+| confidence | FLOAT | Nullable. Self-reported by the SUT — empirically uninformative; do not gate on it |
+| claim_embedding | VECTOR(384) | Nullable. Same model as `spans.embedding` (`bge-small-en-v1.5`). Used by `chat.retrieve_spans` for hybrid scoring. Migration 0004 |
+| valid_from | TIMESTAMPTZ | Nullable. Temporal validity start (S9). Migration 0004 |
+| valid_to | TIMESTAMPTZ | Nullable. Temporal validity end (S9). Migration 0004 |
+| superseded_by | UUID | Nullable, self-FK ON DELETE SET NULL. Points to the newer claim that replaces this one (S9). Migration 0004 |
+| canonical_claim_id | UUID | Nullable, self-FK ON DELETE SET NULL. Points to the canonical representative of a claim cluster (S4). The canonical row itself has NULL here. Migration 0004 |
 | status | TEXT | Default: `active`; may be `rejected` |
 | created_at | TIMESTAMPTZ | Auto-set |
 
-Indexes: `document_id`, `status`, `claim_type`.
+Indexes: `document_id`, `status`, `claim_type`, `category` (0004), `canonical_claim_id` (0004), partial `ix_claims_validity` on `(valid_from, valid_to) WHERE superseded_by IS NULL` (0004).
 
 ### `claim_evidence`
 

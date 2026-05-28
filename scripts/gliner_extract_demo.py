@@ -1,5 +1,6 @@
 """Show the new GLiNER extractor's full output for 3 sample examples,
 including raw NER and canonical entity normalization."""
+
 from __future__ import annotations
 
 import sys
@@ -21,7 +22,9 @@ def main() -> int:
         print("=" * 78)
         print(f"[{ex_id}]")
         print(f"DOC: {ex['document_text'].strip()}")
-        print(f"GOLD: type={ex['gold_claims'][0]['claim_type']}  text={ex['gold_claims'][0]['claim_text']!r}")
+        print(
+            f"GOLD: type={ex['gold_claims'][0]['claim_type']}  text={ex['gold_claims'][0]['claim_text']!r}"
+        )
         print("-" * 78)
         claims = extract_claims(ex["document_text"])
         if not claims:

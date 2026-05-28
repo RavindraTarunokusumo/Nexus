@@ -1,4 +1,5 @@
 """Unit tests for app.intelligence.canonicalization — signature builder + entity aliases."""
+
 from __future__ import annotations
 
 import pytest
@@ -56,19 +57,15 @@ def test_claim_signature_groups_alias_variants() -> None:
     )
     sig_b = claim_signature(
         "release.model",
-        ["anthropic", "Claude 4 Opus"],   # case-variant
+        ["anthropic", "Claude 4 Opus"],  # case-variant
         "On March 12, 2025, anthropic launched Claude 4 Opus.",
     )
     assert sig_a == sig_b
 
 
 def test_claim_signature_distinguishes_types() -> None:
-    sig_release = claim_signature(
-        "release.model", ["OpenAI", "GPT-5"], "OpenAI released GPT-5."
-    )
-    sig_funding = claim_signature(
-        "business.funding", ["OpenAI"], "OpenAI raised $40B."
-    )
+    sig_release = claim_signature("release.model", ["OpenAI", "GPT-5"], "OpenAI released GPT-5.")
+    sig_funding = claim_signature("business.funding", ["OpenAI"], "OpenAI raised $40B.")
     assert sig_release != sig_funding
 
 

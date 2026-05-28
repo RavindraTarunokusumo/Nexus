@@ -1,4 +1,5 @@
 """Per-type slice for a finished eval run (taxonomy v2-aware)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -14,9 +15,7 @@ from app.db.session import make_engine, make_session_factory
 
 
 async def main(run_id_str: str, dataset_path: str) -> int:
-    sf = make_session_factory(
-        make_engine("postgresql+asyncpg://nexus:nexus@localhost:55432/nexus")
-    )
+    sf = make_session_factory(make_engine("postgresql+asyncpg://nexus:nexus@localhost:55432/nexus"))
     run_id = uuid.UUID(run_id_str)
 
     with open(dataset_path, "r", encoding="utf-8") as f:

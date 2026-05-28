@@ -59,29 +59,45 @@ app/
     url_fetcher.py         # fetch_and_clean (httpx + trafilatura)
   intelligence/
     chat.py                # LangGraph chat answer graph (retrieve_spans → load_claims
-                           #   → generate_answer → format_result); validates citation labels
-                           #   against retrieved context; wraps graph in chat_run context
+                           #   → generate_answer → format_result); HYBRID retrieval scoring
+                           #   over Span.embedding AND Claim.claim_embedding (S5);
+                           #   merges by span_id with max-score; validates citation labels;
+                           #   wraps graph in chat_run context
     llm_client.py          # LLMClient.complete_json — OpenRouter calls, Pydantic validation;
-                           #   ExtractedClaim / ExtractionOutput schemas;
+                           #   ExtractedClaim / ExtractionOutput schemas (taxonomy v2 dotted types);
+                           #   SentenceBoundedOutput (S1 alt path);
+                           #   _schema_is_strict_safe guards strict json_schema for Optional fields;
                            #   LLMError / LLMNetworkError / LLMSchemaError hierarchy;
-                           #   uses tracer.record_agent_run; tracks prompt_tokens / completion_tokens;
-                           #   supports run_type for claim extraction and chat answers
+                           #   uses tracer.record_agent_run
+    gliner_extractor.py    # T1 local extractor — fastino/gliner2-base-v1 on CPU
+                           #   (DeBERTa-v3-base under the hood); per-sentence pipeline:
+                           #   is_claim → claim_type (24-way) → entities (NER) → canonical;
+                           #   module-level model singleton with double-checked locking;
+                           #   $0 marginal cost, ~3-5s per document
     extraction.py          # LangGraph StateGraph (load_spans → extract_spans → store_claims
                            #   → update_status); asyncio.gather concurrency (Semaphore 5);
                            #   correction-prompt retry (max 2); status constants exported;
                            #   wraps graph in extraction_run context; span_scope per span;
-                           #   writes span_extractions rows; marks extraction timestamps;
-                           #   run_with_context() entry point
+                           #   writes claim_embedding via asyncio.to_thread(embedder.embed, ...);
+                           #   populates claims.category via taxonomy.category_of()
+    canonicalization.py    # Claim canonicalization layer (S4) — entity alias table,
+                           #   date anchor extraction, claim_signature() clustering,
+                           #   canonicalize() (newest-as-canonical), supersede_check();
+                           #   batch-job style, not yet wired into ingest
+    taxonomy.py            # Taxonomy v2 — 7 categories × 24 subtypes;
+                           #   CATEGORIES dict is the single source of truth;
+                           #   ALL_TYPES, is_valid, split_type, category_of, legacy_to_new
     prompts/
       chat_answer.py       # SYSTEM_PROMPT plus question/context prompt builder for grounded chat
-      extract_claims.py    # SYSTEM_PROMPT, build_user_prompt, build_correction_prompt
+      extract_claims.py    # SYSTEM_PROMPT (taxonomy v2 + 3 few-shot examples), build_user_prompt
+      extract_claims_sentence_bounded.py  # S1 prompt + split_sentences (deferred eval path)
   domain_packs/
     personal_ai_tech.yaml  # Default domain pack definition
   evaluation/
     __init__.py
     datasets.py            # Pydantic schemas (GoldClaim, ClaimExtractionExample,
                            #   SpanRetrievalExample, Dataset); load_dataset(path) with SHA-256 checksum
-    metrics.py             # precision_recall_f1, precision_at_k, ndcg_at_k, align_claims (Jaccard greedy)
+    metrics.py             # precision_recall_f1, precision_at_k, ndcg_at_k, align_claims (Sørensen-Dice greedy)
     judges.py              # ClaimExtractionJudge (active);
                            #   BriefSynthesisJudge, GroundedAnswerJudge (Phase 4 stubs)
     runner.py              # execute_run(*) entry point; SUTConfig / EvalRunResult dataclasses;
@@ -206,19 +222,35 @@ Status constants exported from `app/intelligence/extraction.py`: `STATUS_EMBEDDE
 
 ## Claim Taxonomy
 
-Claims are typed using a Pydantic `Literal` validated at extraction time:
+Claims are typed using a Pydantic `Literal` validated at extraction time. As of the system-tuning branch the taxonomy is **v2 — hierarchical, dotted `<category>.<subtype>`**:
 
-`model_release`, `benchmark_result`, `product_launch`, `pricing_change`, `research_finding`, `infrastructure_update`, `security_issue`, `funding_event`, `regulation`, `forecast`, `other`
+| Category | Subtypes |
+|---|---|
+| `release` | `model`, `product`, `dataset`, `weights` |
+| `performance` | `benchmark`, `capability_demo`, `safety_eval` |
+| `research` | `methodology`, `theoretical`, `empirical`, `replication` |
+| `infra` | `compute`, `hardware`, `deployment` |
+| `business` | `funding`, `pricing`, `partnership`, `acquisition`, `personnel` |
+| `governance` | `regulation`, `policy`, `safety_incident` |
+| `forecast` | `prediction`, `roadmap_commitment` |
+
+Single source of truth: `CATEGORIES` dict in `app/intelligence/taxonomy.py`. `legacy_to_new()` maps the old 11-type vocabulary (`model_release` → `release.model`, etc.) deterministically. No `other` bucket — the prompt instructs the model to pick the closest category.
 
 ## LLM Tier Model
 
 | Tier | Purpose | Config key | Default |
 |---|---|---|---|
-| T1 | Embedding (local) | `settings.t1_model` | `BAAI/bge-small-en-v1.5` |
-| T2 | Claim extraction (SUT) + chat answer | `settings.t2_model` | `deepseek/deepseek-v4-flash` |
-| T3 | Brief synthesis (Phase 4); LLM judge for eval | `settings.t3_model` | `deepseek/deepseek-v4-pro` |
+| T1 (extractor) | Claim extraction — local CPU | `settings.t1_extractor_model` | `fastino/gliner2-base-v1` |
+| T1 (embedder) | Span + claim embeddings — local CPU | `settings.t1_embedding_model` | `BAAI/bge-small-en-v1.5` |
+| T2 | Chat answer; extraction fallback | `settings.t2_model` | `deepseek/deepseek-v4-flash` |
+| T3 | Brief synthesis (Phase 4) | `settings.t3_model` | `deepseek/deepseek-v4-pro` |
+| Judge | LLM judge for the eval framework | `settings.judge_model` | `google/gemini-2.5-flash` (cross-family per S7) |
 
-Cost is tracked per call: `0.30 / 1_000_000 * total_tokens` stored in the `agent_runs.cost_estimate` column.
+**Extractor selection:** `settings.extractor` defaults to `"gliner"`. The runner reads `EXTRACTOR` env first, then this setting. Setting `EXTRACTOR=llm` forces the T2 path.
+
+**Why GLiNER for T1:** the eval campaign showed F1 0.713 (GLiNER) vs 0.685 (LLM) on `ai_tech_v4` with cross-family judge, at $0 marginal extraction cost. Per-sentence pipeline: `is_claim` binary classification → 24-way claim_type classification → NER for entities → alias-resolved canonical entities. See `app/intelligence/gliner_extractor.py`.
+
+Cost is tracked per call (LLM paths only): `0.30 / 1_000_000 * total_tokens` stored in the `agent_runs.cost_estimate` column.
 
 ## Observability
 

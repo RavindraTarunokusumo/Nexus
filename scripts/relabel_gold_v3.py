@@ -4,6 +4,7 @@ Uses legacy_to_new() from app/intelligence/taxonomy for the deterministic
 cases. The 4 'other' examples and the 'infrastructure_update' cases that
 look like deployment are handled with hand-coded special cases.
 """
+
 from __future__ import annotations
 
 import sys
@@ -25,16 +26,16 @@ V3_PATH = ROOT / "evals" / "gold" / "claim_extraction" / "ai_tech_v3.yaml"
 # Format: example_id → new dotted type
 _MANUAL: dict[str, str] = {
     # Legacy 'other' — must be reclassified.
-    "ot_001": "business.acquisition",   # "Inflection AI wound down ... most staff moving to Microsoft" → acqui-hire
-    "ot_002": "governance.policy",      # "Character.AI announced a content moderation overhaul" → vendor policy
-    "ot_003": "business.personnel",     # "OpenAI dissolved its Superalignment team ... departures" → org/personnel
-    "ot_004": "release.product",        # "Linux Foundation launched the Open Platform for Enterprise AI" → product
+    "ot_001": "business.acquisition",  # "Inflection AI wound down ... most staff moving to Microsoft" → acqui-hire
+    "ot_002": "governance.policy",  # "Character.AI announced a content moderation overhaul" → vendor policy
+    "ot_003": "business.personnel",  # "OpenAI dissolved its Superalignment team ... departures" → org/personnel
+    "ot_004": "release.product",  # "Linux Foundation launched the Open Platform for Enterprise AI" → product
     # Infrastructure examples that are really deployment, not raw compute.
-    "iu_002": "infra.deployment",       # "Cloudflare extended Workers AI ... edge ... 100ms latency"
+    "iu_002": "infra.deployment",  # "Cloudflare extended Workers AI ... edge ... 100ms latency"
     # Research subtype refinements.
-    "rf_001": "research.methodology",   # If this example talks about a new training method (default empirical otherwise)
-    "rf_004": "research.empirical",     # "frontier reasoning models collapse" — empirical observation
-    "rf_005": "research.empirical",     # AlphaProof IMO score — empirical demonstration
+    "rf_001": "research.methodology",  # If this example talks about a new training method (default empirical otherwise)
+    "rf_004": "research.empirical",  # "frontier reasoning models collapse" — empirical observation
+    "rf_005": "research.empirical",  # AlphaProof IMO score — empirical demonstration
 }
 
 

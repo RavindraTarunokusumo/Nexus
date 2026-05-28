@@ -149,10 +149,7 @@ def make_chat_graph(session_factory: async_sessionmaker, client: Any, embedder: 
 
         # Rank by the merged score and label.
         ranked = sorted(merged.values(), key=lambda b: b["score"], reverse=True)[:top_k]
-        blocks = [
-            {**b, "label": f"C{i}", "claims": []}
-            for i, b in enumerate(ranked, start=1)
-        ]
+        blocks = [{**b, "label": f"C{i}", "claims": []} for i, b in enumerate(ranked, start=1)]
         return {"context_blocks": blocks}
 
     async def load_claims(state: ChatState) -> dict:
