@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -161,7 +162,14 @@ async def _score_example(
     document_text = example.document_text or ""
 
     try:
-        if __import__("os").environ.get("EVAL_SENTENCE_BOUNDED", "0") == "1":
+        if __import__("os").environ.get("EXTRACTOR", "llm") == "gliner":
+            # T1 — local GLiNER2 extraction. No tokens, no API.
+            from app.intelligence.gliner_extractor import extract_claims as _gliner_extract
+
+            gliner_out = await asyncio.to_thread(_gliner_extract, document_text)
+            pred_claims = [c.model_dump() for c in gliner_out]
+            sut_tokens = 0
+        elif __import__("os").environ.get("EVAL_SENTENCE_BOUNDED", "0") == "1":
             user_prompt = _build_sb_prompt(document_text, {})
             sb_output, sut_tokens = await llm_client.complete_json(
                 model=sut_config.model,
@@ -306,6 +314,11 @@ def _postfilter_predictions(claims: list[dict]) -> list[dict]:
     threshold = float(os.environ.get("EVAL_CONFIDENCE_THRESHOLD", "0.0"))
     if threshold > 0:
         claims = [c for c in claims if float(c.get("confidence", 0.0)) >= threshold]
+
+    top_k = int(os.environ.get("EVAL_TOP_K", "0") or "0")
+    if top_k > 0:
+        # Keep the first-N as emitted; the model tends to put the headline fact first.
+        claims = claims[:top_k]
 
     if os.environ.get("EVAL_ATOMICITY", "0") == "1":
         from app.intelligence.llm_client import is_atomic_claim
