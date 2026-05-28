@@ -2,6 +2,31 @@
 
 ## Active
 
+### System-tuning follow-on (deferred from `feature/system-tuning`)
+
+- [ ] **S3 multi-span provenance in real ingestion** — `ClaimEvidence` already
+  supports many-to-one but `extraction.store_claims` writes only one row per
+  claim. Extend the extractor to identify all supporting sentences and emit
+  one `ClaimEvidence` row per supporting span.
+- [ ] **S4 canonicalization on real claims** — wire `canonicalization.canonicalize()`
+  and `supersede_check()` as a post-ingest hook or a periodic batch job. Depends
+  on S3 to have meaningful multi-document data.
+- [ ] **S9 temporal supersede on real claims** — verify `supersede_check()`
+  selects the most-recent unsuperseded claim per canonical cluster. Needs
+  real data with overlapping facts across timestamps.
+- [ ] **Fine-tune GLiNER on v4 corpus** — train a head specifically for the
+  24-way dotted taxonomy. Target: type accuracy 0.64 → 0.85+. Requires labeled
+  training set (v4 + future v5), training infra, GPU.
+- [ ] **Cross-family Claude human-labels for judge calibration** — script
+  already exists at `scripts/opus_label_pairs.py` but Anthropic is blocked at
+  OpenRouter's routing layer on this account. Unblock by either (a) routing
+  config change, (b) direct Anthropic API integration, or (c) external Claude
+  Code labeling session.
+- [ ] **Wire S5 chat retrieval into a live test** — extraction now writes
+  `claim_embedding`; `chat.retrieve_spans` reads it; add an integration test
+  that ingests a doc, extracts claims, and confirms the hybrid score outranks
+  span-only on a question that matches a claim better than its containing span.
+
 ### Phase 2 validation harness
 
 - [ ] Create and run a destructive CLI validation script that resets local data and exercises text, RSS, status, document inspection, and semantic search paths.

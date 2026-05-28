@@ -50,6 +50,26 @@ _ENTITY_ALIASES: dict[str, str] = {
 }
 
 
+def _extract_entities_list(blob) -> list[str]:
+    """Coerce entities_json into a flat list[str] regardless of shape."""
+    if blob is None:
+        return []
+    if isinstance(blob, list):
+        return [str(x) for x in blob if x]
+    if isinstance(blob, dict):
+        # Common shapes:
+        #   {"entities": ["a", "b"]}
+        #   {"organization": ["X"], "model": ["Y"]}  (GLiNER)
+        #   {"entities": {"organization": ["X"], "model": ["Y"]}}
+        if "entities" in blob:
+            return _extract_entities_list(blob["entities"])
+        out = []
+        for v in blob.values():
+            out.extend(_extract_entities_list(v))
+        return out
+    return []
+
+
 def normalize_entity(raw: str) -> str:
     """Lowercase, strip punctuation/whitespace, resolve via alias table."""
     s = re.sub(r"[^a-z0-9 ]", "", raw.lower()).strip()
@@ -114,19 +134,18 @@ def claim_signature(
 async def canonicalize(session: AsyncSession, *, dry_run: bool = False) -> dict:
     """Cluster all claims by signature and attach canonical_claim_id to non-canonical members.
 
+    The newest-by-created_at claim per cluster becomes the canonical; older members
+    get canonical_claim_id pointing to it.  This is consistent with supersede_check,
+    which also treats the newest claim as the active (un-superseded) version.
+
     Returns a stats dict: {clusters_total, claims_reassigned, claims_canonical}.
     """
-    res = await session.execute(select(Claim).order_by(Claim.created_at))
+    res = await session.execute(select(Claim).order_by(Claim.created_at.desc()))
     claims = res.scalars().all()
 
     buckets: dict[tuple, list[Claim]] = defaultdict(list)
     for c in claims:
-        entities = []
-        if c.entities_json:
-            if isinstance(c.entities_json, list):
-                entities = c.entities_json
-            elif isinstance(c.entities_json, dict) and "entities" in c.entities_json:
-                entities = c.entities_json["entities"]
+        entities = _extract_entities_list(c.entities_json)
         sig = claim_signature(c.claim_type, entities, c.claim_text)
         buckets[sig].append(c)
 

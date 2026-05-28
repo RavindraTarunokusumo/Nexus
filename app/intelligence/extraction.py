@@ -222,7 +222,7 @@ def make_extraction_graph(
                 flat_claim_texts.append(claim_data.get("claim_text", ""))
         if embedder is not None and flat_claim_texts:
             try:
-                claim_vectors = embedder.embed(flat_claim_texts)
+                claim_vectors = await asyncio.to_thread(embedder.embed, flat_claim_texts)
             except Exception:  # noqa: BLE001 — embedding is non-critical, never fail extraction over it
                 claim_vectors = [None] * len(flat_claim_texts)
         else:

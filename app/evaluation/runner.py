@@ -45,6 +45,23 @@ def _resolve_extractor() -> str:
         return "llm"
 
 
+_DISTILL_WARNINGS_EMITTED: set[str] = set()
+
+
+def _warn_distill_skipped() -> None:
+    key = "distill_gliner"
+    if key in _DISTILL_WARNINGS_EMITTED:
+        return
+    _DISTILL_WARNINGS_EMITTED.add(key)
+    import sys
+
+    print(
+        "[eval] EVAL_DISTILL_PASS=1 is ignored when EXTRACTOR=gliner "
+        "(distill is an LLM-only pass; would defeat the local-cost win).",
+        file=sys.stderr,
+    )
+
+
 @dataclass
 class SUTConfig:
     """Configuration for the System Under Test (SUT)."""
@@ -206,7 +223,16 @@ async def _score_example(
             pred_claims = [c.model_dump() for c in sut_output.claims]
         pred_claims = _postfilter_predictions(pred_claims)
         distill_tokens = 0
-        if __import__("os").environ.get("EVAL_DISTILL_PASS", "0") == "1" and pred_claims:
+        if (
+            _resolve_extractor() == "gliner"
+            and __import__("os").environ.get("EVAL_DISTILL_PASS", "0") == "1"
+        ):
+            _warn_distill_skipped()
+        if (
+            _resolve_extractor() != "gliner"
+            and __import__("os").environ.get("EVAL_DISTILL_PASS", "0") == "1"
+            and pred_claims
+        ):
             pred_claims, distill_tokens = await _distill_pass(
                 document_text=document_text,
                 candidates=pred_claims,

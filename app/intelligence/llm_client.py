@@ -16,6 +16,46 @@ _COST_PER_TOKEN_USD = 0.14 / 1_000_000
 T = TypeVar("T", bound=BaseModel)
 
 
+def _schema_is_strict_safe(model_cls: type[BaseModel]) -> bool:
+    """Return True if the model's JSON Schema satisfies OpenAI strict mode.
+
+    Strict requires every property in 'required' and no Optional/null fields.
+    Returns False for any model that uses `T | None`, defaults, or omits a
+    field from 'required'.
+    """
+    import collections
+
+    schema = model_cls.model_json_schema()
+    queue: collections.deque[object] = collections.deque([schema])
+    defs = schema.get("$defs", {})
+    for d in defs.values():
+        queue.append(d)
+    while queue:
+        node = queue.popleft()
+        if not isinstance(node, dict):
+            continue
+        props = node.get("properties")
+        if isinstance(props, dict):
+            required = set(node.get("required") or [])
+            for k, v in props.items():
+                if k not in required:
+                    return False
+                if isinstance(v, dict):
+                    if "anyOf" in v:
+                        for entry in v["anyOf"]:
+                            if isinstance(entry, dict) and entry.get("type") == "null":
+                                return False
+                    queue.append(v)
+        for v in node.values():
+            if isinstance(v, dict):
+                queue.append(v)
+            elif isinstance(v, list):
+                for item in v:
+                    if isinstance(item, dict):
+                        queue.append(item)
+    return True
+
+
 class LLMError(Exception):
     """Non-retriable LLM error (4xx or unexpected response structure)."""
 
@@ -63,7 +103,7 @@ class LLMClient:
         """
         import os as _os
 
-        if _os.environ.get("EVAL_JSON_SCHEMA", "0") == "1":
+        if _os.environ.get("EVAL_JSON_SCHEMA", "0") == "1" and _schema_is_strict_safe(response_model):
             response_format: dict = {
                 "type": "json_schema",
                 "json_schema": {
