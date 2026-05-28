@@ -1,0 +1,541 @@
+name: ai_tech_v2
+task: claim_extraction
+version: 2
+description: |
+  45 hand-curated AI/tech news examples covering all 11 claim types.
+  v2 adds 15 examples weighted toward weak categories (security_issue, other,
+  research_finding, regulation, forecast). Sources synthetic but grounded in
+  real 2024-2026 AI/tech events.
+
+examples:
+  # --- model_release (3 examples) ---
+  - example_id: mr_001
+    document_text: >
+      Anthropic released Claude 4 Opus on March 12, 2025, marking a significant
+      milestone for the company. The new model features a 200K token context window
+      and improved reasoning capabilities over its predecessor. Early benchmarks
+      suggest it outperforms GPT-4o on several coding and analysis tasks.
+    gold_claims:
+      - claim_type: model_release
+        claim_text: Anthropic released Claude 4 Opus on March 12, 2025.
+        supporting_span: [0, 54]
+
+  - example_id: mr_002
+    document_text: >
+      Meta AI announced Llama 4, its fourth-generation open-weight large language
+      model, during its Connect 2025 developer conference. The model comes in
+      three sizes — Scout, Maverick, and Behemoth — with the largest reportedly
+      using a mixture-of-experts architecture. Llama 4 Scout is available
+      immediately on Hugging Face under Meta's custom community license.
+    gold_claims:
+      - claim_type: model_release
+        claim_text: Meta AI announced Llama 4, its fourth-generation open-weight large language model.
+        supporting_span: [0, 86]
+
+  - example_id: mr_003
+    document_text: >
+      xAI shipped Grok-3 to premium subscribers of X in February 2025.
+      The model was trained on approximately 200,000 Nvidia H100 GPUs in a
+      single cluster, according to Elon Musk. Grok-3 introduces a new "Think"
+      mode that exposes step-by-step chain-of-thought reasoning before answering.
+    gold_claims:
+      - claim_type: model_release
+        claim_text: xAI shipped Grok-3 to premium subscribers of X in February 2025.
+        supporting_span: [0, 63]
+
+  # --- benchmark_result (3 examples) ---
+  - example_id: br_001
+    document_text: >
+      OpenAI's o3 model achieved a record score of 87.5% on the SWE-bench
+      Verified benchmark, surpassing all previously published results.
+      The previous record was held by Anthropic's Claude 3.7 Sonnet at 70.3%.
+      Researchers noted o3 used significantly more compute per query than prior models.
+    gold_claims:
+      - claim_type: benchmark_result
+        claim_text: OpenAI's o3 model achieved 87.5% on the SWE-bench Verified benchmark.
+        supporting_span: [0, 75]
+
+  - example_id: br_002
+    document_text: >
+      Google DeepMind's Gemini 2.0 Pro scored 90.0% on the MMLU benchmark,
+      establishing a new state-of-the-art across general knowledge tasks.
+      The evaluation was conducted on 57 academic subjects including mathematics,
+      law, and medicine. Independent third-party reproducibility checks
+      confirmed the results within one percentage point.
+    gold_claims:
+      - claim_type: benchmark_result
+        claim_text: Gemini 2.0 Pro scored 90.0% on the MMLU benchmark.
+        supporting_span: [0, 57]
+
+  - example_id: br_003
+    document_text: >
+      DeepSeek-V3 attained 82.6% pass@1 on HumanEval, outperforming Llama 3.1 405B
+      and matching GPT-4o on code generation tasks. The result was published
+      alongside the model weights and a detailed technical report. DeepSeek
+      researchers attributed the gains to a novel multi-token prediction training
+      objective combined with a larger synthetic code corpus.
+    gold_claims:
+      - claim_type: benchmark_result
+        claim_text: DeepSeek-V3 attained 82.6% pass@1 on HumanEval.
+        supporting_span: [0, 52]
+
+  # --- product_launch (3 examples) ---
+  - example_id: pl_001
+    document_text: >
+      OpenAI officially launched Sora, its text-to-video generation product,
+      to paying ChatGPT Plus and Pro subscribers on December 9, 2024.
+      Sora can generate videos up to 20 seconds long at 1080p resolution.
+      The product had been in limited alpha testing since February 2024.
+    gold_claims:
+      - claim_type: product_launch
+        claim_text: OpenAI launched Sora to ChatGPT Plus and Pro subscribers on December 9, 2024.
+        supporting_span: [0, 89]
+
+  - example_id: pl_002
+    document_text: >
+      GitHub announced general availability of Copilot Workspace on May 29, 2025.
+      The feature allows developers to open a natural-language task and have
+      Copilot automatically plan, code, and test a solution across an entire
+      repository. Pricing is bundled with existing GitHub Copilot Enterprise seats.
+    gold_claims:
+      - claim_type: product_launch
+        claim_text: GitHub announced general availability of Copilot Workspace on May 29, 2025.
+        supporting_span: [0, 75]
+
+  - example_id: pl_003
+    document_text: >
+      Mistral AI launched Codestral Mamba, a code-specialized language model built
+      on the Mamba state-space architecture, in June 2024. The model is designed
+      for fast, low-latency inference without a transformer attention mechanism.
+      Codestral Mamba is available through Mistral's la Plateforme API.
+    gold_claims:
+      - claim_type: product_launch
+        claim_text: Mistral AI launched Codestral Mamba in June 2024.
+        supporting_span: [0, 79]
+
+  # --- pricing_change (3 examples) ---
+  - example_id: pc_001
+    document_text: >
+      OpenAI cut the price of GPT-4o by 50% for API customers effective
+      November 2024, reducing the input token cost from $5 to $2.50 per
+      million tokens. The company said the reduction reflects improved
+      inference efficiency following internal optimizations. Output tokens
+      were reduced from $15 to $10 per million tokens.
+    gold_claims:
+      - claim_type: pricing_change
+        claim_text: OpenAI cut the price of GPT-4o by 50% for API customers in November 2024.
+        supporting_span: [0, 73]
+
+  - example_id: pc_002
+    document_text: >
+      Cohere announced new pricing for Command R+, reducing the cost per million
+      input tokens from $3.00 to $2.50, a 17% decrease. The company cited
+      growing competition from open-source alternatives as the primary driver.
+      The new rates took effect immediately for all API customers worldwide.
+    gold_claims:
+      - claim_type: pricing_change
+        claim_text: Cohere reduced the cost per million input tokens for Command R+ from $3.00 to $2.50.
+        supporting_span: [0, 89]
+
+  - example_id: pc_003
+    document_text: >
+      Google lowered pricing for Gemini 1.5 Flash by 78% in October 2024,
+      making it one of the cheapest frontier models available via API.
+      Input now costs $0.0375 per million tokens and output $0.15 per million tokens.
+      The move was seen as a direct response to Llama 3.1 open-source adoption.
+    gold_claims:
+      - claim_type: pricing_change
+        claim_text: Google lowered pricing for Gemini 1.5 Flash by 78% in October 2024.
+        supporting_span: [0, 69]
+
+  # --- research_finding (3 examples) ---
+  - example_id: rf_001
+    document_text: >
+      DeepMind researchers published AlphaFold 3 in Nature, extending protein
+      structure prediction to DNA, RNA, and small molecules in addition to proteins.
+      The model achieves state-of-the-art accuracy on the PoseBusters benchmark
+      for ligand binding prediction. The findings were immediately applied to
+      accelerate drug discovery pipelines at several pharmaceutical companies.
+    gold_claims:
+      - claim_type: research_finding
+        claim_text: DeepMind published AlphaFold 3 in Nature, extending structure prediction to DNA, RNA, and small molecules.
+        supporting_span: [0, 108]
+
+  - example_id: rf_002
+    document_text: >
+      Apple researchers released a paper on the MLX framework demonstrating
+      that large language models can run efficiently on Apple Silicon without
+      offloading to external GPUs. The study showed 4-bit quantized Mistral 7B
+      running at 30 tokens per second on an M3 MacBook Pro. The paper was
+      published on arXiv in January 2024.
+    gold_claims:
+      - claim_type: research_finding
+        claim_text: Apple researchers demonstrated large language models running efficiently on Apple Silicon using the MLX framework.
+        supporting_span: [0, 115]
+
+  - example_id: rf_003
+    document_text: >
+      A joint study by Stanford and CMU published in Science found that chain-of-thought
+      prompting consistently improves reasoning on mathematical word problems by 15-40%
+      compared to zero-shot baselines across six different LLM families. The effect
+      was most pronounced for problems requiring more than three reasoning steps.
+      The dataset and prompts were released publicly on GitHub.
+    gold_claims:
+      - claim_type: research_finding
+        claim_text: Chain-of-thought prompting improves reasoning on math word problems by 15-40% compared to zero-shot baselines.
+        supporting_span: [0, 117]
+
+  # --- infrastructure_update (3 examples) ---
+  - example_id: iu_001
+    document_text: >
+      AWS unveiled Trainium3, its third-generation AI training chip, at re:Invent 2024.
+      The chip delivers 4x the performance per watt compared to Trainium2 and
+      is optimized for training transformer models at trillion-parameter scale.
+      Amazon said Trainium3 instances will be available to AWS customers in early 2025.
+    gold_claims:
+      - claim_type: infrastructure_update
+        claim_text: AWS unveiled Trainium3, its third-generation AI training chip, at re:Invent 2024.
+        supporting_span: [0, 82]
+
+  - example_id: iu_002
+    document_text: >
+      Cloudflare extended its Workers AI platform with support for running
+      open-weight models directly at the edge in August 2024. Customers can now
+      deploy quantized versions of Llama 3 and Mistral 7B within Cloudflare's
+      global network of over 310 data centers. Inference latency is below 100ms
+      for most regions, according to Cloudflare's benchmarks.
+    gold_claims:
+      - claim_type: infrastructure_update
+        claim_text: Cloudflare extended Workers AI with support for running open-weight models at the edge.
+        supporting_span: [0, 89]
+
+  - example_id: iu_003
+    document_text: >
+      Google announced the general availability of TPU v5e instances on Google Cloud
+      in September 2024. The TPU v5e is optimized for inference workloads and costs
+      30% less per chip than the TPU v4. Together AI also announced support for
+      AMD Instinct MI300X accelerators on its platform in the same month.
+    gold_claims:
+      - claim_type: infrastructure_update
+        claim_text: Google announced general availability of TPU v5e instances on Google Cloud in September 2024.
+        supporting_span: [0, 94]
+
+  # --- security_issue (2 examples) ---
+  - example_id: si_001
+    document_text: >
+      Security researchers at Embrace The Red disclosed a prompt injection
+      vulnerability in GitHub Copilot Chat that allowed malicious repository
+      content to hijack the assistant's context and exfiltrate user queries.
+      The attack required no special permissions beyond read access to the
+      repository. GitHub patched the vulnerability within 72 hours of disclosure.
+    gold_claims:
+      - claim_type: security_issue
+        claim_text: Researchers disclosed a prompt injection vulnerability in GitHub Copilot Chat enabling exfiltration of user queries.
+        supporting_span: [0, 118]
+
+  - example_id: si_002
+    document_text: >
+      Stability AI disclosed an unauthorized access incident in March 2024
+      in which an attacker gained access to the company's internal systems
+      via a compromised employee credential. No model weights or customer data
+      were confirmed to have been exfiltrated. The company engaged a third-party
+      forensics firm and notified affected employees.
+    gold_claims:
+      - claim_type: security_issue
+        claim_text: Stability AI disclosed an unauthorized access incident involving a compromised employee credential.
+        supporting_span: [0, 100]
+
+  # --- funding_event (3 examples) ---
+  - example_id: fe_001
+    document_text: >
+      Anthropic closed a $2.5 billion Series E funding round in March 2024
+      led by Google, with participation from Spark Capital and others.
+      The round values Anthropic at approximately $18 billion post-money.
+      Proceeds will be used to expand compute infrastructure and hire
+      additional safety researchers.
+    gold_claims:
+      - claim_type: funding_event
+        claim_text: Anthropic closed a $2.5 billion Series E funding round led by Google in March 2024.
+        supporting_span: [0, 88]
+
+  - example_id: fe_002
+    document_text: >
+      Scale AI raised $1 billion in a Series F round at a $13.8 billion valuation
+      in May 2024, with Amazon and Meta among the strategic investors. The funding
+      will primarily go toward expanding Scale's data labeling workforce and
+      enterprise product development. Scale AI reported annual revenue exceeding
+      $600 million for fiscal year 2023.
+    gold_claims:
+      - claim_type: funding_event
+        claim_text: Scale AI raised $1 billion in a Series F round at a $13.8 billion valuation in May 2024.
+        supporting_span: [0, 93]
+
+  - example_id: fe_003
+    document_text: >
+      Perplexity AI secured $250 million in a Series B funding round in April 2024,
+      valuing the AI search startup at $1 billion. The round was led by IVP and
+      included participation from NEA and Nvidia. Perplexity said it would use
+      the funds to improve its AI search product and expand its engineering team.
+    gold_claims:
+      - claim_type: funding_event
+        claim_text: Perplexity AI secured $250 million in a Series B round in April 2024 valuing it at $1 billion.
+        supporting_span: [0, 100]
+
+  # --- regulation (3 examples) ---
+  - example_id: rg_001
+    document_text: >
+      The European Union's AI Act entered into force on August 1, 2024, making it
+      the world's first comprehensive AI regulation. The Act classifies AI systems
+      by risk level and imposes stricter requirements on high-risk applications
+      such as biometric surveillance and autonomous vehicles. General-purpose AI
+      models with over 10^25 FLOPs of training compute face additional obligations.
+    gold_claims:
+      - claim_type: regulation
+        claim_text: The EU AI Act entered into force on August 1, 2024.
+        supporting_span: [0, 52]
+
+  - example_id: rg_002
+    document_text: >
+      The UK AI Safety Institute published its second evaluation report in April 2024,
+      assessing the safety of five frontier AI models from Anthropic, Google DeepMind,
+      Meta, Microsoft, and OpenAI. The report found no critical safety failures but
+      identified potential misuse vectors in chemistry and bioweapon-related queries.
+      The Institute called for mandatory pre-deployment evaluations for future models.
+    gold_claims:
+      - claim_type: regulation
+        claim_text: The UK AI Safety Institute published an evaluation report assessing the safety of five frontier AI models.
+        supporting_span: [0, 109]
+
+  - example_id: rg_003
+    document_text: >
+      Anthropic updated its Responsible Scaling Policy in October 2024, introducing
+      a new ASL-4 tier that would require external red-teaming before deployment.
+      The updated policy also tightens commitments around dangerous capability
+      thresholds, particularly for models that can assist with CBRN weapon design.
+      The policy update was made public on Anthropic's website.
+    gold_claims:
+      - claim_type: regulation
+        claim_text: Anthropic updated its Responsible Scaling Policy in October 2024, introducing the ASL-4 tier.
+        supporting_span: [0, 96]
+
+  # --- forecast (2 examples) ---
+  - example_id: fc_001
+    document_text: >
+      OpenAI CEO Sam Altman predicted in a January 2025 blog post that artificial
+      general intelligence could arrive within the next few years, possibly before
+      the end of the decade. Altman described AGI as AI capable of performing any
+      cognitive task that a human can do. He acknowledged significant uncertainty
+      in the timeline but said OpenAI is actively planning for that scenario.
+    gold_claims:
+      - claim_type: forecast
+        claim_text: Sam Altman predicted AGI could arrive within the next few years, possibly before the end of the decade.
+        supporting_span: [0, 106]
+
+  - example_id: fc_002
+    document_text: >
+      In its 2025 AI Index Report, Stanford HAI projected that AI model training costs
+      would decrease by at least 50% annually over the next five years due to hardware
+      advances and algorithmic efficiency improvements. The report also forecast that
+      multimodal AI models will become the dominant paradigm by 2027. Researchers
+      cautioned that energy consumption from AI data centers will likely triple by 2030.
+    gold_claims:
+      - claim_type: forecast
+        claim_text: Stanford HAI projected AI model training costs would decrease by 50% annually over the next five years.
+        supporting_span: [0, 107]
+
+  # --- other (2 examples) ---
+  - example_id: ot_001
+    document_text: >
+      Inflection AI announced in March 2024 that it would wind down its consumer
+      chatbot Pi, with most of the company's staff moving to Microsoft to build
+      a new AI division. Co-founder Mustafa Suleyman joined Microsoft as CEO of
+      Microsoft AI. Inflection said existing Pi users could continue accessing
+      the service for a limited transition period.
+    gold_claims:
+      - claim_type: other
+        claim_text: Inflection AI wound down its consumer chatbot Pi, with most staff moving to Microsoft.
+        supporting_span: [0, 88]
+
+  - example_id: ot_002
+    document_text: >
+      Character.AI announced a content moderation overhaul in May 2025 following
+      concerns raised by parents about potentially harmful interactions between
+      minors and AI personas. The company introduced age-appropriate content filters
+      and a dedicated safety team. Character.AI also published a transparency report
+      disclosing the number of moderation actions taken per quarter.
+    gold_claims:
+      - claim_type: other
+        claim_text: Character.AI overhauled content moderation following concerns about harmful interactions with minors.
+        supporting_span: [0, 103]
+
+  # --- v2 additions (15 examples; weighted to weak categories) ---
+
+  # security_issue
+  - example_id: si_003
+    document_text: >
+      Wiz researchers disclosed a critical vulnerability in DeepSeek's
+      ClickHouse database in January 2026 that exposed over a million
+      log lines, including chat history and API keys. The instance was
+      publicly accessible without authentication.
+    gold_claims:
+      - claim_type: security_issue
+        claim_text: Wiz disclosed a critical vulnerability in DeepSeek's ClickHouse database exposing chat history and API keys.
+        supporting_span: [0, 110]
+
+  - example_id: si_004
+    document_text: >
+      Hugging Face confirmed in April 2024 that an attacker had gained
+      unauthorized access to its Spaces platform via a leaked secrets
+      token. A subset of customer API tokens was rotated as a precaution.
+      No model weights were exfiltrated.
+    gold_claims:
+      - claim_type: security_issue
+        claim_text: Hugging Face confirmed unauthorized access to its Spaces platform via a leaked secrets token in April 2024.
+        supporting_span: [0, 105]
+
+  # other
+  - example_id: ot_003
+    document_text: >
+      OpenAI restructured its safety team in May 2024, dissolving the
+      Superalignment group and reassigning members to other research
+      teams. Co-founder Ilya Sutskever and team lead Jan Leike departed
+      shortly afterward.
+    gold_claims:
+      - claim_type: other
+        claim_text: OpenAI dissolved its Superalignment safety team in May 2024 and reassigned its members.
+        supporting_span: [0, 88]
+
+  - example_id: ot_004
+    document_text: >
+      The Linux Foundation launched the Open Platform for Enterprise AI
+      (OPEA) in April 2024, a vendor-neutral framework for building
+      retrieval-augmented generation applications. Founding members
+      include Intel, IBM, and Anyscale.
+    gold_claims:
+      - claim_type: other
+        claim_text: The Linux Foundation launched the Open Platform for Enterprise AI in April 2024.
+        supporting_span: [0, 80]
+
+  # research_finding
+  - example_id: rf_004
+    document_text: >
+      A paper from Apple researchers titled "The Illusion of Thinking",
+      published in June 2025, demonstrated that frontier reasoning
+      models collapse on tasks beyond a problem-complexity threshold.
+      The result held across multiple model families.
+    gold_claims:
+      - claim_type: research_finding
+        claim_text: Apple researchers showed that frontier reasoning models collapse beyond a problem-complexity threshold.
+        supporting_span: [0, 105]
+
+  - example_id: rf_005
+    document_text: >
+      DeepMind published a paper in Nature in November 2024 showing
+      that AlphaProof, an AI system combining a language model with
+      a symbolic solver, achieved a silver-medal score on the 2024
+      International Mathematical Olympiad problems.
+    gold_claims:
+      - claim_type: research_finding
+        claim_text: DeepMind's AlphaProof achieved a silver-medal score on the 2024 International Mathematical Olympiad problems.
+        supporting_span: [0, 110]
+
+  # regulation
+  - example_id: rg_004
+    document_text: >
+      California governor Gavin Newsom signed SB 1047 into law in
+      September 2025, requiring developers of frontier AI models
+      trained at over 10^26 FLOPs to implement a kill-switch and
+      undergo third-party safety audits.
+    gold_claims:
+      - claim_type: regulation
+        claim_text: California signed SB 1047 into law requiring kill-switches and safety audits for frontier AI models.
+        supporting_span: [0, 105]
+
+  - example_id: rg_005
+    document_text: >
+      The U.S. Federal Trade Commission opened an inquiry in July 2024
+      into the partnerships between major cloud providers and AI
+      startups. The probe targets Microsoft–OpenAI, Google–Anthropic,
+      and Amazon–Anthropic deals.
+    gold_claims:
+      - claim_type: regulation
+        claim_text: The FTC opened an inquiry into cloud-provider AI-startup partnerships in July 2024.
+        supporting_span: [0, 86]
+
+  # forecast
+  - example_id: fc_003
+    document_text: >
+      Dario Amodei stated in a January 2026 essay that he expects
+      models capable of replacing 80% of remote-work tasks to arrive
+      within three years. He framed this as a baseline scenario, not
+      a worst case.
+    gold_claims:
+      - claim_type: forecast
+        claim_text: Dario Amodei expects models capable of replacing 80% of remote-work tasks within three years.
+        supporting_span: [0, 92]
+
+  - example_id: fc_004
+    document_text: >
+      Gartner forecast in October 2024 that worldwide generative-AI
+      spending would reach $644 billion in 2025, up 76% from 2024.
+      Hardware would account for the largest share at $399 billion.
+    gold_claims:
+      - claim_type: forecast
+        claim_text: Gartner forecast worldwide generative-AI spending to reach $644 billion in 2025.
+        supporting_span: [0, 82]
+
+  # model_release
+  - example_id: mr_004
+    document_text: >
+      Mistral AI released Mistral Large 2 on July 24, 2024, a
+      123-billion-parameter model with a 128K context window. The
+      model is available under the Mistral Research License for
+      non-commercial use.
+    gold_claims:
+      - claim_type: model_release
+        claim_text: Mistral AI released Mistral Large 2 on July 24, 2024.
+        supporting_span: [0, 54]
+
+  # benchmark_result
+  - example_id: br_004
+    document_text: >
+      Anthropic's Claude 3.5 Sonnet scored 92.0% on the HumanEval
+      coding benchmark in October 2024, a new state-of-the-art
+      for the benchmark at the time.
+    gold_claims:
+      - claim_type: benchmark_result
+        claim_text: Claude 3.5 Sonnet scored 92.0% on the HumanEval coding benchmark in October 2024.
+        supporting_span: [0, 85]
+
+  # funding_event
+  - example_id: fe_004
+    document_text: >
+      xAI closed a $6 billion Series C funding round in May 2024
+      led by Andreessen Horowitz and Sequoia Capital, valuing the
+      company at $24 billion post-money.
+    gold_claims:
+      - claim_type: funding_event
+        claim_text: xAI closed a $6 billion Series C funding round in May 2024.
+        supporting_span: [0, 60]
+
+  # infrastructure_update
+  - example_id: iu_004
+    document_text: >
+      Microsoft and OpenAI announced in March 2024 a plan to build
+      a $100 billion supercomputer codenamed "Stargate" by 2028,
+      to be hosted in the United States.
+    gold_claims:
+      - claim_type: infrastructure_update
+        claim_text: Microsoft and OpenAI announced a $100 billion supercomputer codenamed Stargate to be built by 2028.
+        supporting_span: [0, 100]
+
+  # pricing_change
+  - example_id: pc_004
+    document_text: >
+      Google reduced Gemini 1.5 Flash input pricing by 78% in
+      August 2024, bringing the rate to $0.075 per million
+      tokens for prompts under 128K.
+    gold_claims:
+      - claim_type: pricing_change
+        claim_text: Google reduced Gemini 1.5 Flash input pricing by 78% in August 2024.
+        supporting_span: [0, 70]

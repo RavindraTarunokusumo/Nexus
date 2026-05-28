@@ -34,6 +34,17 @@ def _get_session_factory(db_url: str):
 _VALID_DB_SCHEMES = ("postgresql://", "postgresql+asyncpg://", "postgresql+psycopg2://")
 
 
+def _apply_verbosity(verbose: bool) -> None:
+    """Quiet root logger to WARNING when verbose=False (suppresses httpx INFO lines)."""
+    if verbose:
+        return
+    import logging
+
+    logging.getLogger().setLevel(logging.WARNING)
+    for h in logging.getLogger().handlers:
+        h.setLevel(logging.WARNING)
+
+
 def _require_db_url(cfg: CLISettings) -> str:
     url = cfg.database_url.strip()
     if not url:
@@ -153,12 +164,20 @@ def eval_run(
     max_cost: float = typer.Option(1.0, "--max-cost", help="Budget gate in USD."),
     db_url: Optional[str] = typer.Option(None, "--db-url"),
     json_output: bool = typer.Option(False, "--json"),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Show per-call HTTP/INFO logs. Default suppresses logs and prints only final scores.",
+    ),
 ) -> None:
     """Execute one eval run and print aggregate scores."""
     import asyncio
     import subprocess
 
     from app.config import settings as app_settings
+
+    _apply_verbosity(verbose)
 
     cfg = CLISettings(**{"database_url": db_url} if db_url else {})
     database_url = _require_db_url(cfg)
@@ -224,9 +243,17 @@ def eval_show(
     per_example: bool = typer.Option(False, "--per-example"),
     db_url: Optional[str] = typer.Option(None, "--db-url"),
     json_output: bool = typer.Option(False, "--json"),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Show INFO-level logs. Default suppresses logs and prints only final output.",
+    ),
 ) -> None:
     """Show aggregate scores for an eval run."""
     import asyncio
+
+    _apply_verbosity(verbose)
 
     cfg = CLISettings(**{"database_url": db_url} if db_url else {})
     database_url = _require_db_url(cfg)
@@ -291,9 +318,17 @@ def eval_diff(
     run_b: str = typer.Argument(..., help="Candidate run UUID."),
     db_url: Optional[str] = typer.Option(None, "--db-url"),
     json_output: bool = typer.Option(False, "--json"),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Show INFO-level logs. Default suppresses logs and prints only final output.",
+    ),
 ) -> None:
     """Compare aggregate scores between two eval runs."""
     import asyncio
+
+    _apply_verbosity(verbose)
 
     cfg = CLISettings(**{"database_url": db_url} if db_url else {})
     database_url = _require_db_url(cfg)
@@ -348,8 +383,16 @@ def eval_calibrate(
     task: str = typer.Argument(..., help="Task name: claim_extraction"),
     labels_path: Path = typer.Option(..., "--labels-path", help="Path to human_labels YAML."),
     json_output: bool = typer.Option(False, "--json"),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Show INFO-level logs. Default suppresses logs and prints only final output.",
+    ),
 ) -> None:
     """Compute Cohen's kappa between judge verdicts and human labels in a YAML file."""
+    _apply_verbosity(verbose)
+
     labels = load_human_labels(labels_path)
     if not labels:
         typer.echo("No labels found in file.", err=True)

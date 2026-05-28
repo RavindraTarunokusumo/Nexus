@@ -1,0 +1,13 @@
+{
+  "n": 1046,
+  "n_positive": 198,
+  "n_negative": 848,
+  "raw_confidence_mean_pos": 0.973,
+  "raw_confidence_mean_neg": 0.942,
+  "logistic_a": 0.2956,
+  "logistic_b": -1.7201,
+  "raw_p_at_threshold_0_7": 0.189,
+  "calibrated_p_at_raw_0_5": 0.172,
+  "calibrated_p_at_raw_0_7": 0.18,
+  "calibrated_p_at_raw_0_9": 0.189
+}

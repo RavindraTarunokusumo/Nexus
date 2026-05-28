@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal, TypeVar
 
 import httpx
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, model_validator
 
 from app.observability.tracer import record_agent_run
 
@@ -61,13 +61,27 @@ class LLMClient:
         Raises LLMSchemaError if the response fails Pydantic validation.
         Always records an agent_runs row (even on failure).
         """
+        import os as _os
+
+        if _os.environ.get("EVAL_JSON_SCHEMA", "0") == "1":
+            response_format: dict = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": response_model.__name__,
+                    "strict": True,
+                    "schema": response_model.model_json_schema(),
+                },
+            }
+        else:
+            response_format = {"type": "json_object"}
+
         payload = {
             "model": model,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            "response_format": {"type": "json_object"},
+            "response_format": response_format,
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
@@ -172,3 +186,46 @@ class ExtractedClaim(BaseModel):
 
 class ExtractionOutput(BaseModel):
     claims: list[ExtractedClaim]
+
+
+class SentenceBoundedItem(BaseModel):
+    sentence_index: int
+    claim: ExtractedClaim | None = None
+
+
+class SentenceBoundedOutput(BaseModel):
+    items: list[SentenceBoundedItem]
+
+    def to_claims(self) -> list[ExtractedClaim]:
+        """Flatten to a plain claim list, dropping null entries."""
+        return [it.claim for it in self.items if it.claim is not None]
+
+
+def is_atomic_claim(claim_text: str) -> tuple[bool, str | None]:
+    """Heuristic atomicity check (used by the eval runner as a per-claim filter).
+
+    Returns (ok, reason). Rejects claims that look compound by structural signals:
+      - two distinct action verbs joined by 'and' in the same claim
+      - three or more distinct dates / years
+      - three or more distinct non-year numeric quantities
+    """
+    import re
+
+    t = claim_text
+    dates = re.findall(
+        r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+\d{1,2},?\s+\d{4}|\b\d{4}\b",
+        t,
+    )
+    if len(set(dates)) >= 3:
+        return False, f"atomicity: {len(set(dates))} distinct dates"
+    if re.search(
+        r"\b(?:released|announced|launched|raised|reported|scored|signed|disclosed|acquired|funded|introduced)\b[^.]*\band\b[^.]*\b(?:released|announced|launched|raised|reported|scored|signed|disclosed|acquired|funded|introduced)\b",
+        t,
+        re.IGNORECASE,
+    ):
+        return False, "atomicity: two action verbs joined by 'and'"
+    numbers = re.findall(r"\b\d+(?:\.\d+)?%?\b", t)
+    non_year = [n for n in numbers if not (n.isdigit() and 1900 <= int(n) <= 2100)]
+    if len(non_year) >= 3:
+        return False, f"atomicity: {len(non_year)} non-year numbers"
+    return True, None

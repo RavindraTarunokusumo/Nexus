@@ -14,9 +14,19 @@ from app.db.models import EvalDataset as EvalDatasetModel
 from app.db.models import EvalResult, EvalRun
 from app.evaluation.datasets import ClaimExtractionExample, Dataset
 from app.evaluation.judges import ClaimExtractionJudge
-from app.intelligence.llm_client import _COST_PER_TOKEN_USD, ExtractionOutput
+from app.intelligence.llm_client import (
+    _COST_PER_TOKEN_USD,
+    ExtractionOutput,
+    SentenceBoundedOutput,
+)
 from app.intelligence.prompts.extract_claims import SYSTEM_PROMPT as SUT_SYSTEM_PROMPT
 from app.intelligence.prompts.extract_claims import build_user_prompt as _build_sut_prompt
+from app.intelligence.prompts.extract_claims_sentence_bounded import (
+    SYSTEM_PROMPT as SB_SYSTEM_PROMPT,
+)
+from app.intelligence.prompts.extract_claims_sentence_bounded import (
+    build_user_prompt as _build_sb_prompt,
+)
 
 
 @dataclass
@@ -151,15 +161,37 @@ async def _score_example(
     document_text = example.document_text or ""
 
     try:
-        user_prompt = _build_sut_prompt(document_text, {})
-        sut_output, sut_tokens = await llm_client.complete_json(
-            model=sut_config.model,
-            system=SUT_SYSTEM_PROMPT,
-            user=user_prompt,
-            response_model=ExtractionOutput,
-            temperature=sut_config.temperature,
-        )
-        pred_claims = [c.model_dump() for c in sut_output.claims]
+        if __import__("os").environ.get("EVAL_SENTENCE_BOUNDED", "0") == "1":
+            user_prompt = _build_sb_prompt(document_text, {})
+            sb_output, sut_tokens = await llm_client.complete_json(
+                model=sut_config.model,
+                system=SB_SYSTEM_PROMPT,
+                user=user_prompt,
+                response_model=SentenceBoundedOutput,
+                temperature=sut_config.temperature,
+            )
+            pred_claims = [c.model_dump() for c in sb_output.to_claims()]
+        else:
+            user_prompt = _build_sut_prompt(document_text, {})
+            sut_output, sut_tokens = await llm_client.complete_json(
+                model=sut_config.model,
+                system=SUT_SYSTEM_PROMPT,
+                user=user_prompt,
+                response_model=ExtractionOutput,
+                temperature=sut_config.temperature,
+            )
+            pred_claims = [c.model_dump() for c in sut_output.claims]
+        pred_claims = _postfilter_predictions(pred_claims)
+        distill_tokens = 0
+        if __import__("os").environ.get("EVAL_DISTILL_PASS", "0") == "1" and pred_claims:
+            pred_claims, distill_tokens = await _distill_pass(
+                document_text=document_text,
+                candidates=pred_claims,
+                model=sut_config.model,
+                llm_client=llm_client,
+                temperature=sut_config.temperature,
+            )
+        sut_tokens += distill_tokens
     except Exception as exc:  # noqa: BLE001
         await _persist_result(
             run_id=run_id,
@@ -225,6 +257,89 @@ async def _persist_result(
             )
         )
         await session.commit()
+
+
+_DISTILL_SYSTEM = """\
+You are a claim selector. You receive a source text and a list of candidate claims extracted from it.
+Return only the canonical, non-overlapping claims — one per distinct fact in the source.
+Drop paraphrases, drop framing/interpretation, drop overlapping sub-facts.
+Preserve all six fields of any claim you keep. Output the same JSON schema you received.
+"""
+
+
+async def _distill_pass(
+    *,
+    document_text: str,
+    candidates: list[dict],
+    model: str,
+    llm_client: Any,
+    temperature: float,
+) -> tuple[list[dict], int]:
+    """Second LLM call: filter candidate claims down to canonical, non-overlapping ones."""
+    import json as _json
+
+    user = (
+        f"Source text:\n{document_text}\n\n"
+        f"Candidate claims (JSON):\n{_json.dumps({'claims': candidates}, indent=2)}\n\n"
+        "Return only the canonical, non-overlapping claims as JSON matching the same schema."
+    )
+    distilled, tokens = await llm_client.complete_json(
+        model=model,
+        system=_DISTILL_SYSTEM,
+        user=user,
+        response_model=ExtractionOutput,
+        temperature=temperature,
+    )
+    return [c.model_dump() for c in distilled.claims], tokens
+
+
+def _postfilter_predictions(claims: list[dict]) -> list[dict]:
+    """Apply post-extraction filters to SUT predictions.
+
+    Env-controlled:
+    - EVAL_CONFIDENCE_THRESHOLD (float, default 0.0): drop claims with confidence < threshold.
+    - EVAL_DEDUP (1/0, default 0): drop near-duplicates by token-set Jaccard >= 0.8.
+    """
+    import os
+    import re
+
+    threshold = float(os.environ.get("EVAL_CONFIDENCE_THRESHOLD", "0.0"))
+    if threshold > 0:
+        claims = [c for c in claims if float(c.get("confidence", 0.0)) >= threshold]
+
+    if os.environ.get("EVAL_ATOMICITY", "0") == "1":
+        from app.intelligence.llm_client import is_atomic_claim
+
+        kept_atomic: list[dict] = []
+        for c in claims:
+            ok, _reason = is_atomic_claim(c.get("claim_text", ""))
+            if ok:
+                kept_atomic.append(c)
+        claims = kept_atomic
+
+    if os.environ.get("EVAL_DEDUP", "0") == "1":
+        kept: list[dict] = []
+
+        def _toks(s: str) -> set[str]:
+            return set(re.findall(r"[a-z0-9]+", s.lower()))
+
+        for c in claims:
+            toks = _toks(c.get("claim_text", ""))
+            is_dup = False
+            for k in kept:
+                k_toks = _toks(k.get("claim_text", ""))
+                if not toks or not k_toks:
+                    continue
+                inter = len(toks & k_toks)
+                union = len(toks | k_toks)
+                if union and inter / union >= 0.8:
+                    is_dup = True
+                    break
+            if not is_dup:
+                kept.append(c)
+        claims = kept
+
+    return claims
 
 
 def _aggregate_scores(score_list: list[dict]) -> dict:
