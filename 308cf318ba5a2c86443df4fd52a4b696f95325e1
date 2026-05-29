@@ -1,0 +1,9 @@
+Summary: Recorded workflow observations from the AI domain extraction spec session.
+
+Scope: docs/insights.md only.
+
+Tests: npx gitnexus detect-changes --repo C:\Users\rvind\OneDrive\Desktop\Projects\Nexus\.worktree\ai-domain-extraction-spec passed low risk. pre-commit run --all-files was already run this session; substantive doc/lint hooks passed, baseline mypy and pytest-fast failed for unrelated session_memory/dependency drift. Commit hook run with SKIP=mypy,pytest-fast for doc-only reflection.
+
+Risk: Low; documentation-only reflection.
+
+Docs: Updated workflow insights.
