@@ -1,0 +1,9 @@
+Summary: Added AI domain-pack extraction scheme spec aligned with Nexus PoC v0.7 and domain pack contract v3.
+
+Scope: New docs/superpowers/specs/2026-05-29-ai-domain-pack-extraction-scheme-design.md plus paired GitNexus stat updates in AGENTS.md and CLAUDE.md from index refresh.
+
+Tests: npx gitnexus detect-changes --repo C:\Users\rvind\OneDrive\Desktop\Projects\Nexus\.worktree\ai-domain-extraction-spec passed low risk. pre-commit run --all-files passed formatting, YAML/TOML, merge-conflict, large-file, branch, private-key, ruff, and ruff-format; failed baseline mypy on missing session_memory attributes in app/main.py and app/api/routes_chat_sessions.py; failed baseline pytest import because shared venv lacks langgraph.checkpoint.postgres despite pyproject dependency. Commit hook run with SKIP=mypy,pytest-fast for doc-only commit.
+
+Risk: Low; documentation-only spec. Baseline validation failures are unrelated to the new spec.
+
+Docs: Added AI semantic-object extraction scheme, MVP claim projection, salience, epistemic, routing, relation, retrieval, retention, and eval contracts.
