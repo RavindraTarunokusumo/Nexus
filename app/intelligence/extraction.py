@@ -3,27 +3,43 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from typing import Any, TypedDict
 
 from langgraph.graph import END, StateGraph
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.db.models import Claim, ClaimEvidence, Document, Span
+from app.db.models import Claim, ClaimEvidence, Document, Source, Span
+from app.domain_packs.loader import DomainPack, load_pack
 from app.intelligence.llm_client import (
-    ExtractionOutput,
     LLMError,
     LLMNetworkError,
     LLMSchemaError,
+    SemanticExtractionOutput,
+    SemanticObject,
 )
-from app.intelligence.prompts.extract_claims import (
-    SYSTEM_PROMPT,
-    build_correction_prompt,
-    build_user_prompt,
+from app.intelligence.projection import (
+    ProjectedClaim,
+    enforce_budgets,
+    project,
+    validate_object,
+)
+from app.intelligence.prompts.extract_semantic_objects import (
+    SYSTEM_PROMPT as SEMANTIC_SYSTEM_PROMPT,
+)
+from app.intelligence.prompts.extract_semantic_objects import (
+    build_correction_prompt as build_semantic_correction_prompt,
+)
+from app.intelligence.prompts.extract_semantic_objects import (
+    build_user_prompt as build_semantic_user_prompt,
 )
 from app.observability.run_context import extraction_run, span_scope
 from app.observability.tracer import mark_document_timestamp, record_span_extraction
+
+logger = logging.getLogger(__name__)
 
 _MAX_RETRIES = 2
 
@@ -46,11 +62,28 @@ class ExtractionState(TypedDict):
     document_id: uuid.UUID
     run_id: uuid.UUID | None
     model: str
+    pack: DomainPack | None  # set in load_spans
+    source_type: str | None  # set in load_spans
     spans: list[dict]
-    results: list[dict]  # {span_id, claims, tokens, error}
+    results: list[dict]  # {span_id, objects, tokens, error} — status/error per span
+    projected_claims: list  # list of (span_id_str, ProjectedClaim)
     stored_claim_ids: list[uuid.UUID]
     total_tokens: int
     error: str | None
+
+
+def _resolve_pack_and_source_type(source: Source) -> tuple[DomainPack, str]:
+    """Resolve the domain pack and v3 source-type profile name from a Source row.
+
+    Source.source_type currently is one of {rss, manual, api} which is the
+    ingestion mode, NOT a v0.7 source-type profile. Until ingestion learns
+    to detect the v3 profile per item, fall back to 'ai_news_article' as the
+    most common AI domain source profile.
+    """
+    pack = load_pack(source.domain_pack)
+    # MVP: pack-aware profile detection is deferred; default to ai_news_article.
+    v3_source_type = "ai_news_article"
+    return pack, v3_source_type
 
 
 async def _extract_one_span(
@@ -60,14 +93,18 @@ async def _extract_one_span(
     session_factory: async_sessionmaker,
     run_id: uuid.UUID,
     document_id: uuid.UUID,
+    pack: DomainPack,
+    source_type: str,
 ) -> dict:
-    """Extract claims from one span with correction-prompt retry (max _MAX_RETRIES).
+    """Extract semantic objects from one span with correction-prompt retry (max _MAX_RETRIES).
 
     Binds span_id in run_context for the duration so all log lines and the
     agent_runs row carry the correct span correlation.
     """
     span_id = uuid.UUID(span["id"])
-    user = build_user_prompt(span["text"], span.get("metadata_json") or {})
+    metadata = dict(span.get("metadata_json") or {})
+    metadata["segment_id"] = str(span_id)
+    user = build_semantic_user_prompt(span["text"], metadata, pack, source_type)
     total_tokens = 0
     attempts = 0
 
@@ -77,9 +114,9 @@ async def _extract_one_span(
             try:
                 result, tokens = await client.complete_json(
                     model=model,
-                    system=SYSTEM_PROMPT,
+                    system=SEMANTIC_SYSTEM_PROMPT,
                     user=user,
-                    response_model=ExtractionOutput,
+                    response_model=SemanticExtractionOutput,
                 )
                 total_tokens += tokens
                 await record_span_extraction(
@@ -92,7 +129,7 @@ async def _extract_one_span(
                 )
                 return {
                     "span_id": span["id"],
-                    "claims": [c.model_dump() for c in result.claims],
+                    "objects": [obj.model_dump() for obj in result.objects],
                     "tokens": total_tokens,
                     "error": None,
                 }
@@ -100,7 +137,7 @@ async def _extract_one_span(
                 raise  # abort the entire graph
             except LLMSchemaError as exc:
                 if attempt < _MAX_RETRIES:
-                    user = build_correction_prompt(user, exc.raw_output, str(exc))
+                    user = build_semantic_correction_prompt(user, exc.raw_output, str(exc))
                     continue
                 await record_span_extraction(
                     session_factory,
@@ -113,7 +150,7 @@ async def _extract_one_span(
                 )
                 return {
                     "span_id": span["id"],
-                    "claims": [],
+                    "objects": [],
                     "tokens": total_tokens,
                     "error": str(exc),
                 }
@@ -129,19 +166,19 @@ async def _extract_one_span(
                 )
                 return {
                     "span_id": span["id"],
-                    "claims": [],
+                    "objects": [],
                     "tokens": total_tokens,
                     "error": str(exc),
                 }
 
     # Unreachable: the loop returns from every branch above. Kept for type-checker comfort.
-    return {"span_id": span["id"], "claims": [], "tokens": total_tokens, "error": "unreachable"}
+    return {"span_id": span["id"], "objects": [], "tokens": total_tokens, "error": "unreachable"}
 
 
 def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # noqa: C901
     """Build and compile the LangGraph extraction graph bound to session_factory and client.
 
-    Cyclomatic complexity is C90-flagged because the factory defines four nested node
+    Cyclomatic complexity is C90-flagged because the factory defines five nested node
     functions; each is simple individually but the count aggregates in the outer scope.
     Keeping them nested preserves the closure over `session_factory` and `client`.
     """
@@ -150,12 +187,42 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         async with session_factory() as session:
             doc = await session.get(Document, state["document_id"])
             if doc is None:
-                return {"error": f"Document {state['document_id']} not found", "run_id": None}
+                return {
+                    "error": f"Document {state['document_id']} not found",
+                    "run_id": None,
+                    "pack": None,
+                    "source_type": None,
+                }
             if doc.status != STATUS_EMBEDDED:
                 return {
                     "error": f"Document status is '{doc.status}'; must be 'embedded'",
                     "run_id": None,
+                    "pack": None,
+                    "source_type": None,
                 }
+
+            # Load the source row to resolve pack + source-type profile
+            source = (
+                await session.execute(select(Source).where(Source.id == doc.source_id))
+            ).scalar_one_or_none()
+            if source is None:
+                return {
+                    "error": f"Source for document {state['document_id']} not found",
+                    "run_id": None,
+                    "pack": None,
+                    "source_type": None,
+                }
+
+            try:
+                pack, v3_source_type = _resolve_pack_and_source_type(source)
+            except (FileNotFoundError, ValidationError) as exc:
+                return {
+                    "error": f"Failed to load domain pack '{source.domain_pack}': {exc}",
+                    "run_id": None,
+                    "pack": None,
+                    "source_type": None,
+                }
+
             rows = (
                 (
                     await session.execute(
@@ -180,7 +247,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         await mark_document_timestamp(
             session_factory, state["document_id"], "extraction_started_at"
         )
-        return {"spans": spans}
+        return {"spans": spans, "pack": pack, "source_type": v3_source_type}
 
     async def extract_spans(state: ExtractionState) -> dict:
         if state.get("error"):
@@ -188,6 +255,11 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
 
         run_id = state.get("run_id") or uuid.uuid4()
         semaphore = asyncio.Semaphore(5)
+        # pack and source_type are guaranteed non-None here: load_spans sets error
+        # and returns early if either cannot be resolved, and the conditional edge
+        # routes to update_status (not here) when state["error"] is set.
+        pack: DomainPack = state["pack"]  # type: ignore[assignment]
+        source_type: str = state["source_type"]  # type: ignore[assignment]
 
         async def bounded(span: dict) -> dict:
             async with semaphore:
@@ -198,6 +270,8 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                     session_factory,
                     run_id=run_id,  # type: ignore[arg-type]
                     document_id=state["document_id"],
+                    pack=pack,
+                    source_type=source_type,
                 )
 
         try:
@@ -208,41 +282,80 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         total = sum(r.get("tokens", 0) for r in results)
         return {"run_id": run_id, "results": results, "total_tokens": total}
 
+    async def validate_and_project(state: ExtractionState) -> dict:
+        """Validate semantic objects against the pack, enforce budgets, and project.
+
+        Drops objects that fail validate_object (logged at DEBUG). Spans with LLM errors
+        are skipped. A span where every object is rejected is not counted as a span error.
+        """
+        # pack and source_type are guaranteed non-None here (same guarantee as extract_spans).
+        pack: DomainPack = state["pack"]  # type: ignore[assignment]
+        source_type: str = state["source_type"]  # type: ignore[assignment]
+
+        # Collect all accepted SemanticObject instances from successful spans
+        accepted_objects: list[SemanticObject] = []
+        for result in state.get("results", []):
+            if result.get("error"):
+                continue
+            for obj_dict in result.get("objects", []):
+                try:
+                    obj = SemanticObject.model_validate(obj_dict)
+                except (ValueError, ValidationError) as exc:
+                    logger.debug("Skipping invalid object dict: %s", exc)
+                    continue
+                ok, reason = validate_object(obj, pack)
+                if not ok:
+                    logger.debug(
+                        "Object rejected (span=%s, family=%s, type=%s): %s",
+                        obj_dict.get("source_refs"),
+                        obj_dict.get("domain_family"),
+                        obj_dict.get("domain_object_type"),
+                        reason,
+                    )
+                    continue
+                accepted_objects.append(obj)
+
+        # Apply source-level budgets
+        budgeted_objects = enforce_budgets(accepted_objects, pack, source_type)
+
+        # Project to ProjectedClaim form; span_id comes from first source_ref
+        projected: list[tuple[str, ProjectedClaim]] = []
+        for obj in budgeted_objects:
+            span_id_str = obj.source_refs[0]
+            projected.append((span_id_str, project(obj)))
+
+        return {"projected_claims": projected}
+
     async def store_claims(state: ExtractionState) -> dict:
         async with session_factory() as session:
             claims_to_add: list[Claim] = []
             evidence_to_add: list[ClaimEvidence] = []
             stored_ids: list[uuid.UUID] = []
 
-            for result in state.get("results", []):
-                if result.get("error"):
-                    continue
-                span_id = uuid.UUID(result["span_id"])
-                for claim_data in result.get("claims", []):
-                    # Pre-assign UUIDs so we can build ClaimEvidence rows without
-                    # an extra flush per claim.
-                    claim_id = uuid.uuid4()
-                    claims_to_add.append(
-                        Claim(
-                            id=claim_id,
-                            document_id=state["document_id"],
-                            claim_text=claim_data["claim_text"],
-                            claim_type=claim_data["claim_type"],
-                            entities_json=claim_data.get("entities"),
-                            topics_json=claim_data.get("topics"),
-                            confidence=claim_data.get("confidence"),
-                            status="active",
-                        )
+            for _span_id_str, projected in state.get("projected_claims", []):
+                claim_id = uuid.uuid4()
+                claims_to_add.append(
+                    Claim(
+                        id=claim_id,
+                        document_id=state["document_id"],
+                        claim_text=projected.claim_text,
+                        claim_type=projected.claim_type,
+                        entities_json=projected.entities_json,
+                        topics_json=projected.topics_json,
+                        confidence=projected.confidence,
+                        status="active",
                     )
+                )
+                for ev_span in projected.evidence_span_ids:
                     evidence_to_add.append(
                         ClaimEvidence(
                             claim_id=claim_id,
-                            span_id=span_id,
+                            span_id=uuid.UUID(ev_span),
                             evidence_role="support",
-                            confidence=claim_data.get("confidence"),
+                            confidence=projected.confidence,
                         )
                     )
-                    stored_ids.append(claim_id)
+                stored_ids.append(claim_id)
 
             if claims_to_add:
                 session.add_all(claims_to_add)
@@ -278,11 +391,12 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         return {}
 
     def _route_after_extract(state: ExtractionState) -> str:
-        return "update_status" if state.get("error") else "store_claims"
+        return "update_status" if state.get("error") else "validate_and_project"
 
     builder = StateGraph(ExtractionState)
     builder.add_node("load_spans", load_spans)
     builder.add_node("extract_spans", extract_spans)
+    builder.add_node("validate_and_project", validate_and_project)
     builder.add_node("store_claims", store_claims)
     builder.add_node("update_status", update_status)
 
@@ -291,8 +405,9 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
     builder.add_conditional_edges(
         "extract_spans",
         _route_after_extract,
-        {"store_claims": "store_claims", "update_status": "update_status"},
+        {"validate_and_project": "validate_and_project", "update_status": "update_status"},
     )
+    builder.add_edge("validate_and_project", "store_claims")
     builder.add_edge("store_claims", "update_status")
     builder.add_edge("update_status", END)
 
@@ -307,8 +422,11 @@ async def run_with_context(graph, document_id: uuid.UUID, model: str) -> dict:
                 "document_id": document_id,
                 "run_id": run_id,
                 "model": model,
+                "pack": None,
+                "source_type": None,
                 "spans": [],
                 "results": [],
+                "projected_claims": [],
                 "stored_claim_ids": [],
                 "total_tokens": 0,
                 "error": None,
