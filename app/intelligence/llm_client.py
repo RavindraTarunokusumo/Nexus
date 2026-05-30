@@ -177,7 +177,10 @@ class ExtractionOutput(BaseModel):
 # ---------------------------------------------------------------------------
 # v0.7 semantic-object extraction schema (A3)
 # Consumed by: extraction prompt (A4) and projection layer (A5).
-# ExtractedClaim / ExtractionOutput above are kept intact until A6.
+# ExtractedClaim / ExtractionOutput remain here because app/evaluation/runner.py
+# still uses ExtractionOutput as the SUT response model. The production
+# extraction graph cut over to SemanticExtractionOutput in A6; these legacy
+# schemas will be retired once the eval framework is ported.
 # ---------------------------------------------------------------------------
 
 CoreType = Literal[

@@ -1,4 +1,6 @@
-"""LangGraph extraction graph for per-span concurrent claim extraction."""
+"""LangGraph extraction graph: per-span semantic-object extraction (v0.7),
+validate-and-project against the source's domain pack, and write the
+projected claims into the legacy claims/claim_evidence tables."""
 
 from __future__ import annotations
 
@@ -66,7 +68,7 @@ class ExtractionState(TypedDict):
     source_type: str | None  # set in load_spans
     spans: list[dict]
     results: list[dict]  # {span_id, objects, tokens, error} — status/error per span
-    projected_claims: list  # list of (span_id_str, ProjectedClaim)
+    projected_claims: list[tuple[str, ProjectedClaim]]
     stored_claim_ids: list[uuid.UUID]
     total_tokens: int
     error: str | None
@@ -288,6 +290,8 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         Drops objects that fail validate_object (logged at DEBUG). Spans with LLM errors
         are skipped. A span where every object is rejected is not counted as a span error.
         """
+        if state.get("error"):
+            return {}
         # pack and source_type are guaranteed non-None here (same guarantee as extract_spans).
         pack: DomainPack = state["pack"]  # type: ignore[assignment]
         source_type: str = state["source_type"]  # type: ignore[assignment]
@@ -327,6 +331,8 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         return {"projected_claims": projected}
 
     async def store_claims(state: ExtractionState) -> dict:
+        if state.get("error"):
+            return {}
         async with session_factory() as session:
             claims_to_add: list[Claim] = []
             evidence_to_add: list[ClaimEvidence] = []
