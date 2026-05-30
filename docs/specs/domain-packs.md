@@ -8,43 +8,62 @@ The MVP uses a simple YAML format. Later versions can promote packs to Python mo
 
 For the v3 telos-based purpose-grammar contract and the AI-domain extraction scheme, see [2026-05-29-ai-domain-pack-extraction-scheme-design.md](../superpowers/specs/2026-05-29-ai-domain-pack-extraction-scheme-design.md).
 
-## MVP Domain Pack Format
+## Domain Pack Format
+
+The production pack (`app/domain_packs/personal_ai_tech.yaml`) is a full **v3 purpose-grammar pack**. For the canonical shape and field semantics, see the [v3 contract spec](../superpowers/specs/2026-05-29-ai-domain-pack-extraction-scheme-design.md). The pack is loaded at runtime by `app/domain_packs/loader.py` using a Pydantic v2 model.
+
+A minimal v3 pack skeleton looks like:
 
 ```yaml
 id: personal_ai_tech
-name: Personal AI Technology Analyst
+version: "3.0"
+telos:
+  purpose: "..."
+  user_role: "..."
+  primary_question: "..."
 
-topics:
-  - AI agents
-  - open-source LLMs
-  - inference infrastructure
+source_type_profiles:
+  ai_news_article:
+    claim_budget: 5
+    # ...
 
-claim_types:
-  - model_release
-  - benchmark_result
-  - product_launch
+semantic_object_families:
+  - name: model_release
+    object_types: [...]
+    mvp_claim_type: model_release
+    required_fields: [...]
+    # ...
 
-brief_sections:
-  - top_developments
-  - research_updates
-  - tools_and_repos
+salience_policy:
+  threshold: 0.3
+  # ...
 
-models:
-  t2: openrouter-cheap-model
-  t3: openrouter-strong-model
+# Legacy top-level keys (back-compat only — not used by the production extraction path)
+topics: [...]
+claim_types: [...]
+brief_sections: [...]
+models: {t2: ..., t3: ...}
 ```
 
-## MVP Pack Responsibilities
+The legacy top-level keys (`topics`, `claim_types`, `brief_sections`, `models`) are preserved at the bottom of the YAML for back-compat with tooling that has not yet been ported to v3.
 
-The `personal_ai_tech` pack defines:
+## Pack Responsibilities (v3)
 
-- accepted source types and source defaults
-- topics used for tagging and filtering
-- claim taxonomy
-- brief sections
-- model routing preferences
-- extraction prompt variables
-- synthesis prompt variables
+The `personal_ai_tech` pack now defines:
+
+- **Telos** — purpose, user role, and primary question that govern extraction focus
+- **Source-type profiles** — 10 profiles (e.g. `ai_news_article`) each with per-source claim budgets and extraction parameters
+- **Semantic-object families** — 10 families, each with `object_types`, `core_type_mapping`, `mvp_claim_type` (the projection target in the legacy claims table), `required_fields`
+- **Salience policy** — minimum salience threshold and triage rules
+- **AI facet list** — domain-specific facet keys injected into the extraction prompt
+- **Core + domain relations** — relation grammar for the knowledge graph
+- **Epistemic policy** — how to handle uncertainty and unverified claims
+- **T0–T4 routing** — tier assignment rules per object type and salience
+- **Per-source budgets** — maximum objects per span per source type
+- **Retention windows** — hot/warm/cold tiering
+- **Retrieval intents + hybrid weights** — per-intent BM25/vector balance
+- **Context assembly** — how retrieved objects are ranked and truncated for synthesis
+- **Evaluation contract** — target metrics (e.g. `mvp_claim_type_projection_accuracy > 0.90`)
 
 ## Initial Claim Taxonomy
 
@@ -66,18 +85,19 @@ The `personal_ai_tech` pack defines:
 
 The long-term PoC describes richer domain packs with these capabilities:
 
-| Capability | Responsibility |
-|---|---|
-| Segmenter | Split sources into spans, including visual descriptions later |
-| Entity Extractor | Domain-aware named entity extraction |
-| Claim Extractor | Claims using domain taxonomy |
-| Signal Extractor | Optional domain-specific event creation |
-| Normaliser | Canonical claims, time fields, and half-life |
-| Deduplicator | Domain equivalence rules |
-| Ranking Hooks | Hybrid score, recency, novelty, credibility weights |
-| Budgets | Maximum claims, signals, and relations |
-| Retention Policy | Hot/warm/cold windows and consolidation rules |
-| Image Policy | Which images to describe, enrich, or ignore |
+| Capability | Responsibility | Status |
+|---|---|---|
+| Segmenter | Split sources into spans, including visual descriptions later | Deferred |
+| Entity Extractor | Domain-aware named entity extraction | Live (facets in SemanticObject) |
+| Claim Extractor | Claims using domain taxonomy | Live (telos-aware semantic-object path, Phase A) |
+| Signal Extractor | Optional domain-specific event creation | Deferred |
+| Normaliser | Canonical claims, time fields, and half-life | Deferred |
+| Deduplicator | Domain equivalence rules | Deferred |
+| Ranking Hooks | Hybrid score, recency, novelty, credibility weights | Live (retrieval intents + hybrid weights in pack) |
+| Budgets | Maximum claims, signals, and relations | Live (per-source budgets + enforce_budgets, Phase A) |
+| Retention Policy | Hot/warm/cold windows and consolidation rules | Live (retention windows in pack; DB tiering deferred to Phase B) |
+| Image Policy | Which images to describe, enrich, or ignore | Deferred |
+| Lifecycle / semantic_capsules table | Native v0.7 DB storage | Deferred to Phase B |
 
 ## Extraction Budgets
 
