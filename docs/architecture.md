@@ -305,6 +305,15 @@ Gold-set YAML files live in `evals/gold/`. Each file must be registered with `ne
 
 Human calibration labels for the judge live in `evals/human_labels/claim_extraction.yaml` (6-seed set). Use `nexus eval calibrate` to compute kappa against these.
 
+### Phase A — Dual extraction paths and eval compatibility contract
+
+Phase A (Telos-Semantic Extraction Bridge) introduced a second extraction path alongside the legacy eval path. Both paths are active simultaneously:
+
+- **Legacy eval path (unchanged).** `app/evaluation/runner.py` drives the SUT using the legacy `ExtractionOutput` / `ExtractedClaim` schema. The gold set `evals/gold/claim_extraction/ai_tech_v2.yaml` remains the compatibility fixture for this path. No changes to `app/evaluation/` are made in Phase A.
+- **Production extraction path (A6).** The live ingestion pipeline now produces `SemanticExtractionOutput` (containing `SemanticObject` instances) and routes through the `validate_object` → `enforce_budgets` → `project` chain in `app/intelligence/projection.py`. The projection layer maps each accepted semantic object to a `ProjectedClaim` that writes into the legacy `claims` table, preserving the `claim_type`, `claim_text`, `entities_json`, and `topics_json` columns. The `entities_json` stash key `_v0_7` carries the full serialised `SemanticObject` for forward-compat.
+- **Regression test (A8).** `tests/intelligence/test_a6_projection_regression.py` is the contract smoke test for the production path. It runs hand-authored `SemanticObject` payloads covering five representative MVP claim types (`model_release`, `benchmark_result`, `funding_event`, `security_issue`, `forecast`) through the real `personal_ai_tech` pack and asserts schema validity, correct claim-type projection, presence of all three forward-compat stash keys, and budget enforcement. It requires no DB and no LLM.
+- **Phase B prerequisite.** Once Phase B ports the eval runner to `SemanticExtractionOutput`, the new metric `mvp_claim_type_projection_accuracy` (target > 90%, defined in `personal_ai_tech.yaml` `evaluation_contract`) should be added to the eval framework and tracked alongside the existing `type_accuracy` metric.
+
 ## Current Boundary
 
 The MVP implements the simplified hierarchy:

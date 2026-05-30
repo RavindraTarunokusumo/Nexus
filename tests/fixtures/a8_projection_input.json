@@ -1,0 +1,123 @@
+[
+  {
+    "source_refs": ["seg-model-001"],
+    "core_type": "event",
+    "domain_family": "model_system",
+    "domain_object_type": "model_release",
+    "function": "Announces the release of Mistral Large 2 with improved multilingual and coding capabilities.",
+    "text": "Mistral AI released Mistral Large 2 on 2024-07-24, featuring a 128k context window, native function calling, and strong performance on multilingual benchmarks. The model is available via La Plateforme and open-weights under the Mistral Research License.",
+    "facets": {
+      "orgs": ["Mistral AI"],
+      "models": ["Mistral Large 2"],
+      "dates": ["2024-07-24"],
+      "licenses": ["Mistral Research License"],
+      "modalities": ["text"],
+      "domain_terms": ["large language model", "function calling", "multilingual"],
+      "unknown_salient_terms": ["La Plateforme"]
+    },
+    "epistemic": {
+      "status": "asserted_by_source",
+      "source_authority": "primary",
+      "confidence": 0.95,
+      "evidence_quality": "high"
+    },
+    "salience": 0.92,
+    "mvp_claim_type": "model_release"
+  },
+  {
+    "source_refs": ["seg-bench-001"],
+    "core_type": "result",
+    "domain_family": "evaluation_evidence",
+    "domain_object_type": "benchmark_result",
+    "function": "Reports that a reranker-augmented retrieval pipeline outperforms a BM25 baseline on the BEIR benchmark.",
+    "text": "A reranker-augmented dense retrieval pipeline achieved an average NDCG@10 of 0.512 on BEIR, outperforming the BM25 baseline of 0.423 by 21% across 18 datasets. Evaluation was conducted with Cohere Rerank 3 applied on top of OpenAI text-embedding-3-large.",
+    "facets": {
+      "orgs": ["Cohere", "OpenAI"],
+      "models": ["text-embedding-3-large", "Cohere Rerank 3"],
+      "benchmarks": ["BEIR"],
+      "metrics": ["NDCG@10"],
+      "datasets": ["BEIR-18"],
+      "domain_terms": ["dense retrieval", "BM25", "reranker"],
+      "unknown_salient_terms": ["reranker-augmented pipeline"]
+    },
+    "epistemic": {
+      "status": "asserted_by_source",
+      "source_authority": "primary",
+      "confidence": 0.88,
+      "evidence_quality": "high"
+    },
+    "salience": 0.87,
+    "mvp_claim_type": "benchmark_result"
+  },
+  {
+    "source_refs": ["seg-fund-001"],
+    "core_type": "event",
+    "domain_family": "economics_pricing",
+    "domain_object_type": "funding_round",
+    "function": "Reports that Mistral AI closed a Series B funding round of €600M, valuing the company at €6B.",
+    "text": "Mistral AI closed a €600M Series B funding round in June 2024, led by General Catalyst with participation from Andreessen Horowitz and Salesforce Ventures, at a post-money valuation of €6 billion. Proceeds will fund model R&D and data-center expansion.",
+    "facets": {
+      "orgs": ["Mistral AI", "General Catalyst", "Andreessen Horowitz", "Salesforce Ventures"],
+      "dates": ["2024-06"],
+      "money": ["€600M", "€6B"],
+      "domain_terms": ["Series B", "post-money valuation"],
+      "unknown_salient_terms": ["data-center expansion"]
+    },
+    "epistemic": {
+      "status": "asserted_by_source",
+      "source_authority": "secondary",
+      "confidence": 0.9,
+      "evidence_quality": "high"
+    },
+    "salience": 0.85,
+    "mvp_claim_type": "funding_event"
+  },
+  {
+    "source_refs": ["seg-sec-001"],
+    "core_type": "risk",
+    "domain_family": "safety_security",
+    "domain_object_type": "prompt_injection_issue",
+    "function": "Discloses a prompt injection vulnerability affecting LLM-based agents that process untrusted web content.",
+    "text": "Researchers disclosed a prompt injection vulnerability affecting LLM agents that render untrusted HTML or markdown from external web pages. An attacker-controlled page can embed hidden instructions that override the agent's system prompt, potentially exfiltrating conversation history or executing unauthorized tool calls. No official patch is available; the recommended mitigation is to sandbox untrusted content before LLM processing.",
+    "facets": {
+      "vulnerabilities": ["prompt injection"],
+      "domain_terms": ["LLM agent", "system prompt override", "tool call exfiltration"],
+      "unknown_salient_terms": ["untrusted HTML rendering", "hidden instructions"]
+    },
+    "epistemic": {
+      "status": "asserted_by_source",
+      "source_authority": "primary",
+      "confidence": 0.82,
+      "evidence_quality": "medium",
+      "uncertainty": "Patch status may have changed since disclosure."
+    },
+    "salience": 0.89,
+    "mvp_claim_type": "security_issue"
+  },
+  {
+    "source_refs": ["seg-fcast-001"],
+    "core_type": "claim",
+    "domain_family": "forecast_outlook",
+    "domain_object_type": "capability_forecast",
+    "function": "Forecasts that AI inference cost per token will fall by 10x by 2027, enabling commodity-grade deployment.",
+    "text": "Epoch AI forecasts that frontier LLM inference cost will decline approximately 10x by 2027, driven by hardware efficiency gains (H200, Blackwell) and algorithmic improvements (speculative decoding, quantization). At this trajectory, GPT-4-class inference would cost under $0.10 per million tokens by end-2027, enabling commodity-scale deployment for consumer applications.",
+    "facets": {
+      "orgs": ["Epoch AI"],
+      "models": ["GPT-4"],
+      "hardware": ["H200", "Blackwell"],
+      "dates": ["2027"],
+      "money": ["$0.10 per million tokens"],
+      "domain_terms": ["inference cost", "speculative decoding", "quantization"],
+      "unknown_salient_terms": ["commodity-scale deployment", "10x cost reduction"]
+    },
+    "epistemic": {
+      "status": "forward_looking",
+      "source_authority": "secondary",
+      "confidence": 0.65,
+      "evidence_quality": "medium",
+      "uncertainty": "Forecast assumes continued hardware and algorithmic scaling; geopolitical or supply-chain disruptions not modeled."
+    },
+    "salience": 0.83,
+    "mvp_claim_type": "forecast"
+  }
+]
