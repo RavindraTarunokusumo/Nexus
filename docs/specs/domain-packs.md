@@ -6,6 +6,8 @@ Domain packs adapt source material to Nexus without fragmenting the core data mo
 
 The MVP uses a simple YAML format. Later versions can promote packs to Python modules if configuration alone is insufficient.
 
+For the v3 telos-based purpose-grammar contract and the AI-domain extraction scheme, see [2026-05-29-ai-domain-pack-extraction-scheme-design.md](../superpowers/specs/2026-05-29-ai-domain-pack-extraction-scheme-design.md).
+
 ## MVP Domain Pack Format
 
 ```yaml
