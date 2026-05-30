@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 
 import pytest
@@ -144,8 +145,6 @@ class TestLoadValidPack:
     def test_extra_top_level_keys_allowed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import copy
-
         pack_with_legacy = copy.deepcopy(_MINIMAL_PACK)
         pack_with_legacy["topics"] = ["ai", "llm"]
         pack_with_legacy["claim_types"] = ["model_release"]
@@ -194,8 +193,6 @@ class TestInvalidPackRaisesValidationError:
     def test_missing_required_field_raises(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import copy
-
         bad_pack = copy.deepcopy(_MINIMAL_PACK)
         # Remove pack_id from metadata — required field
         del bad_pack["metadata"]["pack_id"]
@@ -206,8 +203,6 @@ class TestInvalidPackRaisesValidationError:
             load_pack("test_pack")
 
     def test_missing_telos_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        import copy
-
         bad_pack = copy.deepcopy(_MINIMAL_PACK)
         del bad_pack["telos"]
         _write_pack(tmp_path, bad_pack)
@@ -235,8 +230,6 @@ class TestCacheHit:
     def test_clear_cache_forces_reload(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import copy
-
         _write_pack(tmp_path, _MINIMAL_PACK)
         monkeypatch.setattr(loader_module, "_pack_dir", lambda: tmp_path)
 

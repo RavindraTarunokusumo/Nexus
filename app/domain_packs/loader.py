@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import functools
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -27,19 +27,19 @@ class Metadata(BaseModel):
 
 class Telos(BaseModel):
     primary_purposes: list[str]
-    secondary_purposes: list[str] = []
-    anti_purposes: list[str] = []
-    reader_goals: list[str] = []
-    producer_incentives: list[str] = []
+    secondary_purposes: list[str] = Field(default_factory=list)
+    anti_purposes: list[str] = Field(default_factory=list)
+    reader_goals: list[str] = Field(default_factory=list)
+    producer_incentives: list[str] = Field(default_factory=list)
 
 
 class SourceTypeProfile(BaseModel):
-    structural_features: list[str] = []
-    high_value_sections: list[str] = []
-    low_value_sections: list[str] = []
-    expected_semantic_families: list[str] = []
+    structural_features: list[str] = Field(default_factory=list)
+    high_value_sections: list[str] = Field(default_factory=list)
+    low_value_sections: list[str] = Field(default_factory=list)
+    expected_semantic_families: list[str] = Field(default_factory=list)
     default_processing_mode: Literal["cheap", "balanced", "deep"] = "balanced"
-    telos_override: dict | None = None  # type: ignore[type-arg]
+    telos_override: dict[str, Any] | None = None
 
 
 class SemanticObjectFamily(BaseModel):
@@ -47,44 +47,44 @@ class SemanticObjectFamily(BaseModel):
     object_types: list[str]
     core_type_mapping: dict[str, str]
     mvp_claim_type: dict[str, str]
-    required_fields: list[str] = []
-    optional_fields: list[str] = []
+    required_fields: list[str] = Field(default_factory=list)
+    optional_fields: list[str] = Field(default_factory=list)
 
 
 class SaliencePolicy(BaseModel):
-    preserve_if: list[str] = []
-    ignore_if: list[str] = []
-    downgrade_if: list[str] = []
-    escalate_if: list[str] = []
+    preserve_if: list[str] = Field(default_factory=list)
+    ignore_if: list[str] = Field(default_factory=list)
+    downgrade_if: list[str] = Field(default_factory=list)
+    escalate_if: list[str] = Field(default_factory=list)
 
 
 class FacetPolicy(BaseModel):
-    generic_facets: list[str] = ["people", "orgs", "places", "dates"]
-    domain_facets: list[str] = []
+    generic_facets: list[str] = Field(default_factory=lambda: ["people", "orgs", "places", "dates"])
+    domain_facets: list[str] = Field(default_factory=list)
     preserve_unknown_salient_terms: bool = True
     canonicalization_required: bool = False
-    external_id_sources: list[str] = []
+    external_id_sources: list[str] = Field(default_factory=list)
 
 
 class RelationGrammar(BaseModel):
     core_relations: list[str]
-    domain_relations: list[str] = []
-    relation_constraints: dict = {}  # type: ignore[type-arg]
-    escalation_rules: list[str] = []
+    domain_relations: list[str] = Field(default_factory=list)
+    relation_constraints: dict[str, Any] = Field(default_factory=dict)
+    escalation_rules: list[str] = Field(default_factory=list)
 
 
 class EpistemicPolicy(BaseModel):
-    source_authority_rules: dict = {}  # type: ignore[type-arg]
-    status_rules: dict = {}  # type: ignore[type-arg]
-    confidence_rules: dict = {}  # type: ignore[type-arg]
-    contradiction_policy: dict = {}  # type: ignore[type-arg]
-    uncertainty_policy: dict = {}  # type: ignore[type-arg]
-    escalation_policy: dict = {}  # type: ignore[type-arg]
+    source_authority_rules: dict[str, Any] = Field(default_factory=dict)
+    status_rules: dict[str, Any] = Field(default_factory=dict)
+    confidence_rules: dict[str, Any] = Field(default_factory=dict)
+    contradiction_policy: dict[str, Any] = Field(default_factory=dict)
+    uncertainty_policy: dict[str, Any] = Field(default_factory=dict)
+    escalation_policy: dict[str, Any] = Field(default_factory=dict)
 
 
 class ModelRoutingPolicy(BaseModel):
     default_route: dict[str, str]
-    models: dict = {}  # type: ignore[type-arg]
+    models: dict[str, Any] = Field(default_factory=dict)
 
 
 class Budgets(BaseModel):
@@ -96,7 +96,7 @@ class Budgets(BaseModel):
     max_t2_calls_per_source: int = 20
     max_t3_calls_per_source: int = 2
     force_escalation_if_budget_exceeded: bool = False
-    per_source_type: dict[str, dict] = Field(default_factory=dict)  # type: ignore[type-arg]
+    per_source_type: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 class RetentionPolicy(BaseModel):
@@ -104,49 +104,51 @@ class RetentionPolicy(BaseModel):
     warm_window_days: int = 30
     cold_after_days: int = 180
     archive_after_days: int | None = None
-    decay_by_object_type: dict = {}  # type: ignore[type-arg]
-    refresh_triggers: list[str] = []
-    stale_conditions: list[str] = []
-    supersession_rules: list[str] = []
+    decay_by_object_type: dict[str, Any] = Field(default_factory=dict)
+    refresh_triggers: list[str] = Field(default_factory=list)
+    stale_conditions: list[str] = Field(default_factory=list)
+    supersession_rules: list[str] = Field(default_factory=list)
 
 
 class RetrievalPolicy(BaseModel):
-    query_intents: dict = {}  # type: ignore[type-arg]
-    hybrid_score_weights: dict[str, float] = {}
-    retrieval_priorities: dict[str, list[str]] = {}
+    query_intents: dict[str, Any] = Field(default_factory=dict)
+    hybrid_score_weights: dict[str, float] = Field(default_factory=dict)
+    retrieval_priorities: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class ContextAssembly(BaseModel):
-    include: list[str] = []
+    include: list[str] = Field(default_factory=list)
     ordering: str = "evidence_strength"
-    max_tokens_by_tier: dict[str, int] = {}
+    max_tokens_by_tier: dict[str, int] = Field(default_factory=dict)
 
 
 class EvaluationContract(BaseModel):
-    object_extraction_metrics: list[str] = []
-    relation_metrics: list[str] = []
-    epistemic_metrics: list[str] = []
-    retrieval_metrics: list[str] = []
-    minimum_thresholds: dict[str, str] = {}
+    object_extraction_metrics: list[str] = Field(default_factory=list)
+    relation_metrics: list[str] = Field(default_factory=list)
+    epistemic_metrics: list[str] = Field(default_factory=list)
+    retrieval_metrics: list[str] = Field(default_factory=list)
+    minimum_thresholds: dict[str, str] = Field(default_factory=dict)
 
 
 class DomainPack(BaseModel):
+    """A v3 telos-based purpose-grammar domain pack (loaded from YAML)."""
+
     model_config = ConfigDict(extra="allow")
 
     metadata: Metadata
     telos: Telos
-    source_type_profiles: dict[str, SourceTypeProfile] = {}
+    source_type_profiles: dict[str, SourceTypeProfile] = Field(default_factory=dict)
     semantic_object_families: dict[str, SemanticObjectFamily]
-    salience_policy: SaliencePolicy = SaliencePolicy()
-    facet_policy: FacetPolicy = FacetPolicy()
+    salience_policy: SaliencePolicy = Field(default_factory=SaliencePolicy)
+    facet_policy: FacetPolicy = Field(default_factory=FacetPolicy)
     relation_grammar: RelationGrammar
-    epistemic_policy: EpistemicPolicy = EpistemicPolicy()
+    epistemic_policy: EpistemicPolicy = Field(default_factory=EpistemicPolicy)
     model_routing_policy: ModelRoutingPolicy
-    budgets: Budgets = Budgets()
-    retention_policy: RetentionPolicy = RetentionPolicy()
-    retrieval_policy: RetrievalPolicy = RetrievalPolicy()
-    context_assembly: ContextAssembly = ContextAssembly()
-    evaluation_contract: EvaluationContract = EvaluationContract()
+    budgets: Budgets = Field(default_factory=Budgets)
+    retention_policy: RetentionPolicy = Field(default_factory=RetentionPolicy)
+    retrieval_policy: RetrievalPolicy = Field(default_factory=RetrievalPolicy)
+    context_assembly: ContextAssembly = Field(default_factory=ContextAssembly)
+    evaluation_contract: EvaluationContract = Field(default_factory=EvaluationContract)
 
 
 # ---------------------------------------------------------------------------
