@@ -157,18 +157,63 @@ class TestLoadValidPack:
 
 
 # ---------------------------------------------------------------------------
-# 2. Existing personal_ai_tech.yaml fails validation (xfail — rewritten in A2)
+# 2. personal_ai_tech.yaml loads as a valid v3 pack (rewritten in A2)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    reason="personal_ai_tech.yaml is rewritten to v3 in A2",
-    strict=True,
-)
 def test_personal_ai_tech_yaml_loads_as_v3() -> None:
-    """The legacy YAML lacks telos/semantic_object_families/relation_grammar/
-    model_routing_policy — it will raise ValidationError until A2 rewrites it."""
-    load_pack("personal_ai_tech")
+    """personal_ai_tech.yaml is the full v3 purpose-grammar pack written in A2."""
+    from pathlib import Path as _Path
+
+    import yaml as _yaml
+
+    pack = load_pack("personal_ai_tech")
+
+    # Basic identity
+    assert pack.metadata.pack_id == "personal_ai_tech"
+    assert pack.metadata.version == "1.0.0"
+
+    # At least the three named families must be present
+    assert "model_system" in pack.semantic_object_families
+    assert "evaluation_evidence" in pack.semantic_object_families
+    assert "safety_security" in pack.semantic_object_families
+
+    # All 10 families present
+    assert len(pack.semantic_object_families) == 10
+
+    # Every legacy claim_type appears at least once across the union of
+    # mvp_claim_type.values() for all families.
+    all_projected: set[str] = set()
+    for family in pack.semantic_object_families.values():
+        all_projected.update(family.mvp_claim_type.values())
+
+    expected_claim_types = {
+        "model_release",
+        "benchmark_result",
+        "product_launch",
+        "pricing_change",
+        "research_finding",
+        "infrastructure_update",
+        "security_issue",
+        "funding_event",
+        "regulation",
+        "forecast",
+        "other",
+    }
+    assert expected_claim_types == all_projected, (
+        f"Missing claim types in mvp_claim_type projection: "
+        f"{expected_claim_types - all_projected}"
+    )
+
+    # Legacy keys are preserved as extras and still visible in the raw YAML.
+    pack_path = (
+        _Path(__file__).parent.parent.parent / "app" / "domain_packs" / "personal_ai_tech.yaml"
+    )
+    raw = _yaml.safe_load(pack_path.read_text(encoding="utf-8"))
+    assert "claim_types" in raw, "Legacy claim_types key must still be in YAML"
+    assert len(raw["claim_types"]) == 11, "Legacy claim_types must have 11 entries"
+    assert raw["topics"], "Legacy topics key must be non-empty"
+    assert raw["brief_sections"], "Legacy brief_sections key must be non-empty"
 
 
 # ---------------------------------------------------------------------------

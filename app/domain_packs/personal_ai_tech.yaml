@@ -1,3 +1,990 @@
+# personal_ai_tech.yaml — v3 purpose-grammar domain pack
+# Telos-semantic extraction scheme for the Personal AI Technology Analyst domain.
+# Legacy top-level keys (topics, claim_types, brief_sections, models) preserved
+# at the bottom for back-compat until A6 cuts over.
+
+metadata:
+  pack_id: personal_ai_tech
+  domain: personal_ai_tech
+  version: 1.0.0
+  description: >-
+    Purpose-grammar domain pack for AI technology source material. Covers AI models,
+    products, research, infrastructure, pricing, safety, policy, funding, and forecasts.
+  supported_source_types:
+    - ai_news_article
+    - model_release_note
+    - research_paper_or_report
+    - benchmark_report
+    - product_or_tool_announcement
+    - pricing_or_terms_update
+    - security_or_safety_disclosure
+    - policy_or_regulation_update
+    - funding_or_company_update
+    - forecast_or_opinion
+  default_language: en
+  model_policy_version: nexus_tiers_v1
+  owner: null
+
+telos:
+  primary_purposes:
+    - Report AI model, product, research, infrastructure, policy, safety, or market changes.
+    - Explain technical capabilities, constraints, costs, or tradeoffs.
+    - Present evidence about model performance, reliability, risk, adoption, or economics.
+    - Update expectations about AI ecosystem direction.
+    - Surface risks, vulnerabilities, regulatory obligations, and operational constraints.
+  secondary_purposes:
+    - Promote a product, model, benchmark, company, or research agenda.
+    - Frame a release as strategically important.
+    - Compare products, models, or methods.
+    - Influence developer, buyer, investor, or policy perception.
+    - Recruit contributors, customers, developers, or ecosystem partners.
+  anti_purposes:
+    - Not all AI announcements are evidence of durable technical progress.
+    - Not all benchmark claims are independently verified.
+    - Not all product launches imply broad availability or production readiness.
+    - Not all forecasts are neutral predictions; many are persuasion or positioning.
+    - Not all safety or security claims prove actual safety, only reported controls or incidents.
+  reader_goals:
+    - Identify what changed.
+    - Separate concrete facts from marketing or speculation.
+    - Track models, products, infrastructure, pricing, benchmarks, research findings, safety issues, and regulation.
+    - Preserve evidence for later grounded chat, briefs, comparisons, and trend analysis.
+    - Detect contradictions, supersession, and stale claims as the AI ecosystem moves quickly.
+  producer_incentives:
+    - Promote a product, model, or company to target audiences.
+    - Establish authority or thought leadership in the AI space.
+    - Drive developer adoption, investor interest, or regulatory attention.
+    - Signal safety or responsibility commitments.
+
+source_type_profiles:
+  ai_news_article:
+    structural_features:
+      - headline and byline
+      - lead paragraph with the key event
+      - quoted or paraphrased announcements
+      - background context paragraphs
+      - closing color or analyst commentary
+    high_value_sections:
+      - headline and lead paragraph
+      - quoted announcement
+      - concrete dates, numbers, model/product names
+      - described impact, availability, pricing, regulation, or incident details
+    low_value_sections:
+      - generic background repeated across articles
+      - unsupported market color
+      - vague hype without specific event or evidence
+    expected_semantic_families:
+      - model_system
+      - product_tooling
+      - economics_pricing
+      - safety_security
+      - policy_governance
+      - ecosystem_event
+    default_processing_mode: balanced
+
+  model_release_note:
+    structural_features:
+      - model name and version header
+      - release date and provider attribution
+      - capability summary
+      - benchmark tables
+      - license and availability section
+      - safety and deployment notes
+    high_value_sections:
+      - model name/version
+      - release date
+      - provider
+      - modality
+      - context window
+      - license/availability
+      - benchmark tables
+      - safety notes
+      - deployment constraints
+    low_value_sections:
+      - generic marketing language
+      - repeated capability lists without evidence
+    expected_semantic_families:
+      - model_system
+      - evaluation_evidence
+      - safety_security
+    default_processing_mode: balanced
+
+  research_paper_or_report:
+    structural_features:
+      - abstract with contribution claims
+      - introduction and motivation
+      - method section
+      - experiments and results tables
+      - limitations and future work
+      - appendices with supplementary data
+    high_value_sections:
+      - abstract contribution claims
+      - method
+      - experiments/results
+      - benchmark tables
+      - limitations
+      - safety or failure analysis
+    low_value_sections:
+      - acknowledgements without research content
+      - bibliography entries without inline annotation
+    expected_semantic_families:
+      - research_knowledge
+      - evaluation_evidence
+      - model_system
+      - safety_security
+    default_processing_mode: deep
+
+  benchmark_report:
+    structural_features:
+      - benchmark name and version header
+      - evaluation setup description
+      - results table with model comparisons
+      - metric definitions
+      - reproducibility and caveat notes
+    high_value_sections:
+      - benchmark name
+      - metric
+      - score
+      - task/dataset
+      - evaluation setup
+      - baseline/comparison
+      - reproducibility or caveat notes
+    low_value_sections:
+      - non-quantified qualitative commentary
+      - redundant methodology boilerplate
+    expected_semantic_families:
+      - evaluation_evidence
+      - model_system
+      - research_knowledge
+    default_processing_mode: deep
+
+  product_or_tool_announcement:
+    structural_features:
+      - product name and launch status header
+      - key capabilities list
+      - pricing or availability details
+      - target user description
+      - integration and limitation notes
+    high_value_sections:
+      - product name
+      - launch or GA status
+      - target users
+      - key capability
+      - pricing/availability
+      - integration details
+      - limitations
+    low_value_sections:
+      - generic developer-experience marketing
+      - testimonials without factual claims
+    expected_semantic_families:
+      - product_tooling
+      - model_system
+      - economics_pricing
+    default_processing_mode: balanced
+
+  pricing_or_terms_update:
+    structural_features:
+      - pricing table or changelog
+      - old vs new price comparison
+      - effective date notice
+      - affected models or API endpoints
+      - license or terms change summary
+    high_value_sections:
+      - old price and new price
+      - unit basis
+      - effective date
+      - affected product/model/API
+      - license/terms restrictions
+    low_value_sections:
+      - generic promotional justification without numeric data
+    expected_semantic_families:
+      - economics_pricing
+      - product_tooling
+    default_processing_mode: balanced
+
+  security_or_safety_disclosure:
+    structural_features:
+      - affected system identifier
+      - vulnerability or incident description
+      - impact assessment
+      - mitigation or patch status
+      - disclosure date and severity label
+    high_value_sections:
+      - affected system
+      - vulnerability or risk type
+      - exploit/misuse condition
+      - impact
+      - mitigation status
+      - disclosure date
+      - severity/caveats
+    low_value_sections:
+      - unrelated product marketing
+      - generic security advice unrelated to the specific incident
+    expected_semantic_families:
+      - safety_security
+      - policy_governance
+      - model_system
+    default_processing_mode: deep
+
+  policy_or_regulation_update:
+    structural_features:
+      - jurisdiction or regulator header
+      - effective date and scope
+      - obligation or prohibition text
+      - enforcement mechanism
+      - affected actor or threshold definition
+    high_value_sections:
+      - jurisdiction or regulator
+      - effective date
+      - obligation
+      - affected actors or model classes
+      - enforcement mechanism
+      - thresholds such as FLOPs, risk level, or deployment category
+    low_value_sections:
+      - non-binding editorial commentary
+      - background history without new obligation content
+    expected_semantic_families:
+      - policy_governance
+      - safety_security
+      - economics_pricing
+    default_processing_mode: balanced
+
+  funding_or_company_update:
+    structural_features:
+      - company name and announcement header
+      - funding amount or deal terms
+      - investor or acquirer names
+      - strategic rationale
+      - date and operational consequence
+    high_value_sections:
+      - company
+      - amount/valuation
+      - investors/acquirer/partner
+      - date
+      - strategic use of funds or operational consequence
+    low_value_sections:
+      - boilerplate investor relations language
+      - unverified market speculation
+    expected_semantic_families:
+      - economics_pricing
+      - ecosystem_event
+    default_processing_mode: balanced
+
+  forecast_or_opinion:
+    structural_features:
+      - forecaster identification
+      - forecast target and timeframe
+      - magnitude and direction claims
+      - stated assumptions and uncertainty
+      - caveat or confidence qualification
+    high_value_sections:
+      - forecaster
+      - forecast target
+      - timeframe
+      - magnitude
+      - assumptions
+      - uncertainty or caveat
+    low_value_sections:
+      - unsupported hyperbole without stated assumptions
+      - vague sentiment without forecast target
+    expected_semantic_families:
+      - forecast_outlook
+      - economics_pricing
+      - model_system
+    default_processing_mode: balanced
+
+semantic_object_families:
+  model_system:
+    purpose: Preserve durable facts about AI models and model releases.
+    object_types:
+      - model_release
+      - model_update
+      - capability_claim
+      - limitation_claim
+      - availability_change
+      - license_or_access_change
+      - modality_support
+    core_type_mapping:
+      model_release: event
+      model_update: event
+      capability_claim: claim
+      limitation_claim: constraint
+      availability_change: state_change
+      license_or_access_change: state_change
+      modality_support: definition
+    mvp_claim_type:
+      model_release: model_release
+      model_update: model_release
+      modality_support: model_release
+      availability_change: product_launch
+      license_or_access_change: other
+      capability_claim: research_finding
+      limitation_claim: other
+    required_fields:
+      - provider or organization
+      - model/system name
+      - release/update status
+      - date or relative timing when present
+      - source refs
+
+  evaluation_evidence:
+    purpose: Preserve benchmark, metric, evaluation, comparison, and reproducibility evidence.
+    object_types:
+      - benchmark_result
+      - metric_comparison
+      - baseline_comparison
+      - evaluation_method
+      - reproducibility_note
+      - failure_mode
+      - eval_caveat
+    core_type_mapping:
+      benchmark_result: result
+      metric_comparison: comparison
+      baseline_comparison: comparison
+      evaluation_method: description
+      reproducibility_note: observation
+      failure_mode: risk
+      eval_caveat: constraint
+    mvp_claim_type:
+      benchmark_result: benchmark_result
+      metric_comparison: benchmark_result
+      baseline_comparison: benchmark_result
+      failure_mode: research_finding
+      eval_caveat: research_finding
+      evaluation_method: research_finding
+      reproducibility_note: research_finding
+    required_fields:
+      - evaluated model/system/method
+      - metric or task
+      - score or outcome when stated
+      - benchmark/dataset/context
+      - source refs
+
+  research_knowledge:
+    purpose: Preserve methods, findings, technical mechanisms, limitations, and future work from AI research sources.
+    object_types:
+      - research_finding
+      - method_claim
+      - architecture_description
+      - training_or_data_claim
+      - efficiency_finding
+      - safety_finding
+      - limitation
+      - future_work
+    core_type_mapping:
+      research_finding: claim
+      method_claim: definition
+      architecture_description: description
+      training_or_data_claim: claim
+      efficiency_finding: result
+      safety_finding: observation
+      limitation: constraint
+      future_work: question
+    mvp_claim_type:
+      research_finding: research_finding
+      method_claim: research_finding
+      architecture_description: research_finding
+      training_or_data_claim: research_finding
+      efficiency_finding: infrastructure_update
+      safety_finding: security_issue
+      limitation: research_finding
+      future_work: research_finding
+    required_fields:
+      - method/system/finding
+      - evidence or section context
+      - whether claim is reported by authors or independently verified
+      - source refs
+
+  product_tooling:
+    purpose: Preserve product, API, tool, workflow, integration, and developer-experience changes.
+    object_types:
+      - product_launch
+      - feature_release
+      - api_update
+      - developer_tooling_change
+      - integration
+      - availability_rollout
+      - deprecation
+    core_type_mapping:
+      product_launch: event
+      feature_release: event
+      api_update: state_change
+      developer_tooling_change: state_change
+      integration: event
+      availability_rollout: state_change
+      deprecation: state_change
+    mvp_claim_type:
+      product_launch: product_launch
+      feature_release: product_launch
+      api_update: product_launch
+      developer_tooling_change: product_launch
+      integration: product_launch
+      availability_rollout: product_launch
+      deprecation: other
+    required_fields:
+      - product/tool/API name
+      - provider
+      - change type
+      - user/developer impact when stated
+      - availability or effective date when present
+      - source refs
+
+  infrastructure_compute:
+    purpose: Preserve AI compute, chip, cloud, inference, serving, data-center, edge, and deployment infrastructure changes.
+    object_types:
+      - chip_or_accelerator_update
+      - cloud_instance_update
+      - inference_platform_update
+      - training_cluster_update
+      - edge_deployment_update
+      - data_center_update
+      - performance_per_cost_claim
+      - capacity_constraint
+    core_type_mapping:
+      chip_or_accelerator_update: event
+      cloud_instance_update: state_change
+      inference_platform_update: state_change
+      training_cluster_update: state_change
+      edge_deployment_update: state_change
+      data_center_update: state_change
+      performance_per_cost_claim: claim
+      capacity_constraint: risk
+    mvp_claim_type:
+      chip_or_accelerator_update: infrastructure_update
+      cloud_instance_update: infrastructure_update
+      inference_platform_update: infrastructure_update
+      training_cluster_update: infrastructure_update
+      edge_deployment_update: infrastructure_update
+      data_center_update: infrastructure_update
+      performance_per_cost_claim: pricing_change
+      capacity_constraint: infrastructure_update
+    required_fields:
+      - provider or infrastructure actor
+      - infrastructure component
+      - changed capability, capacity, price/performance, or availability
+      - source refs
+
+  economics_pricing:
+    purpose: Preserve price, cost, license, quota, usage, subscription, funding, valuation, and commercial model changes.
+    object_types:
+      - pricing_change
+      - quota_or_rate_limit_change
+      - license_change
+      - funding_round
+      - valuation_change
+      - acquisition_or_partnership
+      - commercial_strategy
+      - cost_forecast
+    core_type_mapping:
+      pricing_change: state_change
+      quota_or_rate_limit_change: state_change
+      license_change: state_change
+      funding_round: event
+      valuation_change: event
+      acquisition_or_partnership: event
+      commercial_strategy: argument
+      cost_forecast: claim
+    mvp_claim_type:
+      pricing_change: pricing_change
+      quota_or_rate_limit_change: pricing_change
+      license_change: pricing_change
+      funding_round: funding_event
+      valuation_change: funding_event
+      acquisition_or_partnership: funding_event
+      commercial_strategy: forecast
+      cost_forecast: forecast
+    required_fields:
+      - actor
+      - economic object
+      - amount/value/unit/change direction where stated
+      - effective date or announcement date when present
+      - source refs
+
+  safety_security:
+    purpose: Preserve AI security, safety, misuse, vulnerability, incident, mitigation, eval, and governance controls.
+    object_types:
+      - security_vulnerability
+      - unauthorized_access_incident
+      - prompt_injection_issue
+      - model_misuse_vector
+      - safety_eval_result
+      - mitigation_or_patch
+      - responsible_scaling_change
+      - content_safety_policy_change
+    core_type_mapping:
+      security_vulnerability: risk
+      unauthorized_access_incident: risk
+      prompt_injection_issue: risk
+      model_misuse_vector: risk
+      safety_eval_result: result
+      mitigation_or_patch: state_change
+      responsible_scaling_change: state_change
+      content_safety_policy_change: state_change
+    mvp_claim_type:
+      security_vulnerability: security_issue
+      unauthorized_access_incident: security_issue
+      prompt_injection_issue: security_issue
+      model_misuse_vector: security_issue
+      safety_eval_result: regulation
+      mitigation_or_patch: security_issue
+      responsible_scaling_change: regulation
+      content_safety_policy_change: regulation
+    required_fields:
+      - affected system
+      - risk or incident type
+      - impact or potential impact
+      - mitigation status when present
+      - evidence caveat if unconfirmed
+      - source refs
+
+  policy_governance:
+    purpose: Preserve laws, regulations, standards, investigations, reporting requirements, evaluations, and governance obligations.
+    object_types:
+      - law_or_rule_change
+      - regulatory_obligation
+      - government_investigation
+      - standards_update
+      - safety_institute_report
+      - company_policy_update
+      - compliance_threshold
+    core_type_mapping:
+      law_or_rule_change: event
+      regulatory_obligation: constraint
+      government_investigation: event
+      standards_update: state_change
+      safety_institute_report: event
+      company_policy_update: state_change
+      compliance_threshold: constraint
+    mvp_claim_type:
+      law_or_rule_change: regulation
+      regulatory_obligation: regulation
+      government_investigation: regulation
+      standards_update: regulation
+      safety_institute_report: regulation
+      company_policy_update: regulation
+      compliance_threshold: regulation
+    required_fields:
+      - jurisdiction/regulator/issuer
+      - affected actors or systems
+      - obligation/action/report
+      - effective or publication date when present
+      - source refs
+
+  forecast_outlook:
+    purpose: Preserve explicit predictions, timelines, market forecasts, capability forecasts, adoption forecasts, and uncertainty statements.
+    object_types:
+      - capability_forecast
+      - cost_forecast
+      - market_size_forecast
+      - labor_impact_forecast
+      - adoption_forecast
+      - risk_forecast
+      - uncertainty_statement
+    core_type_mapping:
+      capability_forecast: claim
+      cost_forecast: claim
+      market_size_forecast: claim
+      labor_impact_forecast: claim
+      adoption_forecast: claim
+      risk_forecast: claim
+      uncertainty_statement: constraint
+    mvp_claim_type:
+      capability_forecast: forecast
+      cost_forecast: forecast
+      market_size_forecast: forecast
+      labor_impact_forecast: forecast
+      adoption_forecast: forecast
+      risk_forecast: forecast
+      uncertainty_statement: other
+    required_fields:
+      - forecaster/source
+      - forecast target
+      - timeframe
+      - magnitude/direction when stated
+      - uncertainty/caveat when stated
+      - source refs
+
+  ecosystem_event:
+    purpose: Preserve consequential AI ecosystem changes that do not fit narrower families.
+    object_types:
+      - team_or_org_restructure
+      - open_source_project_launch
+      - community_or_foundation_event
+      - dataset_release
+      - moderation_or_policy_overhaul
+      - legal_dispute
+      - other_material_change
+    core_type_mapping:
+      team_or_org_restructure: event
+      open_source_project_launch: event
+      community_or_foundation_event: event
+      dataset_release: event
+      moderation_or_policy_overhaul: state_change
+      legal_dispute: event
+      other_material_change: event
+    mvp_claim_type:
+      team_or_org_restructure: other
+      open_source_project_launch: other
+      community_or_foundation_event: other
+      dataset_release: research_finding
+      moderation_or_policy_overhaul: security_issue
+      legal_dispute: other
+      other_material_change: other
+    required_fields:
+      - actor
+      - event/change
+      - why it matters under the AI domain telos
+      - source refs
+
+salience_policy:
+  preserve_if:
+    - The text reports a concrete model, product, infrastructure, pricing, policy, security, funding, benchmark, research, or forecast change.
+    - The text states a measurable performance, cost, capability, safety, or adoption result.
+    - The text names affected systems, organizations, users, developers, jurisdictions, hardware, models, or products.
+    - The text adds a limitation, caveat, uncertainty, or failure mode to a headline claim.
+    - The text changes interpretation of prior AI ecosystem state.
+  ignore_if:
+    - The text is generic AI background with no new source-specific information.
+    - The text contains promotional adjectives without concrete claim content.
+    - The text repeats a previous statement within the same source without adding detail.
+    - The text is a boilerplate safe-harbor or generic disclaimer unless tied to a specific forecast or risk.
+    - The text is purely biographical or corporate boilerplate without AI-domain consequence.
+  downgrade_if:
+    - The claim is abstract-only and not supported later in the source.
+    - The source is secondary and does not identify the primary announcement, report, or filing.
+    - The claim lacks date, actor, metric, affected system, or context needed for durable retrieval.
+    - The claim is a broad trend statement without a concrete evidence anchor.
+  escalate_if:
+    - Numeric benchmark, pricing, cost, or forecast values conflict within the source.
+    - A benchmark result is chart-only and exact values matter.
+    - A security incident affects secrets, user data, model weights, or critical infrastructure.
+    - A regulation or policy claim has legal obligations but ambiguous affected actors.
+    - A forecast is high-impact and lacks stated assumptions.
+    - The source appears to overstate a capability beyond its evidence.
+
+facet_policy:
+  generic_facets:
+    - people
+    - orgs
+    - places
+    - dates
+  domain_facets:
+    - models
+    - model_families
+    - products
+    - APIs
+    - benchmarks
+    - metrics
+    - datasets
+    - hardware
+    - cloud_platforms
+    - frameworks
+    - licenses
+    - jurisdictions
+    - regulators
+    - vulnerabilities
+    - safety_levels
+    - money
+    - compute_units
+    - modalities
+    - availability_channels
+  preserve_unknown_salient_terms: true
+  canonicalization_required: false
+  external_id_sources: []
+
+relation_grammar:
+  core_relations:
+    - supports
+    - contradicts
+    - refines
+    - qualifies
+    - weakens
+    - strengthens
+    - explains
+    - causes
+    - duplicates
+    - supersedes
+    - insufficient_evidence
+  domain_relations:
+    - releases_model
+    - updates_model
+    - outperforms
+    - underperforms
+    - evaluates_on
+    - uses_benchmark
+    - improves_cost
+    - increases_cost
+    - expands_availability
+    - restricts_availability
+    - patches_vulnerability
+    - introduces_obligation
+    - changes_license
+    - raises_funding
+    - forecasts_capability
+    - forecasts_cost
+    - qualifies_capability_claim
+    - supersedes_prior_release
+  relation_constraints: {}
+  escalation_rules:
+    - A new version of the same model family may supersede prior release objects, but only when the source states replacement, deprecation, or successor status.
+    - A benchmark result can support a capability claim only when task, metric, and evaluated model match.
+    - A limitation, failure mode, or caveat should qualify related model capability, benchmark, or product claims.
+    - A price reduction strengthens affordability/cost-efficiency thesis objects but should not imply adoption without evidence.
+    - A safety disclosure can weaken deployment-readiness claims and support security-risk thesis objects.
+    - A regulation can restrict_availability, introduce_obligation, or qualify product launch claims.
+
+epistemic_policy:
+  source_authority_rules:
+    primary: Primary release note, paper, filing, law, regulator report, or vendor disclosure.
+    secondary: Reputable article summarizing primary material.
+    tertiary: Opinion, forecast, rumor, or unsourced aggregation.
+    unknown: Source authority cannot be determined.
+  status_rules:
+    release_product_funding_pricing: asserted_by_source
+    benchmark_and_research_results: asserted_by_source unless independent replication is present
+    vulnerabilities_and_incidents: asserted_by_source; set uncertainty if details are unconfirmed
+    forecasts: speculative or forward_looking
+    enacted_regulations: asserted_by_source
+    proposed_regulations: forward_looking
+    opinionated_trend_claims: inferred only if the source explicitly argues the inference
+  confidence_rules:
+    raise_when:
+      - source is primary
+      - object has a direct quote or exact span evidence
+      - benchmark includes task, metric, score, and model
+      - pricing includes unit, old/new value, and effective date
+      - regulation includes jurisdiction and affected actor
+    lower_when:
+      - source is secondary without primary link
+      - claim is abstract-only
+      - value is approximate or chart-derived
+      - benchmark lacks setup details
+      - forecast lacks assumptions
+      - product availability is unclear
+  contradiction_policy:
+    first_action: Attempt to refine scope before marking contradiction; different benchmark, model size, date, modality, region, customer tier, or license may explain apparent conflict.
+    supersession: If the same actor reports a newer value for the same object, mark older object superseded.
+    high_authority_conflict: If two sources disagree on a security, regulation, benchmark, or pricing claim and both are high-authority, escalate to T3.
+    rumor_handling: Do not resolve rumors against primary disclosures without preserving both evidence paths.
+  uncertainty_policy:
+    store_in: uncertainty field of epistemic block
+    required_for: forecasts, unconfirmed security incidents, chart-derived benchmark values, proposals not yet enacted
+  escalation_policy:
+    escalate_to_t3:
+      - cross-source contradictions on security, regulation, benchmark, or pricing
+      - high-impact security or regulatory interpretation
+      - benchmark conflicts where both sources appear high-authority
+      - unclear forecasts with major downstream implications
+    escalate_to_t4:
+      - integrity audit
+      - high-stakes deployment or safety decisions
+      - major contradiction reports
+      - domain-pack blind spot review
+
+model_routing_policy:
+  default_route:
+    segmenting: T0
+    basic_facets: T1
+    semantic_compression_easy: T1
+    semantic_compression_ambiguous: T2
+    relation_classification_easy: T2
+    synthesis: T3
+    audit_or_high_impact: T4
+  models:
+    T1:
+      extractor: GLiNER2-style NER extractor for facet and entity extraction
+      embeddings: bge-small for dense retrieval and near-duplicate detection
+      classifier: DeBERTa-xsmall for domain/topic classification
+      fallback_lm: Qwen 0.5B for low-stakes compression and labeling
+    T2: deepseek/deepseek-v4-flash
+    T3: deepseek/deepseek-v4-pro
+
+budgets:
+  max_segments_per_source: 500
+  max_semantic_objects_per_source: 80
+  max_semantic_objects_per_segment: 5
+  max_relations_per_object: 8
+  max_facets_per_object: 24
+  max_t2_calls_per_source: 20
+  max_t3_calls_per_source: 2
+  force_escalation_if_budget_exceeded: false
+  per_source_type:
+    ai_news_article:
+      max_semantic_objects_per_source: 12
+    model_release_note:
+      max_semantic_objects_per_source: 25
+    research_paper_or_report:
+      max_semantic_objects_per_source: 80
+    benchmark_report:
+      max_semantic_objects_per_source: 60
+    product_or_tool_announcement:
+      max_semantic_objects_per_source: 25
+    pricing_or_terms_update:
+      max_semantic_objects_per_source: 20
+    security_or_safety_disclosure:
+      max_semantic_objects_per_source: 40
+    policy_or_regulation_update:
+      max_semantic_objects_per_source: 40
+    funding_or_company_update:
+      max_semantic_objects_per_source: 15
+    forecast_or_opinion:
+      max_semantic_objects_per_source: 25
+
+retention_policy:
+  hot_window_hours: 168
+  warm_window_days: 45
+  cold_after_days: 365
+  archive_after_days: null
+  decay_by_object_type:
+    model_release: active until superseded or deprecated
+    benchmark_result: active but qualified when later evaluations narrow conditions
+    pricing_change: supersedes older pricing/availability objects
+    forecast: stale after prediction window passes
+    security_vulnerability: active until patched/mitigated, then qualified or confirmed
+    law_or_rule_change: active until superseded, repealed, or replaced
+    funding_round: historical event; salience cools but record is permanent
+  refresh_triggers:
+    - new primary source for the same model/system/event
+    - supersession event detected from same actor
+    - contradiction from high-authority source
+  stale_conditions:
+    - forecast prediction window has elapsed
+    - pricing has been superseded by a newer announcement
+    - product or model has been deprecated
+  supersession_rules:
+    - Same actor + same object + newer date = supersedes prior state_change or event
+    - Explicit deprecation notice supersedes availability_change and product_launch objects
+
+retrieval_policy:
+  query_intents:
+    what_changed:
+      description: Retrieve the most recent high-salience events, state changes, security/regulatory updates, and pricing changes.
+      retrieval_priorities:
+        - model_system
+        - product_tooling
+        - economics_pricing
+        - safety_security
+        - policy_governance
+    model_capability_summary:
+      description: Summarize a model's capabilities, benchmarks, limitations, and safety findings.
+      retrieval_priorities:
+        - model_system
+        - evaluation_evidence
+        - research_knowledge
+        - safety_security
+    benchmark_comparison:
+      description: Compare model or method performance across benchmarks and metrics.
+      retrieval_priorities:
+        - evaluation_evidence
+        - model_system
+        - research_knowledge
+    product_or_tool_update:
+      description: Retrieve product launches, feature releases, API changes, and deprecations.
+      retrieval_priorities:
+        - product_tooling
+        - economics_pricing
+        - model_system
+    pricing_and_cost_change:
+      description: Retrieve pricing, quota, license, and cost-efficiency changes.
+      retrieval_priorities:
+        - economics_pricing
+        - product_tooling
+        - infrastructure_compute
+    infrastructure_capacity_update:
+      description: Retrieve compute, chip, cloud, inference, and deployment infrastructure changes.
+      retrieval_priorities:
+        - infrastructure_compute
+        - product_tooling
+        - economics_pricing
+    security_or_safety_risk:
+      description: Retrieve vulnerabilities, incidents, misuse vectors, mitigations, and safety evaluations.
+      retrieval_priorities:
+        - safety_security
+        - policy_governance
+        - model_system
+    regulatory_obligation:
+      description: Retrieve laws, obligations, thresholds, enforcement mechanisms, and affected actors.
+      retrieval_priorities:
+        - policy_governance
+        - safety_security
+        - economics_pricing
+    research_trend:
+      description: Retrieve research findings, methods, limitations, reproducibility notes, and related benchmarks.
+      retrieval_priorities:
+        - research_knowledge
+        - evaluation_evidence
+        - model_system
+    forecast_outlook:
+      description: Retrieve predictions, timelines, market forecasts, capability forecasts, and uncertainty statements.
+      retrieval_priorities:
+        - forecast_outlook
+        - economics_pricing
+        - model_system
+    company_strategy_or_funding:
+      description: Retrieve funding rounds, acquisitions, partnerships, restructuring, and commercial strategy signals.
+      retrieval_priorities:
+        - economics_pricing
+        - ecosystem_event
+        - product_tooling
+  hybrid_score_weights:
+    semantic_similarity: 0.35
+    domain_object_type_match: 0.20
+    source_authority: 0.12
+    recency: 0.12
+    salience: 0.11
+    relation_relevance: 0.07
+    evidence_quality: 0.03
+  retrieval_priorities: {}
+
+context_assembly:
+  include:
+    - highest_salience_relevant_objects
+    - counter_evidence_and_caveats
+    - superseding_or_superseded_objects
+    - source_refs_and_excerpts
+    - epistemic_notes
+  ordering: evidence_strength
+  max_tokens_by_tier:
+    T2: 2000
+    T3: 8000
+    T4: 12000
+
+evaluation_contract:
+  object_extraction_metrics:
+    - semantic object schema validity
+    - grounded object rate
+    - salient object precision
+    - salient object recall
+    - unsupported object rate
+    - MVP claim-type projection accuracy
+  relation_metrics:
+    - relation accuracy
+    - contradiction recall
+    - supersession accuracy
+    - evidence sufficiency accuracy
+  epistemic_metrics:
+    - status assignment accuracy
+    - confidence calibration
+    - escalation recall on hard cases
+    - overconfidence rate on forecasts and benchmarks
+  retrieval_metrics:
+    - relevant semantic object recall
+    - counter-evidence inclusion
+    - citation grounding rate
+    - stale/superseded object handling
+  minimum_thresholds:
+    semantic_object_schema_validity: "> 95%"
+    grounded_object_rate: "> 95%"
+    unsupported_object_rate: "< 5%"
+    mvp_claim_type_projection_accuracy: "> 90%"
+    escalation_recall_on_hard_cases: "> 85%"
+    citation_grounding_rate: "> 95%"
+
+# ---------------------------------------------------------------------------
+# Legacy top-level keys — preserved for back-compat until A6 cuts over.
+# DomainPack(extra="allow") keeps these in __pydantic_extra__ without error.
+# ---------------------------------------------------------------------------
+
 id: personal_ai_tech
 name: Personal AI Technology Analyst
 
