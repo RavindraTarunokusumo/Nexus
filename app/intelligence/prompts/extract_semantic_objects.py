@@ -2,24 +2,13 @@
 
 from __future__ import annotations
 
+from typing import get_args
+
 from app.domain_packs.loader import DomainPack
+from app.intelligence.llm_client import ClaimType, CoreType
 
-# ---------------------------------------------------------------------------
-# 15 v0.7 core types and 11 legacy claim types — kept inline so this file
-# needs no import from llm_client (pure string assembly, no DB/LLM).
-# ---------------------------------------------------------------------------
-
-_CORE_TYPES = (
-    "claim, event, observation, result, risk, argument, explanation, comparison, "
-    "definition, constraint, question, description, state_change, "
-    "narrative_development, other"
-)
-
-_CLAIM_TYPES = (
-    "model_release, benchmark_result, product_launch, pricing_change, "
-    "research_finding, infrastructure_update, security_issue, funding_event, "
-    "regulation, forecast, other"
-)
+_CORE_TYPES = ", ".join(get_args(CoreType))
+_CLAIM_TYPES = ", ".join(get_args(ClaimType))
 
 SYSTEM_PROMPT = """\
 You are a telos-guided semantic compressor for an intelligence research system.

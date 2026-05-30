@@ -167,7 +167,8 @@ def test_prompt_contains_segment_id():
 def test_prompt_contains_budget_number():
     pack = _make_pack()
     prompt = build_user_prompt(_SEGMENT_TEXT, {"segment_id": "seg-1"}, pack, "other")
-    assert "4" in prompt  # max_semantic_objects_per_segment = 4
+    n = str(pack.budgets.max_semantic_objects_per_segment)
+    assert f"more than {n} objects" in prompt
 
 
 def test_prompt_contains_applicable_family_names_when_profile_set():
