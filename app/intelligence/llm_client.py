@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal, TypeVar
 
 import httpx
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.observability.tracer import record_agent_run
 
@@ -172,3 +172,62 @@ class ExtractedClaim(BaseModel):
 
 class ExtractionOutput(BaseModel):
     claims: list[ExtractedClaim]
+
+
+# ---------------------------------------------------------------------------
+# v0.7 semantic-object extraction schema (A3)
+# Consumed by: extraction prompt (A4) and projection layer (A5).
+# ExtractedClaim / ExtractionOutput above are kept intact until A6.
+# ---------------------------------------------------------------------------
+
+CoreType = Literal[
+    "claim",
+    "event",
+    "observation",
+    "result",
+    "risk",
+    "argument",
+    "explanation",
+    "comparison",
+    "definition",
+    "constraint",
+    "question",
+    "description",
+    "state_change",
+    "narrative_development",
+    "other",
+]
+
+
+class EpistemicState(BaseModel):
+    status: str
+    source_authority: Literal["primary", "secondary", "tertiary", "unknown"] = "unknown"
+    confidence: float = Field(ge=0.0, le=1.0)
+    evidence_quality: Literal["high", "medium", "low", "unknown"] = "unknown"
+    uncertainty: str | None = None
+    needs_escalation: bool = False
+
+
+class SemanticObject(BaseModel):
+    source_refs: list[str]
+    core_type: CoreType
+    domain_family: str
+    domain_object_type: str
+    function: str
+    text: str
+    original_text: str | None = None
+    facets: dict[str, list[str]] = Field(default_factory=dict)
+    epistemic: EpistemicState
+    salience: float = Field(ge=0.0, le=1.0)
+    mvp_claim_type: ClaimType
+
+    @field_validator("source_refs")
+    @classmethod
+    def source_refs_non_empty(cls, v: list[str]) -> list[str]:
+        if len(v) < 1:
+            raise ValueError("source_refs must contain at least one entry")
+        return v
+
+
+class SemanticExtractionOutput(BaseModel):
+    objects: list[SemanticObject] = Field(default_factory=list)
