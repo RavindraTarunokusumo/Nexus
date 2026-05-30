@@ -14,6 +14,7 @@ Plan: [docs/superpowers/plans/2026-05-30-telos-semantic-extraction-bridge.md](do
 - [ ] **A5** — Projection layer: `app/intelligence/projection.py` with `validate_object`, `project`, and per-source/per-segment budget enforcement. Stash full v0.7 object dict under `entities_json["_v0_7"]` for forward-compat. Unit tests covering the MVP-projection table.
 - [ ] **A6** — Wire the LangGraph extraction graph to the new path. Run `gitnexus_impact` on `_extract_one_span`, `extract_spans`, `store_claims`, `make_extraction_graph`, `run_with_context` first. Load pack from `Source.domain_pack`; new validate-and-project step; remove old claim-only prompt/schema; update affected tests.
 - [ ] **A7** *(stretch)* — Scaffold feature-flagged T2 judge: `app/intelligence/prompts/judge_semantic_object.py` + optional graph step gated by `budgets.max_t2_calls_per_source`.
+  - [ ] **Phase B prerequisite** — wire the A7 judge prompt into the extraction graph behind a feature flag once a relation/audit destination exists.
 - [ ] **A8** — Eval compatibility: regression test that the new pipeline produces valid projected claims for a known fixture; object-schema-validity smoke; keep `ai_tech_v2` gold as compatibility fixture.
 - [ ] **A9** — Pre-PR docs via `doc-updater`: `docs/architecture.md`, `docs/specs/domain-packs.md`, `docs/patterns.md`.
 
