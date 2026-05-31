@@ -2,21 +2,22 @@
 
 ## Active
 
-### Phase A — Telos-Semantic Extraction Bridge (PoC v0.7 / Domain Pack v3)
+### Phase B — Semantic Capsule Schema (follow-up to Phase A)
 
-Plan: [docs/superpowers/plans/2026-05-30-telos-semantic-extraction-bridge.md](docs/superpowers/plans/2026-05-30-telos-semantic-extraction-bridge.md). Two-layer bridge: extract v0.7 semantic objects in-memory, project into existing `claims` tables. No schema migration this phase.
+Phase A landed the telos-aware extraction + projection bridge (see [archive](docs/iterations/archive/2026-05-30-phase-a-telos-semantic-bridge.md)). Phase B promotes the in-memory `SemanticObject` layer to durable tables and retires the legacy dual-path eval contract.
 
-- [ ] **A0** — Copy `2026-05-29-ai-domain-pack-extraction-scheme-design.md` (currently only on `codex/ai-domain-extraction-spec`) into `docs/superpowers/specs/` on this branch; cross-link from `docs/specs/domain-packs.md`.
-- [ ] **A1** — Domain pack loader: `app/domain_packs/loader.py` with Pydantic models for the v3 minimal-MVP subset + `load_pack(pack_id)` (YAML read, validate, `lru_cache`). Unit tests: valid load, missing file, schema-invalid.
-- [ ] **A2** — Rewrite `app/domain_packs/personal_ai_tech.yaml` to v3 purpose-grammar shape from the extraction-scheme spec (telos, 9 source profiles, 10 families w/ `mvp_claim_type`, salience, facets, relations, epistemic, T0–T4 routing, budgets, retention, retrieval, context assembly, evaluation contract). Add a test that the real file loads via A1.
-- [ ] **A3** — Semantic-object extraction schema in `app/intelligence/llm_client.py`: `EpistemicState`, `SemanticObject`, `SemanticExtractionOutput`. Keep `ExtractedClaim`/`ExtractionOutput` until A6 cuts over.
-- [ ] **A4** — Telos-aware prompt: `app/intelligence/prompts/extract_semantic_objects.py` with `build_user_prompt(segment_text, metadata, pack, source_type)` + `build_correction_prompt`. Unit tests on prompt assembly.
-- [ ] **A5** — Projection layer: `app/intelligence/projection.py` with `validate_object`, `project`, and per-source/per-segment budget enforcement. Stash full v0.7 object dict under `entities_json["_v0_7"]` for forward-compat. Unit tests covering the MVP-projection table.
-- [ ] **A6** — Wire the LangGraph extraction graph to the new path. Run `gitnexus_impact` on `_extract_one_span`, `extract_spans`, `store_claims`, `make_extraction_graph`, `run_with_context` first. Load pack from `Source.domain_pack`; new validate-and-project step; remove old claim-only prompt/schema; update affected tests.
-- [ ] **A7** *(stretch)* — Scaffold feature-flagged T2 judge: `app/intelligence/prompts/judge_semantic_object.py` + optional graph step gated by `budgets.max_t2_calls_per_source`.
-  - [ ] **Phase B prerequisite** — wire the A7 judge prompt into the extraction graph behind a feature flag once a relation/audit destination exists.
-- [ ] **A8** — Eval compatibility: regression test that the new pipeline produces valid projected claims for a known fixture; object-schema-validity smoke; keep `ai_tech_v2` gold as compatibility fixture.
-- [ ] **A9** — Pre-PR docs via `doc-updater`: `docs/architecture.md`, `docs/specs/domain-packs.md`, `docs/patterns.md`.
+- [ ] **B1** — Alembic migration 0005: `semantic_capsules`, `capsule_segments`, `semantic_relations`, `theses`, `decision_artefacts` tables per `nexus_poc_v07_telos_semantic.md` §7.1.
+- [ ] **B2** — Dual-write from `projection.project()`: write a capsule (+ `capsule_segments`) alongside the projected `Claim` row.
+- [ ] **B3** — Backfill capsules from existing rows via the `entities_json["_v0_7"]` payload stash.
+- [ ] **B4** — Port `app/evaluation/runner.py` to `SemanticExtractionOutput` + an object-level eval gold set. Retire `ExtractedClaim` / `ExtractionOutput`.
+- [ ] **B5** — Wire the A7 T2 judge prompt into the graph behind a feature flag, writing escalations to `semantic_relations` (or a new audit table).
+- [ ] **B6** — Capsule retrieval + telos-aware hybrid scoring driven by `pack.retrieval_policy.hybrid_score_weights` + query-intent classification.
+- [ ] **B7** — Lifecycle / consolidation workers: capsule states (candidate → active → confirmed/qualified/superseded/stale/archived); thesis / narrative-arc / research-model synthesis.
+- [ ] **B8** — Ingestion-side detection of v3 source-type profile (replace `pack.metadata.supported_source_types[0]` fallback in `_resolve_pack_and_source_type`).
+
+### Phase A — follow-up unit-test gap
+
+- [ ] Isolated unit test for `_resolve_pack_and_source_type` (currently covered only end-to-end). Test plan flagged in `docs/test-plan-phase-a-telos-semantic.md`.
 
 ### Phase 2 validation harness
 
