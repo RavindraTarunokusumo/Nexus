@@ -52,6 +52,7 @@ class SemanticObjectFamily(BaseModel):
 
 
 class SaliencePolicy(BaseModel):
+    min_floor: float = Field(default=0.3, ge=0.0, le=1.0)
     preserve_if: list[str] = Field(default_factory=list)
     ignore_if: list[str] = Field(default_factory=list)
     downgrade_if: list[str] = Field(default_factory=list)

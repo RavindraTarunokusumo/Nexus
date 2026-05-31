@@ -28,6 +28,7 @@ from app.domain_packs.loader import (
 from app.intelligence.prompts.extract_semantic_objects import (
     SYSTEM_PROMPT,
     build_correction_prompt,
+    build_source_prompt_prefix,
     build_user_prompt,
 )
 
@@ -265,3 +266,18 @@ def test_build_user_prompt_is_deterministic():
     p1 = build_user_prompt(_SEGMENT_TEXT, _METADATA_FULL, pack, "test_article")
     p2 = build_user_prompt(_SEGMENT_TEXT, _METADATA_FULL, pack, "test_article")
     assert p1 == p2
+
+
+# ---------------------------------------------------------------------------
+# 6. Pre-built source prefix produces identical output (fix #4 regression)
+# ---------------------------------------------------------------------------
+
+
+def test_prebuilt_prefix_equals_inline_build():
+    """build_user_prompt with a pre-built source_prefix must match the
+    fully-inline call so the per-source caching optimisation is transparent."""
+    pack = _make_pack(source_type_families=["model_system"])
+    inline = build_user_prompt(_SEGMENT_TEXT, _METADATA_FULL, pack, "test_article")
+    prefix = build_source_prompt_prefix(pack, "test_article")
+    cached = build_user_prompt(_SEGMENT_TEXT, _METADATA_FULL, source_prefix=prefix)
+    assert inline == cached

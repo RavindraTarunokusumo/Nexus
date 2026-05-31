@@ -217,7 +217,34 @@ def test_personal_ai_tech_yaml_loads_as_v3() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 3. Missing pack raises FileNotFoundError
+# 3. SaliencePolicy.min_floor field
+# ---------------------------------------------------------------------------
+
+
+class TestSaliencePolicyMinFloor:
+    def test_default_min_floor(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        _write_pack(tmp_path, _MINIMAL_PACK)
+        monkeypatch.setattr(loader_module, "_pack_dir", lambda: tmp_path)
+
+        pack = load_pack("test_pack")
+        assert pack.salience_policy.min_floor == 0.3
+
+    def test_custom_min_floor_from_yaml(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import copy
+
+        pack_with_floor = copy.deepcopy(_MINIMAL_PACK)
+        pack_with_floor["salience_policy"] = {"min_floor": 0.5}
+        _write_pack(tmp_path, pack_with_floor)
+        monkeypatch.setattr(loader_module, "_pack_dir", lambda: tmp_path)
+
+        pack = load_pack("test_pack")
+        assert pack.salience_policy.min_floor == 0.5
+
+
+# ---------------------------------------------------------------------------
+# 4. Missing pack raises FileNotFoundError
 # ---------------------------------------------------------------------------
 
 

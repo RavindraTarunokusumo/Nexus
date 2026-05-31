@@ -7,7 +7,6 @@ import pytest
 from app.domain_packs.loader import load_pack
 from app.intelligence.llm_client import EpistemicState, SemanticObject
 from app.intelligence.projection import (
-    SALIENCE_THRESHOLD,
     ProjectedClaim,
     enforce_budgets,
     project,
@@ -91,7 +90,7 @@ def test_salience_gate_rejected():
     assert accepted is False
     assert reason is not None
     assert "salience" in reason
-    assert str(SALIENCE_THRESHOLD) in reason
+    assert str(PACK.salience_policy.min_floor) in reason
 
 
 # ---------------------------------------------------------------------------

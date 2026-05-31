@@ -36,6 +36,9 @@ from app.intelligence.prompts.extract_semantic_objects import (
     build_correction_prompt as build_semantic_correction_prompt,
 )
 from app.intelligence.prompts.extract_semantic_objects import (
+    build_source_prompt_prefix as build_semantic_source_prefix,
+)
+from app.intelligence.prompts.extract_semantic_objects import (
     build_user_prompt as build_semantic_user_prompt,
 )
 from app.observability.run_context import extraction_run, span_scope
@@ -44,6 +47,12 @@ from app.observability.tracer import mark_document_timestamp, record_span_extrac
 logger = logging.getLogger(__name__)
 
 _MAX_RETRIES = 2
+
+
+def _load_spans_failure(error_msg: str) -> dict:
+    """Return a uniform failure dict for the load_spans node early-exit paths."""
+    return {"error": error_msg, "run_id": None, "pack": None, "source_type": None}
+
 
 # Document status lifecycle constants (extends the ingestion statuses with the
 # extraction outcomes; centralised here so routes_claims and tests can import them).
@@ -68,7 +77,7 @@ class ExtractionState(TypedDict):
     source_type: str | None  # set in load_spans
     spans: list[dict]
     results: list[dict]  # {span_id, objects, tokens, error} — status/error per span
-    projected_claims: list[tuple[str, ProjectedClaim]]
+    projected_claims: list[ProjectedClaim]
     stored_claim_ids: list[uuid.UUID]
     total_tokens: int
     error: str | None
@@ -83,8 +92,9 @@ def _resolve_pack_and_source_type(source: Source) -> tuple[DomainPack, str]:
     most common AI domain source profile.
     """
     pack = load_pack(source.domain_pack)
-    # MVP: pack-aware profile detection is deferred; default to ai_news_article.
-    v3_source_type = "ai_news_article"
+    # MVP: pack-aware profile detection is deferred; default to the pack's first
+    # declared source-type until ingestion learns to detect the v3 profile per item.
+    v3_source_type = pack.metadata.supported_source_types[0]
     return pack, v3_source_type
 
 
@@ -95,18 +105,21 @@ async def _extract_one_span(
     session_factory: async_sessionmaker,
     run_id: uuid.UUID,
     document_id: uuid.UUID,
-    pack: DomainPack,
-    source_type: str,
+    source_prefix: str,
 ) -> dict:
     """Extract semantic objects from one span with correction-prompt retry (max _MAX_RETRIES).
 
     Binds span_id in run_context for the duration so all log lines and the
     agent_runs row carry the correct span correlation.
+
+    ``source_prefix`` is the pre-built static portion of the user prompt
+    (pack id, telos, families, salience, facets, budget) shared across all
+    spans of the same document — computed once in ``extract_spans``.
     """
     span_id = uuid.UUID(span["id"])
     metadata = dict(span.get("metadata_json") or {})
     metadata["segment_id"] = str(span_id)
-    user = build_semantic_user_prompt(span["text"], metadata, pack, source_type)
+    user = build_semantic_user_prompt(span["text"], metadata, source_prefix=source_prefix)
     total_tokens = 0
     attempts = 0
 
@@ -172,9 +185,7 @@ async def _extract_one_span(
                     "tokens": total_tokens,
                     "error": str(exc),
                 }
-
-    # Unreachable: the loop returns from every branch above. Kept for type-checker comfort.
-    return {"span_id": span["id"], "objects": [], "tokens": total_tokens, "error": "unreachable"}
+    raise AssertionError("unreachable: retry loop should have returned")
 
 
 def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # noqa: C901
@@ -189,41 +200,23 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         async with session_factory() as session:
             doc = await session.get(Document, state["document_id"])
             if doc is None:
-                return {
-                    "error": f"Document {state['document_id']} not found",
-                    "run_id": None,
-                    "pack": None,
-                    "source_type": None,
-                }
+                return _load_spans_failure(f"Document {state['document_id']} not found")
             if doc.status != STATUS_EMBEDDED:
-                return {
-                    "error": f"Document status is '{doc.status}'; must be 'embedded'",
-                    "run_id": None,
-                    "pack": None,
-                    "source_type": None,
-                }
+                return _load_spans_failure(f"Document status is '{doc.status}'; must be 'embedded'")
 
             # Load the source row to resolve pack + source-type profile
             source = (
                 await session.execute(select(Source).where(Source.id == doc.source_id))
             ).scalar_one_or_none()
             if source is None:
-                return {
-                    "error": f"Source for document {state['document_id']} not found",
-                    "run_id": None,
-                    "pack": None,
-                    "source_type": None,
-                }
+                return _load_spans_failure(f"Source for document {state['document_id']} not found")
 
             try:
                 pack, v3_source_type = _resolve_pack_and_source_type(source)
             except (FileNotFoundError, ValidationError) as exc:
-                return {
-                    "error": f"Failed to load domain pack '{source.domain_pack}': {exc}",
-                    "run_id": None,
-                    "pack": None,
-                    "source_type": None,
-                }
+                return _load_spans_failure(
+                    f"Failed to load domain pack '{source.domain_pack}': {exc}"
+                )
 
             rows = (
                 (
@@ -263,6 +256,10 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         pack: DomainPack = state["pack"]  # type: ignore[assignment]
         source_type: str = state["source_type"]  # type: ignore[assignment]
 
+        # Build the static prefix once for all spans of this document; avoids
+        # O(spans × families) rebuild on every span call.
+        source_prefix = build_semantic_source_prefix(pack, source_type)
+
         async def bounded(span: dict) -> dict:
             async with semaphore:
                 return await _extract_one_span(
@@ -272,8 +269,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                     session_factory,
                     run_id=run_id,  # type: ignore[arg-type]
                     document_id=state["document_id"],
-                    pack=pack,
-                    source_type=source_type,
+                    source_prefix=source_prefix,
                 )
 
         try:
@@ -322,11 +318,10 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         # Apply source-level budgets
         budgeted_objects = enforce_budgets(accepted_objects, pack, source_type)
 
-        # Project to ProjectedClaim form; span_id comes from first source_ref
-        projected: list[tuple[str, ProjectedClaim]] = []
+        # Project to ProjectedClaim form; span ids are inside ProjectedClaim.evidence_span_ids
+        projected: list[ProjectedClaim] = []
         for obj in budgeted_objects:
-            span_id_str = obj.source_refs[0]
-            projected.append((span_id_str, project(obj)))
+            projected.append(project(obj))
 
         return {"projected_claims": projected}
 
@@ -338,7 +333,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
             evidence_to_add: list[ClaimEvidence] = []
             stored_ids: list[uuid.UUID] = []
 
-            for _span_id_str, projected in state.get("projected_claims", []):
+            for projected in state.get("projected_claims", []):
                 claim_id = uuid.uuid4()
                 claims_to_add.append(
                     Claim(

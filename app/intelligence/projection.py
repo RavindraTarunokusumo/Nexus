@@ -12,9 +12,7 @@ from app.intelligence.llm_client import ClaimType, SemanticObject
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["validate_object", "project", "enforce_budgets", "ProjectedClaim", "SALIENCE_THRESHOLD"]
-
-SALIENCE_THRESHOLD = 0.3
+__all__ = ["validate_object", "project", "enforce_budgets", "ProjectedClaim"]
 
 # Facet keys that route to topics_json; everything else goes to entities_json.
 _TOPIC_FACET_KEYS = {"domain_terms", "unknown_salient_terms"}
@@ -40,10 +38,11 @@ def validate_object(obj: SemanticObject, pack: DomainPack) -> tuple[bool, str | 
     if len(obj.source_refs) == 0:
         return False, "source_refs is empty"
 
-    if obj.salience < SALIENCE_THRESHOLD:
+    floor = pack.salience_policy.min_floor
+    if obj.salience < floor:
         return (
             False,
-            f"salience {obj.salience} is below threshold {SALIENCE_THRESHOLD}",
+            f"salience {obj.salience} is below threshold {floor}",
         )
 
     family = pack.semantic_object_families.get(obj.domain_family)

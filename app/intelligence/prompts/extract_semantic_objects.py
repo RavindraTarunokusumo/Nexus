@@ -6,6 +6,7 @@ from typing import get_args
 
 from app.domain_packs.loader import DomainPack
 from app.intelligence.llm_client import ClaimType, CoreType
+from app.intelligence.prompts import _shared
 
 _CORE_TYPES = ", ".join(get_args(CoreType))
 _CLAIM_TYPES = ", ".join(get_args(ClaimType))
@@ -92,40 +93,12 @@ def _salience_lines(pack: DomainPack) -> list[str]:
     return lines
 
 
-def build_user_prompt(
-    segment_text: str,
-    metadata: dict,
-    pack: DomainPack,
-    source_type: str,
-) -> str:
-    """Assemble a per-segment extraction prompt injecting pack-derived guidance.
+def build_source_prompt_prefix(pack: DomainPack, source_type: str) -> str:
+    """Build the source-static portion of the prompt (telos + families + salience + facets + budget).
 
-    Args:
-        segment_text: The text of the segment to extract objects from.
-        metadata: Must contain ``segment_id`` (str). Optional keys: ``title``,
-            ``source_name``, ``published_at``, ``url``.
-        pack: The loaded DomainPack for this source domain.
-        source_type: The source type key (e.g. ``"ai_news_article"``).
-
-    Raises:
-        ValueError: If ``metadata["segment_id"]`` is missing.
+    Stable across spans of the same source — safe to compute once per document.
     """
-    if "segment_id" not in metadata:
-        raise ValueError("metadata['segment_id'] is required for provenance tracking")
-
-    segment_id = metadata["segment_id"]
-    lines: list[str] = ["Extract semantic objects from the following text segment."]
-    lines.append(f"Segment ID (use exactly this value in source_refs): {segment_id}")
-
-    if metadata.get("title"):
-        lines.append(f"Article title: {metadata['title']}")
-    if metadata.get("source_name"):
-        lines.append(f"Source: {metadata['source_name']}")
-    if metadata.get("published_at"):
-        lines.append(f"Published: {metadata['published_at']}")
-    if metadata.get("url"):
-        lines.append(f"URL: {metadata['url']}")
-
+    lines: list[str] = []
     lines.append(f"\nDomain pack: {pack.metadata.pack_id} / {pack.metadata.domain}")
 
     lines.append("\n## Telos — Primary Purposes")
@@ -151,6 +124,61 @@ def build_user_prompt(
 
     lines.append(f"\n## Valid core_type values (15)\n{_CORE_TYPES}")
     lines.append(f"\n## Valid mvp_claim_type values (11)\n{_CLAIM_TYPES}")
+
+    return "\n".join(lines)
+
+
+def build_user_prompt(
+    segment_text: str,
+    metadata: dict,
+    pack: DomainPack | None = None,
+    source_type: str | None = None,
+    *,
+    source_prefix: str | None = None,
+) -> str:
+    """Assemble a per-segment extraction prompt injecting pack-derived guidance.
+
+    Either pass ``(pack, source_type)`` and the prefix will be built inline, OR
+    pass a pre-built ``source_prefix`` from :func:`build_source_prompt_prefix`
+    to avoid the O(families) rebuild on every span.
+
+    Args:
+        segment_text: The text of the segment to extract objects from.
+        metadata: Must contain ``segment_id`` (str). Optional keys: ``title``,
+            ``source_name``, ``published_at``, ``url``.
+        pack: The loaded DomainPack for this source domain. Required when
+            ``source_prefix`` is not provided.
+        source_type: The source type key (e.g. ``"ai_news_article"``). Required
+            when ``source_prefix`` is not provided.
+        source_prefix: Pre-built static prefix from :func:`build_source_prompt_prefix`.
+            When provided, ``pack`` and ``source_type`` are not used.
+
+    Raises:
+        ValueError: If ``metadata["segment_id"]`` is missing.
+        ValueError: If neither ``source_prefix`` nor ``(pack, source_type)`` is provided.
+    """
+    if "segment_id" not in metadata:
+        raise ValueError("metadata['segment_id'] is required for provenance tracking")
+
+    if source_prefix is None:
+        if pack is None or source_type is None:
+            raise ValueError("Either source_prefix or both pack and source_type must be provided")
+        source_prefix = build_source_prompt_prefix(pack, source_type)
+
+    segment_id = metadata["segment_id"]
+    lines: list[str] = ["Extract semantic objects from the following text segment."]
+    lines.append(f"Segment ID (use exactly this value in source_refs): {segment_id}")
+
+    if metadata.get("title"):
+        lines.append(f"Article title: {metadata['title']}")
+    if metadata.get("source_name"):
+        lines.append(f"Source: {metadata['source_name']}")
+    if metadata.get("published_at"):
+        lines.append(f"Published: {metadata['published_at']}")
+    if metadata.get("url"):
+        lines.append(f"URL: {metadata['url']}")
+
+    lines.append(source_prefix)
     lines.append(f"\n## Text\n{segment_text}")
 
     return "\n".join(lines)
@@ -162,12 +190,6 @@ def build_correction_prompt(
     error: str,
 ) -> str:
     """Append correction instructions when the model returns invalid output."""
-    return (
-        f"{original_user}\n\n"
-        f"---\n"
-        f"Your previous response was invalid.\n"
-        f"Error: {error}\n\n"
-        f"Previous response:\n{invalid_response}\n\n"
-        f"Please correct your response and return valid JSON matching the "
-        f"SemanticExtractionOutput schema exactly."
+    return _shared.build_correction_prompt(
+        original_user, invalid_response, error, schema_name="SemanticExtractionOutput"
     )

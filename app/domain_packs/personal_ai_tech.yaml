@@ -637,6 +637,7 @@ semantic_object_families:
       - source refs
 
 salience_policy:
+  min_floor: 0.3
   preserve_if:
     - The text reports a concrete model, product, infrastructure, pricing, policy, security, funding, benchmark, research, or forecast change.
     - The text states a measurable performance, cost, capability, safety, or adoption result.
