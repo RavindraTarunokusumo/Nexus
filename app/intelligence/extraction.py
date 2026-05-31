@@ -94,7 +94,11 @@ def _resolve_pack_and_source_type(source: Source) -> tuple[DomainPack, str]:
     pack = load_pack(source.domain_pack)
     # MVP: pack-aware profile detection is deferred; default to the pack's first
     # declared source-type until ingestion learns to detect the v3 profile per item.
-    v3_source_type = pack.metadata.supported_source_types[0]
+    # Empty-list defense: fall back to a known-good profile rather than IndexError.
+    if pack.metadata.supported_source_types:
+        v3_source_type = pack.metadata.supported_source_types[0]
+    else:
+        v3_source_type = "ai_news_article"
     return pack, v3_source_type
 
 
