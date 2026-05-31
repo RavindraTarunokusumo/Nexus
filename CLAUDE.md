@@ -72,7 +72,7 @@ After every session completion, you reflect on how the workflow pertaining to th
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **Nexus** (3893 symbols, 5940 relationships, 93 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **Nexus** (4054 symbols, 6227 relationships, 95 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
