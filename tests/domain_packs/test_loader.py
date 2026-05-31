@@ -252,8 +252,64 @@ class TestMissingPackRaisesFileNotFoundError:
     def test_raises_file_not_found(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(loader_module, "_pack_dir", lambda: tmp_path)
 
-        with pytest.raises(FileNotFoundError, match="nonexistent_pack"):
+        with pytest.raises(FileNotFoundError) as exc_info:
             load_pack("nonexistent_pack")
+
+        msg = str(exc_info.value)
+        assert "nonexistent_pack" in msg
+        # Error message must not leak absolute filesystem paths.
+        assert str(tmp_path) not in msg
+
+
+# ---------------------------------------------------------------------------
+# 4b. Path-traversal attempts are rejected by the confinement guard
+# ---------------------------------------------------------------------------
+
+
+class TestLoadPackRejectsPathTraversal:
+    """Layer-2 defense: load_pack must reject any pack_id that would resolve
+    outside the pack directory, regardless of whether Layer-1 validation
+    (validate_identifier) already blocked the request at the API boundary."""
+
+    _TRAVERSAL_IDS = [
+        "../etc/passwd",
+        "..\\foo",
+        "a/../b",
+    ]
+
+    @pytest.mark.parametrize("bad_id", _TRAVERSAL_IDS)
+    def test_traversal_raises_file_not_found(
+        self, bad_id: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(loader_module, "_pack_dir", lambda: tmp_path)
+
+        with pytest.raises(FileNotFoundError) as exc_info:
+            load_pack(bad_id)
+
+        msg = str(exc_info.value)
+        # The error message must not contain the resolved absolute pack directory.
+        assert str(tmp_path) not in msg
+        # Must not contain an absolute Windows or POSIX path (drive letter or leading /).
+        import re as _re
+
+        assert not _re.search(r"[A-Za-z]:[/\\]|^/", msg)
+
+    def test_absolute_path_raises_file_not_found(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(loader_module, "_pack_dir", lambda: tmp_path)
+
+        # Place a real file outside the pack dir — the loader must still reject it.
+        target = tmp_path.parent / "secret.yaml"
+        target.write_text("metadata: {}", encoding="utf-8")
+        try:
+            with pytest.raises(FileNotFoundError) as exc_info:
+                load_pack(str(target.parent / "secret"))
+
+            msg = str(exc_info.value)
+            assert str(tmp_path.parent) not in msg
+        finally:
+            target.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------

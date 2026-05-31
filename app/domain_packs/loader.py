@@ -172,12 +172,14 @@ def load_pack(pack_id: str) -> DomainPack:
     """Load and validate a v3 domain pack from ``{pack_dir}/{pack_id}.yaml``.
 
     Raises:
-        FileNotFoundError: if the YAML file does not exist.
+        FileNotFoundError: if the YAML file does not exist or the resolved path
+            escapes the pack directory (path-traversal guard).
         pydantic.ValidationError: if the YAML fails schema validation.
     """
-    pack_path = _pack_dir() / f"{pack_id}.yaml"
-    if not pack_path.exists():
-        raise FileNotFoundError(f"Domain pack '{pack_id}' not found at '{pack_path}'")
+    pack_dir = _pack_dir().resolve()
+    pack_path = (pack_dir / f"{pack_id}.yaml").resolve()
+    if not pack_path.is_relative_to(pack_dir) or not pack_path.is_file():
+        raise FileNotFoundError(f"Domain pack {pack_id!r} not found")
     data = yaml.safe_load(pack_path.read_text(encoding="utf-8"))
     return DomainPack.model_validate(data)
 
