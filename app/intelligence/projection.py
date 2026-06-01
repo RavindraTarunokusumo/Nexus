@@ -15,6 +15,11 @@ logger = logging.getLogger(__name__)
 __all__ = ["validate_object", "project", "enforce_budgets", "ProjectedClaim"]
 
 # Facet keys that route to topics_json; everything else goes to entities_json.
+# NOTE: personal_ai_tech.yaml's current facet vocabulary does not include either
+# of these keys, so topics_json is empty in production today. The routing is
+# kept live as forward-compat scaffolding for Phase B packs that will use a
+# domain_terms facet (and for ad-hoc tests). See projection regression test for
+# the synthetic exercise of this path.
 _TOPIC_FACET_KEYS = {"domain_terms", "unknown_salient_terms"}
 
 
@@ -56,6 +61,17 @@ def validate_object(obj: SemanticObject, pack: DomainPack) -> tuple[bool, str | 
         )
 
     expected_claim_type = family.mvp_claim_type.get(obj.domain_object_type)
+    if expected_claim_type is None:
+        # Pack misconfiguration: family declares object_type but no mvp_claim_type
+        # entry for it. Distinguish from "LLM emitted wrong projection target"
+        # so the diagnostic is actionable.
+        return (
+            False,
+            (
+                f"pack misconfiguration: no mvp_claim_type mapping for "
+                f"'{obj.domain_family}/{obj.domain_object_type}'"
+            ),
+        )
     if obj.mvp_claim_type != expected_claim_type:
         return (
             False,
