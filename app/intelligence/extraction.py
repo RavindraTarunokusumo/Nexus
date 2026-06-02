@@ -373,8 +373,10 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
             new_status = STATUS_EXTRACTION_FAILED
         else:
             results = state.get("results", [])
+            # Empty results with no error = document had zero extractable spans;
+            # this is a successful no-op extraction, not a failure.
             if not results:
-                new_status = STATUS_EXTRACTION_FAILED
+                new_status = STATUS_CLAIMS_EXTRACTED
             else:
                 failed = sum(1 for r in results if r.get("error"))
                 if failed == 0:
