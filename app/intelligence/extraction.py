@@ -128,67 +128,83 @@ async def _extract_one_span(
     attempts = 0
 
     async with span_scope(span_id):
-        for attempt in range(_MAX_RETRIES + 1):
-            attempts += 1
-            try:
-                result, tokens = await client.complete_json(
-                    model=model,
-                    system=SEMANTIC_SYSTEM_PROMPT,
-                    user=user,
-                    response_model=SemanticExtractionOutput,
-                )
-                total_tokens += tokens
-                await record_span_extraction(
-                    session_factory,
-                    run_id=run_id,
-                    span_id=span_id,
-                    document_id=document_id,
-                    status="success",
-                    attempts=attempts,
-                )
-                return {
-                    "span_id": span["id"],
-                    "objects": [obj.model_dump() for obj in result.objects],
-                    "tokens": total_tokens,
-                    "error": None,
-                }
-            except LLMNetworkError:
-                raise  # abort the entire graph
-            except LLMSchemaError as exc:
-                if attempt < _MAX_RETRIES:
-                    user = build_semantic_correction_prompt(user, exc.raw_output, str(exc))
-                    continue
-                await record_span_extraction(
-                    session_factory,
-                    run_id=run_id,
-                    span_id=span_id,
-                    document_id=document_id,
-                    status="schema_error",
-                    attempts=attempts,
-                    error=str(exc),
-                )
-                return {
-                    "span_id": span["id"],
-                    "objects": [],
-                    "tokens": total_tokens,
-                    "error": str(exc),
-                }
-            except LLMError as exc:
-                await record_span_extraction(
-                    session_factory,
-                    run_id=run_id,
-                    span_id=span_id,
-                    document_id=document_id,
-                    status="llm_error",
-                    attempts=attempts,
-                    error=str(exc),
-                )
-                return {
-                    "span_id": span["id"],
-                    "objects": [],
-                    "tokens": total_tokens,
-                    "error": str(exc),
-                }
+        try:
+            for attempt in range(_MAX_RETRIES + 1):
+                attempts += 1
+                try:
+                    result, tokens = await client.complete_json(
+                        model=model,
+                        system=SEMANTIC_SYSTEM_PROMPT,
+                        user=user,
+                        response_model=SemanticExtractionOutput,
+                    )
+                    total_tokens += tokens
+                    await record_span_extraction(
+                        session_factory,
+                        run_id=run_id,
+                        span_id=span_id,
+                        document_id=document_id,
+                        status="success",
+                        attempts=attempts,
+                    )
+                    return {
+                        "span_id": span["id"],
+                        "objects": [obj.model_dump() for obj in result.objects],
+                        "tokens": total_tokens,
+                        "error": None,
+                    }
+                except LLMNetworkError:
+                    raise  # abort the entire graph
+                except LLMSchemaError as exc:
+                    if attempt < _MAX_RETRIES:
+                        user = build_semantic_correction_prompt(user, exc.raw_output, str(exc))
+                        continue
+                    await record_span_extraction(
+                        session_factory,
+                        run_id=run_id,
+                        span_id=span_id,
+                        document_id=document_id,
+                        status="schema_error",
+                        attempts=attempts,
+                        error=str(exc),
+                    )
+                    return {
+                        "span_id": span["id"],
+                        "objects": [],
+                        "tokens": total_tokens,
+                        "error": str(exc),
+                    }
+                except LLMError as exc:
+                    await record_span_extraction(
+                        session_factory,
+                        run_id=run_id,
+                        span_id=span_id,
+                        document_id=document_id,
+                        status="llm_error",
+                        attempts=attempts,
+                        error=str(exc),
+                    )
+                    return {
+                        "span_id": span["id"],
+                        "objects": [],
+                        "tokens": total_tokens,
+                        "error": str(exc),
+                    }
+        except asyncio.CancelledError:
+            # A sibling task in asyncio.gather raised LLMNetworkError; this
+            # task is being cancelled mid-flight. Record an audit row so the
+            # per-span trail does not silently lose this span, then re-raise
+            # to preserve cancellation semantics.
+            await record_span_extraction(
+                session_factory,
+                run_id=run_id,
+                span_id=span_id,
+                document_id=document_id,
+                status="cancelled",
+                attempts=attempts,
+                error="cancelled by sibling failure",
+            )
+            raise
     raise AssertionError("unreachable: retry loop should have returned")
 
 
@@ -276,10 +292,31 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                     source_prefix=source_prefix,
                 )
 
-        try:
-            results = list(await asyncio.gather(*[bounded(s) for s in state["spans"]]))
-        except LLMNetworkError as exc:
-            return {"error": str(exc), "results": []}
+        # return_exceptions=True so that when one task raises LLMNetworkError
+        # and its siblings are cancelled, each cancelled task still gets a chance
+        # to record its audit row in _extract_one_span before propagating.
+        gathered = await asyncio.gather(
+            *[bounded(s) for s in state["spans"]], return_exceptions=True
+        )
+
+        network_error: LLMNetworkError | None = None
+        results: list[dict] = []
+        for item in gathered:
+            if isinstance(item, LLMNetworkError):
+                if network_error is None:
+                    network_error = item
+            elif isinstance(item, asyncio.CancelledError):
+                # Audit row already written inside _extract_one_span; nothing
+                # to surface in `results` for this span.
+                continue
+            elif isinstance(item, BaseException):
+                # Unexpected exception — re-raise to fail loud.
+                raise item
+            else:
+                results.append(item)
+
+        if network_error is not None:
+            return {"error": str(network_error), "results": []}
 
         total = sum(r.get("tokens", 0) for r in results)
         return {"run_id": run_id, "results": results, "total_tokens": total}
@@ -373,8 +410,10 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
             new_status = STATUS_EXTRACTION_FAILED
         else:
             results = state.get("results", [])
+            # Empty results with no error = document had zero extractable spans;
+            # this is a successful no-op extraction, not a failure.
             if not results:
-                new_status = STATUS_EXTRACTION_FAILED
+                new_status = STATUS_CLAIMS_EXTRACTED
             else:
                 failed = sum(1 for r in results if r.get("error"))
                 if failed == 0:

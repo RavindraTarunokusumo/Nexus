@@ -372,3 +372,41 @@ class TestCacheHit:
 
         assert pack1 is not pack2
         assert pack2.telos.primary_purposes == ["updated purpose"]
+
+    def test_load_pack_reloads_on_mtime_change(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Editing a pack YAML at runtime must invalidate the cache on the
+        next load_pack call - the @lru_cache replacement is mtime-keyed.
+
+        Regression for review finding F6: @lru_cache(maxsize=None) served the
+        original parsed pack forever, regardless of on-disk edits.
+        """
+        import os
+
+        _write_pack(tmp_path, _MINIMAL_PACK)
+        monkeypatch.setattr(loader_module, "_pack_dir", lambda: tmp_path)
+
+        pack1 = load_pack("test_pack")
+        assert pack1.telos.primary_purposes == ["extract test claims"]
+
+        # Same mtime -> identical object (cache hit).
+        pack1_again = load_pack("test_pack")
+        assert pack1 is pack1_again
+
+        # Mutate file content and bump mtime by 1 second to defeat coarse FS
+        # timestamp resolution on Windows.
+        updated = copy.deepcopy(_MINIMAL_PACK)
+        updated["telos"]["primary_purposes"] = ["mtime-reloaded purpose"]
+        _write_pack(tmp_path, updated)
+        pack_path = tmp_path / "test_pack.yaml"
+        new_time = pack_path.stat().st_mtime + 1
+        os.utime(pack_path, (new_time, new_time))
+
+        pack2 = load_pack("test_pack")
+        assert pack2 is not pack1
+        assert pack2.telos.primary_purposes == ["mtime-reloaded purpose"]
+
+        # And after the reload, identical mtime gives identity again.
+        pack2_again = load_pack("test_pack")
+        assert pack2 is pack2_again
