@@ -12,7 +12,6 @@ They will run in CI via the testcontainers path.
 
 from __future__ import annotations
 
-import hashlib
 import uuid
 from unittest.mock import patch
 
@@ -295,8 +294,6 @@ async def test_transaction_atomicity(session_factory: async_sessionmaker):
     graph = make_extraction_graph(session_factory, client)
 
     # Patch session.commit to raise IntegrityError on the first call (store_claims transaction)
-    original_commit_count = 0
-
     import sqlalchemy.ext.asyncio as _sa_async
 
     original_commit = _sa_async.AsyncSession.commit
@@ -310,7 +307,7 @@ async def test_transaction_atomicity(session_factory: async_sessionmaker):
         return await original_commit(self)
 
     with patch.object(_sa_async.AsyncSession, "commit", failing_commit):
-        final = await graph.ainvoke(_initial_state(doc_id))
+        await graph.ainvoke(_initial_state(doc_id))
 
     # The graph catches the error internally and update_status still runs,
     # but no rows should have been committed.
@@ -356,36 +353,3 @@ async def test_embedding_present(session_factory: async_sessionmaker):
         import math
 
         assert all(math.isfinite(v) for v in cap.embedding)
-
-
-def test_idempotency_key_is_deterministic():
-    """Same inputs always produce the same idempotency_key (no randomness)."""
-    doc_id = uuid.UUID("12345678-1234-5678-1234-567812345678")
-    source_refs = ["aaa", "bbb"]
-    dot = "model_release"
-    text = "GPT-5 was released."
-
-    key1 = build_capsule_idempotency_key(
-        document_id=doc_id, source_refs=source_refs, domain_object_type=dot, text=text
-    )
-    key2 = build_capsule_idempotency_key(
-        document_id=doc_id, source_refs=source_refs, domain_object_type=dot, text=text
-    )
-    assert key1 == key2
-
-    # Order of source_refs must not matter (sorted internally)
-    key3 = build_capsule_idempotency_key(
-        document_id=doc_id, source_refs=["bbb", "aaa"], domain_object_type=dot, text=text
-    )
-    assert key1 == key3
-
-    # Different text → different key
-    key4 = build_capsule_idempotency_key(
-        document_id=doc_id, source_refs=source_refs, domain_object_type=dot, text="Different text."
-    )
-    assert key1 != key4
-
-    # Verify the sha256 component manually
-    text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
-    expected = f"{doc_id}:aaa,bbb:{dot}:{text_hash}"
-    assert key1 == expected

@@ -444,8 +444,13 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
             all_rows: list[Any] = []
             stored_ids: list[uuid.UUID] = []
 
+            if len(projected_claims) != len(semantic_objects):
+                raise ValueError(
+                    f"projected_claims ({len(projected_claims)}) and semantic_objects "
+                    f"({len(semantic_objects)}) must be the same length"
+                )
             for idx, (projected, obj) in enumerate(
-                zip(projected_claims, semantic_objects, strict=False)
+                zip(projected_claims, semantic_objects, strict=True)
             ):
                 claim_id = uuid.uuid4()
                 capsule_id = uuid.uuid4()
@@ -481,7 +486,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                     text=obj.text,
                 )
                 escalation_state = "escalated" if obj.epistemic.needs_escalation else "none"
-                embedding = embeddings[idx] if idx < len(embeddings) else None
+                embedding = embeddings[idx]
                 all_rows.append(
                     SemanticCapsule(
                         id=capsule_id,
