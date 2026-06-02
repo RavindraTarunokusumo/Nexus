@@ -110,8 +110,13 @@ def upgrade() -> None:
         sa.Column(
             "parent_pack_id",
             sa.Text(),
-            sa.ForeignKey("domain_packs.id", ondelete="SET NULL"),
             nullable=True,
+        ),
+        sa.ForeignKeyConstraint(
+            ["parent_pack_id"],
+            ["domain_packs.id"],
+            name="fk_domain_packs_parent",
+            ondelete="SET NULL",
         ),
         sa.Column("pack_json", postgresql.JSONB(), nullable=False),
         sa.Column(
@@ -142,20 +147,35 @@ def upgrade() -> None:
         sa.Column(
             "source_id",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("sources.id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column(
             "document_id",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("documents.id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column(
             "claim_id",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("claims.id", ondelete="SET NULL"),
             nullable=True,
+        ),
+        sa.ForeignKeyConstraint(
+            ["source_id"],
+            ["sources.id"],
+            name="fk_semantic_capsules_sources",
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["document_id"],
+            ["documents.id"],
+            name="fk_semantic_capsules_documents",
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["claim_id"],
+            ["claims.id"],
+            name="fk_semantic_capsules_claims",
+            ondelete="SET NULL",
         ),
         sa.Column("idempotency_key", sa.Text(), nullable=False, unique=True),
         sa.Column("core_type", sa.Text(), nullable=False),
@@ -271,14 +291,24 @@ def upgrade() -> None:
         sa.Column(
             "capsule_id",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("semantic_capsules.id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column(
             "segment_id",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("spans.id", ondelete="CASCADE"),
             nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["capsule_id"],
+            ["semantic_capsules.id"],
+            name="fk_capsule_segments_capsules",
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["segment_id"],
+            ["spans.id"],
+            name="fk_capsule_segments_spans",
+            ondelete="CASCADE",
         ),
         sa.Column(
             "role",
@@ -404,20 +434,35 @@ def upgrade() -> None:
         sa.Column(
             "source_capsule_id",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("semantic_capsules.id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column(
             "target_capsule_id",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("semantic_capsules.id", ondelete="CASCADE"),
             nullable=True,
         ),
         sa.Column(
             "target_thesis_id",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("theses.id", ondelete="CASCADE"),
             nullable=True,
+        ),
+        sa.ForeignKeyConstraint(
+            ["source_capsule_id"],
+            ["semantic_capsules.id"],
+            name="fk_semantic_relations_source_capsule",
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["target_capsule_id"],
+            ["semantic_capsules.id"],
+            name="fk_semantic_relations_target_capsule",
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["target_thesis_id"],
+            ["theses.id"],
+            name="fk_semantic_relations_theses",
+            ondelete="CASCADE",
         ),
         sa.Column("relation_type", sa.Text(), nullable=False),
         sa.Column("domain_relation_type", sa.Text(), nullable=True),
@@ -451,6 +496,12 @@ def upgrade() -> None:
         sa.Column("created_by_model", sa.Text(), nullable=True),
         sa.Column(
             "created_at",
+            postgresql.TIMESTAMP(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "updated_at",
             postgresql.TIMESTAMP(timezone=True),
             nullable=False,
             server_default=sa.text("now()"),
@@ -540,6 +591,12 @@ def upgrade() -> None:
         sa.Column("created_by_tier", sa.Text(), nullable=False),
         sa.Column(
             "created_at",
+            postgresql.TIMESTAMP(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "updated_at",
             postgresql.TIMESTAMP(timezone=True),
             nullable=False,
             server_default=sa.text("now()"),

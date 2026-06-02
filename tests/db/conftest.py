@@ -21,6 +21,7 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+# Local dev fixture only — CI uses the Postgres testcontainer path above.
 _LOCAL_DB_URL = "postgresql+asyncpg://nexus:nexus@localhost:5432/nexus"
 
 

@@ -96,7 +96,10 @@ async def _insert_source_document_span(engine: AsyncEngine) -> tuple[uuid.UUID, 
 
 async def _cleanup_capsule_rows(engine: AsyncEngine) -> None:
     async with engine.begin() as conn:
+        await conn.execute(text("DELETE FROM decision_artefacts"))
+        await conn.execute(text("DELETE FROM semantic_relations"))
         await conn.execute(text("DELETE FROM capsule_segments"))
+        await conn.execute(text("DELETE FROM theses"))
         await conn.execute(text("DELETE FROM semantic_capsules"))
         await conn.execute(text("DELETE FROM spans"))
         await conn.execute(text("DELETE FROM documents"))
@@ -145,23 +148,34 @@ class TestIndexes:
 
 class TestCheckConstraints:
     @pytest.mark.asyncio
-    async def test_invalid_core_type_rejected(self, async_engine: AsyncEngine) -> None:
+    @pytest.mark.parametrize(
+        "column,bad_value,ikey",
+        [
+            ("core_type", "banana", "k-ck1"),
+            ("lifecycle_state", "frozen", "k-ck2"),
+            ("escalation_state", "ignored", "k-ck3"),
+            ("created_by_tier", "t9", "k-ck4"),
+        ],
+    )
+    async def test_check_constraint_rejects_invalid_value(
+        self,
+        async_engine: AsyncEngine,
+        column: str,
+        bad_value: str,
+        ikey: str,
+    ) -> None:
         source_id, document_id, _ = await _insert_source_document_span(async_engine)
-        with pytest.raises(IntegrityError):
-            async with async_engine.begin() as conn:
-                await conn.execute(
-                    text(
-                        "INSERT INTO semantic_capsules "
-                        "(source_id, document_id, idempotency_key, core_type, text, "
-                        " domain, object_family, domain_object_type, created_by_tier) "
-                        "VALUES (:s,:d,'k1','banana','t','personal_ai_tech',"
-                        " 'fact','assertion','t2')"
-                    ).bindparams(s=source_id, d=document_id)
-                )
-
-    @pytest.mark.asyncio
-    async def test_invalid_lifecycle_state_rejected(self, async_engine: AsyncEngine) -> None:
-        source_id, document_id, _ = await _insert_source_document_span(async_engine)
+        # Build a valid base row and override the target column with a bad value.
+        base: dict[str, object] = {
+            "s": source_id,
+            "d": document_id,
+            "ikey": ikey,
+            "core_type": "claim",
+            "lifecycle_state": "active",
+            "escalation_state": "none",
+            "created_by_tier": "t2",
+        }
+        base[column] = bad_value
         with pytest.raises(IntegrityError):
             async with async_engine.begin() as conn:
                 await conn.execute(
@@ -169,26 +183,11 @@ class TestCheckConstraints:
                         "INSERT INTO semantic_capsules "
                         "(source_id, document_id, idempotency_key, core_type, text, "
                         " domain, object_family, domain_object_type, created_by_tier, "
-                        " lifecycle_state) "
-                        "VALUES (:s,:d,'k2','claim','t','personal_ai_tech',"
-                        " 'fact','assertion','t2','banana')"
-                    ).bindparams(s=source_id, d=document_id)
-                )
-
-    @pytest.mark.asyncio
-    async def test_invalid_escalation_state_rejected(self, async_engine: AsyncEngine) -> None:
-        source_id, document_id, _ = await _insert_source_document_span(async_engine)
-        with pytest.raises(IntegrityError):
-            async with async_engine.begin() as conn:
-                await conn.execute(
-                    text(
-                        "INSERT INTO semantic_capsules "
-                        "(source_id, document_id, idempotency_key, core_type, text, "
-                        " domain, object_family, domain_object_type, created_by_tier, "
-                        " escalation_state) "
-                        "VALUES (:s,:d,'k3','claim','t','personal_ai_tech',"
-                        " 'fact','assertion','t2','exploded')"
-                    ).bindparams(s=source_id, d=document_id)
+                        " lifecycle_state, escalation_state) "
+                        "VALUES (:s, :d, :ikey, :core_type, 't', 'personal_ai_tech',"
+                        " 'fact', 'assertion', :created_by_tier,"
+                        " :lifecycle_state, :escalation_state)"
+                    ).bindparams(**base)  # type: ignore[arg-type]
                 )
 
     @pytest.mark.asyncio

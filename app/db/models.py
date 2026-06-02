@@ -389,6 +389,9 @@ class SemanticCapsule(Base):
     )
 
     document: Mapped["Document"] = relationship("Document", back_populates="capsules")
+    segments: Mapped[list["CapsuleSegment"]] = relationship(
+        "CapsuleSegment", back_populates="capsule", cascade="all, delete-orphan"
+    )
 
 
 class CapsuleSegment(Base):
@@ -407,6 +410,7 @@ class CapsuleSegment(Base):
     role: Mapped[str] = mapped_column(Text, nullable=False, default="grounds")
 
     span: Mapped["Span"] = relationship("Span", back_populates="capsule_segments")
+    capsule: Mapped["SemanticCapsule"] = relationship("SemanticCapsule", back_populates="segments")
 
 
 class Thesis(Base):
@@ -472,6 +476,9 @@ class SemanticRelation(Base):
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, default=_utcnow
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
 
 
 class DecisionArtefact(Base):
@@ -493,4 +500,7 @@ class DecisionArtefact(Base):
     created_by_tier: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
     )
