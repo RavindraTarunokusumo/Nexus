@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import functools
 from pathlib import Path
 from typing import Any, Literal
 
@@ -167,9 +166,18 @@ def _pack_dir() -> Path:
 # ---------------------------------------------------------------------------
 
 
-@functools.lru_cache(maxsize=None)
+# Mtime-keyed cache: maps pack_id -> (file_mtime, parsed_pack). On every
+# load_pack call we stat the file and reload if the mtime changed, so an
+# operator editing a pack YAML at runtime sees the new pack on the next call.
+_CACHE: dict[str, tuple[float, DomainPack]] = {}
+
+
 def load_pack(pack_id: str) -> DomainPack:
     """Load and validate a v3 domain pack from ``{pack_dir}/{pack_id}.yaml``.
+
+    The result is cached per pack_id and invalidated automatically when the
+    underlying YAML's mtime changes; call ``clear_cache()`` to drop all
+    entries explicitly.
 
     Raises:
         FileNotFoundError: if the YAML file does not exist or the resolved path
@@ -180,10 +188,18 @@ def load_pack(pack_id: str) -> DomainPack:
     pack_path = (pack_dir / f"{pack_id}.yaml").resolve()
     if not pack_path.is_relative_to(pack_dir) or not pack_path.is_file():
         raise FileNotFoundError(f"Domain pack {pack_id!r} not found")
+
+    mtime = pack_path.stat().st_mtime
+    cached = _CACHE.get(pack_id)
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+
     data = yaml.safe_load(pack_path.read_text(encoding="utf-8"))
-    return DomainPack.model_validate(data)
+    pack = DomainPack.model_validate(data)
+    _CACHE[pack_id] = (mtime, pack)
+    return pack
 
 
 def clear_cache() -> None:
-    """Invalidate the load_pack LRU cache (primarily for tests)."""
-    load_pack.cache_clear()
+    """Drop every cached pack (primarily for tests)."""
+    _CACHE.clear()
