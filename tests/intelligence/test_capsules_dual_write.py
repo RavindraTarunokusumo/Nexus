@@ -22,19 +22,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.db.models import (
+    CapsuleSegment,
     Claim,
     ClaimEvidence,
-    CapsuleSegment,
     Document,
     SemanticCapsule,
     Source,
     Span,
 )
-from app.intelligence.extraction import (
-    _build_idempotency_key,
-    make_extraction_graph,
-)
-
+from app.intelligence.extraction import make_extraction_graph
+from app.intelligence.projection import build_capsule_idempotency_key
 
 # ---------------------------------------------------------------------------
 # Fake LLM client (no HTTP calls)
@@ -213,8 +210,11 @@ async def test_happy_path_single_object(session_factory: async_sessionmaker):
         assert len(cap.embedding) == 384
 
         # idempotency_key must be deterministic
-        expected_key = _build_idempotency_key(
-            doc_id, [str(span_ids[0])], "model_release", "GPT-5 was released."
+        expected_key = build_capsule_idempotency_key(
+            document_id=doc_id,
+            source_refs=[str(span_ids[0])],
+            domain_object_type="model_release",
+            text="GPT-5 was released.",
         )
         assert cap.idempotency_key == expected_key
 
@@ -239,9 +239,7 @@ async def test_multi_source_refs(session_factory: async_sessionmaker):
     doc_id, source_id, span_ids = await _seed_doc(session_factory, n_spans=2)
 
     # Single object referencing both spans
-    client = FakeLLMClient(
-        responses=[_semantic_response([str(span_ids[0]), str(span_ids[1])])]
-    )
+    client = FakeLLMClient(responses=[_semantic_response([str(span_ids[0]), str(span_ids[1])])])
     graph = make_extraction_graph(session_factory, client)
     final = await graph.ainvoke(_initial_state(doc_id))
 
@@ -293,9 +291,7 @@ async def test_transaction_atomicity(session_factory: async_sessionmaker):
     """If the session commit fails, neither Claim nor Capsule rows are written."""
     doc_id, source_id, span_ids = await _seed_doc(session_factory, n_spans=1)
 
-    client = FakeLLMClient(
-        responses=[_semantic_response([str(span_ids[0])])]
-    )
+    client = FakeLLMClient(responses=[_semantic_response([str(span_ids[0])])])
     graph = make_extraction_graph(session_factory, client)
 
     # Patch session.commit to raise IntegrityError on the first call (store_claims transaction)
@@ -358,6 +354,7 @@ async def test_embedding_present(session_factory: async_sessionmaker):
         assert len(cap.embedding) == 384
         # All values should be finite floats (not nan/inf from a broken model load)
         import math
+
         assert all(math.isfinite(v) for v in cap.embedding)
 
 
@@ -368,16 +365,24 @@ def test_idempotency_key_is_deterministic():
     dot = "model_release"
     text = "GPT-5 was released."
 
-    key1 = _build_idempotency_key(doc_id, source_refs, dot, text)
-    key2 = _build_idempotency_key(doc_id, source_refs, dot, text)
+    key1 = build_capsule_idempotency_key(
+        document_id=doc_id, source_refs=source_refs, domain_object_type=dot, text=text
+    )
+    key2 = build_capsule_idempotency_key(
+        document_id=doc_id, source_refs=source_refs, domain_object_type=dot, text=text
+    )
     assert key1 == key2
 
     # Order of source_refs must not matter (sorted internally)
-    key3 = _build_idempotency_key(doc_id, ["bbb", "aaa"], dot, text)
+    key3 = build_capsule_idempotency_key(
+        document_id=doc_id, source_refs=["bbb", "aaa"], domain_object_type=dot, text=text
+    )
     assert key1 == key3
 
     # Different text → different key
-    key4 = _build_idempotency_key(doc_id, source_refs, dot, "Different text.")
+    key4 = build_capsule_idempotency_key(
+        document_id=doc_id, source_refs=source_refs, domain_object_type=dot, text="Different text."
+    )
     assert key1 != key4
 
     # Verify the sha256 component manually

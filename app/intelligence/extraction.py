@@ -12,7 +12,6 @@ ProjectedClaim (option b — keeps projection layer clean).
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 import uuid
 from typing import Any, TypedDict
@@ -42,6 +41,7 @@ from app.intelligence.llm_client import (
 )
 from app.intelligence.projection import (
     ProjectedClaim,
+    build_capsule_idempotency_key,
     enforce_budgets,
     project,
     validate_object,
@@ -79,30 +79,6 @@ def _get_embedder() -> Embedder:
     if _embedder is None:
         _embedder = Embedder()
     return _embedder
-
-
-def _build_idempotency_key(
-    document_id: uuid.UUID,
-    source_refs: list[str],
-    domain_object_type: str,
-    text: str,
-) -> str:
-    """Deterministic deduplication key for SemanticCapsule rows.
-
-    Formula: "{document_id}:{sorted_span_csv}:{domain_object_type}:{sha256(text)[:16]}"
-
-    Stable across re-extraction of the same object from the same document.
-    The sha256 prefix guards against text edits that change meaning while
-    keeping all other fields equal.
-
-    B3 (backfill) uses the same formula so re-extraction and backfill are
-    idempotent — a duplicate key triggers IntegrityError on the UNIQUE
-    constraint.  For B2, we let that error propagate; B3 handles upsert
-    semantics.
-    """
-    sorted_spans = ",".join(sorted(source_refs))
-    text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
-    return f"{document_id}:{sorted_spans}:{domain_object_type}:{text_hash}"
 
 
 def _load_spans_failure(error_msg: str) -> dict:
@@ -498,8 +474,11 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                     )
 
                 # --- SemanticCapsule ---
-                idempotency_key = _build_idempotency_key(
-                    document_id, obj.source_refs, obj.domain_object_type, obj.text
+                idempotency_key = build_capsule_idempotency_key(
+                    document_id=document_id,
+                    source_refs=obj.source_refs,
+                    domain_object_type=obj.domain_object_type,
+                    text=obj.text,
                 )
                 escalation_state = "escalated" if obj.epistemic.needs_escalation else "none"
                 embedding = embeddings[idx] if idx < len(embeddings) else None

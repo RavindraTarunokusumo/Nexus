@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import uuid
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
@@ -12,7 +14,45 @@ from app.intelligence.llm_client import ClaimType, SemanticObject
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["validate_object", "project", "enforce_budgets", "ProjectedClaim"]
+__all__ = [
+    "validate_object",
+    "project",
+    "enforce_budgets",
+    "ProjectedClaim",
+    "build_capsule_idempotency_key",
+]
+
+
+def build_capsule_idempotency_key(
+    *,
+    document_id: uuid.UUID | str,
+    source_refs: list[str],
+    domain_object_type: str,
+    text: str,
+) -> str:
+    """Deterministic UNIQUE key for SemanticCapsule rows.
+
+    Formula:
+        {document_id}:{','.join(sorted(source_refs))}:{domain_object_type}:{sha256(text)[:16]}
+
+    Rationale for the column choices (B2 review):
+    - `document_id`: scopes uniqueness to a single document.
+    - `sorted(source_refs)`: identical objects from the same evidence
+      spans collapse into one capsule regardless of ref ordering.
+    - `domain_object_type` (not `core_type`): strictly more specific
+      than `core_type`, so two different domain_object_types that
+      share a core_type stay distinct.
+    - `sha256(text)[:16]`: 64-bit content fingerprint; strictly
+      stronger than `sha1[:8]` (which plan §6 listed but never
+      hard-mandated). Same determinism, lower collision risk.
+
+    B3 (backfill) MUST import this function rather than recompute
+    the formula independently.
+    """
+    refs_csv = ",".join(sorted(source_refs))
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+    return f"{document_id}:{refs_csv}:{domain_object_type}:{digest}"
+
 
 # Facet keys that route to topics_json; everything else goes to entities_json.
 # NOTE: personal_ai_tech.yaml's current facet vocabulary does not include either
