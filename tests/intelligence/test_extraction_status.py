@@ -138,7 +138,5 @@ async def test_mixed_failure_marked_extraction_partial() -> None:
 @pytest.mark.asyncio
 async def test_state_error_marked_extraction_failed() -> None:
     """Network-error short-circuit (state['error'] set) still routes to failed."""
-    new_status = await _invoke_update_status(
-        error="LLMNetworkError: upstream 503", results=[]
-    )
+    new_status = await _invoke_update_status(error="LLMNetworkError: upstream 503", results=[])
     assert new_status == STATUS_EXTRACTION_FAILED

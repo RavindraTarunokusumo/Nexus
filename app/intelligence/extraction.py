@@ -1,10 +1,18 @@
 """LangGraph extraction graph: per-span semantic-object extraction (v0.7),
 validate-and-project against the source's domain pack, and write the
-projected claims into the legacy claims/claim_evidence tables."""
+projected claims into the legacy claims/claim_evidence tables.
+
+B2 dual-write: store_claims also writes SemanticCapsule + CapsuleSegment rows
+in the same transaction as Claim + ClaimEvidence. validate_and_project threads
+live SemanticObject instances alongside ProjectedClaims via the new
+`semantic_objects` state field so store_claims has both without extending
+ProjectedClaim (option b — keeps projection layer clean).
+"""
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import uuid
 from typing import Any, TypedDict
@@ -14,8 +22,17 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.db.models import Claim, ClaimEvidence, Document, Source, Span
+from app.db.models import (
+    CapsuleSegment,
+    Claim,
+    ClaimEvidence,
+    Document,
+    SemanticCapsule,
+    Source,
+    Span,
+)
 from app.domain_packs.loader import DomainPack, load_pack
+from app.intelligence.embedder import Embedder
 from app.intelligence.llm_client import (
     LLMError,
     LLMNetworkError,
@@ -48,10 +65,55 @@ logger = logging.getLogger(__name__)
 
 _MAX_RETRIES = 2
 
+# Module-level embedder singleton.  Lazy-init on first use so test environments
+# that never call store_claims don't pay the model-load cost.  The same
+# Embedder class is used by the FastAPI lifespan (app.state.embedder), but
+# extraction runs as a background graph with no request context to pull from,
+# so we maintain a separate process-level instance here rather than threading
+# the app through the graph.
+_embedder: Embedder | None = None
+
+
+def _get_embedder() -> Embedder:
+    global _embedder
+    if _embedder is None:
+        _embedder = Embedder()
+    return _embedder
+
+
+def _build_idempotency_key(
+    document_id: uuid.UUID,
+    source_refs: list[str],
+    domain_object_type: str,
+    text: str,
+) -> str:
+    """Deterministic deduplication key for SemanticCapsule rows.
+
+    Formula: "{document_id}:{sorted_span_csv}:{domain_object_type}:{sha256(text)[:16]}"
+
+    Stable across re-extraction of the same object from the same document.
+    The sha256 prefix guards against text edits that change meaning while
+    keeping all other fields equal.
+
+    B3 (backfill) uses the same formula so re-extraction and backfill are
+    idempotent — a duplicate key triggers IntegrityError on the UNIQUE
+    constraint.  For B2, we let that error propagate; B3 handles upsert
+    semantics.
+    """
+    sorted_spans = ",".join(sorted(source_refs))
+    text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+    return f"{document_id}:{sorted_spans}:{domain_object_type}:{text_hash}"
+
 
 def _load_spans_failure(error_msg: str) -> dict:
     """Return a uniform failure dict for the load_spans node early-exit paths."""
-    return {"error": error_msg, "run_id": None, "pack": None, "source_type": None}
+    return {
+        "error": error_msg,
+        "run_id": None,
+        "pack": None,
+        "source_type": None,
+        "source_id": None,
+    }
 
 
 # Document status lifecycle constants (extends the ingestion statuses with the
@@ -75,9 +137,13 @@ class ExtractionState(TypedDict):
     model: str
     pack: DomainPack | None  # set in load_spans
     source_type: str | None  # set in load_spans
+    source_id: uuid.UUID | None  # set in load_spans; needed by store_claims for capsule.source_id
     spans: list[dict]
     results: list[dict]  # {span_id, objects, tokens, error} — status/error per span
     projected_claims: list[ProjectedClaim]
+    # B2: live SemanticObject instances parallel to projected_claims (same index mapping).
+    # Allows store_claims to build SemanticCapsule rows without extending ProjectedClaim.
+    semantic_objects: list[SemanticObject]
     stored_claim_ids: list[uuid.UUID]
     total_tokens: int
     error: str | None
@@ -264,7 +330,12 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         await mark_document_timestamp(
             session_factory, state["document_id"], "extraction_started_at"
         )
-        return {"spans": spans, "pack": pack, "source_type": v3_source_type}
+        return {
+            "spans": spans,
+            "pack": pack,
+            "source_type": v3_source_type,
+            "source_id": doc.source_id,
+        }
 
     async def extract_spans(state: ExtractionState) -> dict:
         if state.get("error"):
@@ -344,27 +415,70 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         # Apply source-level budgets
         budgeted_objects = enforce_budgets(accepted_objects, pack, source_type)
 
-        # Project to ProjectedClaim form; span ids are inside ProjectedClaim.evidence_span_ids
+        # Project to ProjectedClaim form; span ids are inside ProjectedClaim.evidence_span_ids.
+        # B2: keep the live SemanticObject parallel to each ProjectedClaim so store_claims
+        # can build SemanticCapsule rows without re-parsing the _v0_7 stash.
         projected: list[ProjectedClaim] = []
+        semantic_objects: list[SemanticObject] = []
         for obj in budgeted_objects:
             projected.append(project(obj))
+            semantic_objects.append(obj)
 
-        return {"projected_claims": projected}
+        return {"projected_claims": projected, "semantic_objects": semantic_objects}
 
     async def store_claims(state: ExtractionState) -> dict:
+        """Write Claim + ClaimEvidence + SemanticCapsule + CapsuleSegment in one transaction.
+
+        B2 dual-write: every accepted SemanticObject lands as both a legacy Claim row
+        and a SemanticCapsule row.  All four ORM types are added in a single session
+        and committed atomically.  If the commit fails, both Claims and Capsules roll
+        back — there is no partial state.
+
+        Re-extraction safety: if a capsule with the same idempotency_key already exists
+        (e.g. ?force=true re-extraction) the INSERT raises IntegrityError and the entire
+        transaction is rolled back.  Idempotent upsert is B3's responsibility; B2 lets
+        the failure propagate.
+        """
         if state.get("error"):
             return {}
+
+        projected_claims: list[ProjectedClaim] = state.get("projected_claims", [])
+        semantic_objects: list[SemanticObject] = state.get("semantic_objects", [])
+
+        if not projected_claims:
+            return {"stored_claim_ids": []}
+
+        # Embed all capsule texts in one batch call to avoid repeated model init overhead.
+        embedder = _get_embedder()
+        texts = [obj.text for obj in semantic_objects]
+        embeddings: list[list[float]] = embedder.embed(texts) if texts else []
+
+        # Resolve pack telos snapshot once for the whole batch.
+        pack: DomainPack | None = state.get("pack")
+        source_telos: str | None = None
+        if pack is not None and pack.telos.primary_purposes:
+            source_telos = pack.telos.primary_purposes[0]
+
+        domain: str = pack.metadata.pack_id if pack is not None else ""
+        document_id: uuid.UUID = state["document_id"]
+        source_id: uuid.UUID | None = state.get("source_id")
+        model_name: str | None = state.get("model")
+
         async with session_factory() as session:
-            claims_to_add: list[Claim] = []
-            evidence_to_add: list[ClaimEvidence] = []
+            all_rows: list[Any] = []
             stored_ids: list[uuid.UUID] = []
 
-            for projected in state.get("projected_claims", []):
+            for idx, (projected, obj) in enumerate(
+                zip(projected_claims, semantic_objects, strict=False)
+            ):
                 claim_id = uuid.uuid4()
-                claims_to_add.append(
+                capsule_id = uuid.uuid4()
+
+                # --- legacy Claim + ClaimEvidence ---
+                all_rows.append(
                     Claim(
                         id=claim_id,
-                        document_id=state["document_id"],
+                        document_id=document_id,
                         claim_text=projected.claim_text,
                         claim_type=projected.claim_type,
                         entities_json=projected.entities_json,
@@ -374,7 +488,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                     )
                 )
                 for ev_span in projected.evidence_span_ids:
-                    evidence_to_add.append(
+                    all_rows.append(
                         ClaimEvidence(
                             claim_id=claim_id,
                             span_id=uuid.UUID(ev_span),
@@ -382,12 +496,53 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                             confidence=projected.confidence,
                         )
                     )
+
+                # --- SemanticCapsule ---
+                idempotency_key = _build_idempotency_key(
+                    document_id, obj.source_refs, obj.domain_object_type, obj.text
+                )
+                escalation_state = "escalated" if obj.epistemic.needs_escalation else "none"
+                embedding = embeddings[idx] if idx < len(embeddings) else None
+                all_rows.append(
+                    SemanticCapsule(
+                        id=capsule_id,
+                        source_id=source_id,
+                        document_id=document_id,
+                        claim_id=claim_id,
+                        idempotency_key=idempotency_key,
+                        core_type=obj.core_type,
+                        text=obj.text,
+                        domain=domain,
+                        source_telos=source_telos,
+                        object_family=obj.domain_family,
+                        domain_object_type=obj.domain_object_type,
+                        function=obj.function,
+                        facets=obj.facets,
+                        epistemic_state=obj.epistemic.model_dump(mode="json"),
+                        salience=obj.salience,
+                        confidence=obj.epistemic.confidence,
+                        lifecycle_state="active",
+                        escalation_state=escalation_state,
+                        embedding=embedding,
+                        created_by_tier="t2",
+                        created_by_model=model_name,
+                    )
+                )
+                # --- CapsuleSegment rows (one per evidence span) ---
+                for ev_span in projected.evidence_span_ids:
+                    all_rows.append(
+                        CapsuleSegment(
+                            capsule_id=capsule_id,
+                            segment_id=uuid.UUID(ev_span),
+                            role="grounds",
+                        )
+                    )
+
                 stored_ids.append(claim_id)
 
-            if claims_to_add:
-                session.add_all(claims_to_add)
-                session.add_all(evidence_to_add)
-                await session.commit()
+            session.add_all(all_rows)
+            await session.commit()
+
         return {"stored_claim_ids": stored_ids}
 
     async def update_status(state: ExtractionState) -> dict:
@@ -453,9 +608,11 @@ async def run_with_context(graph, document_id: uuid.UUID, model: str) -> dict:
                 "model": model,
                 "pack": None,
                 "source_type": None,
+                "source_id": None,
                 "spans": [],
                 "results": [],
                 "projected_claims": [],
+                "semantic_objects": [],
                 "stored_claim_ids": [],
                 "total_tokens": 0,
                 "error": None,
