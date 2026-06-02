@@ -1,11 +1,11 @@
 """Tests that cancelled spans in extract_spans still get an audit row.
 
-Regression for review finding F3: previously asyncio.gather without
-return_exceptions=True caused sibling tasks to be cancelled mid-flight
-when one task raised LLMNetworkError, and those cancelled tasks never
-reached their record_span_extraction call - the per-span audit trail had
-silent gaps even though the document's overall status (extraction_failed)
-was correct.
+Regression for review finding F3: when one span task raises
+LLMNetworkError, asyncio.gather cancels the siblings mid-flight. Each
+cancelled task must still record an audit row via record_span_extraction
+before re-raising, so the per-span audit trail does not silently lose
+spans. The audit write is wrapped in asyncio.shield so it completes
+even though cancellation is propagating through the task.
 
 These tests exercise _extract_one_span directly with a recording stub for
 record_span_extraction, so no DB is needed.
@@ -22,7 +22,6 @@ import pytest
 
 import app.intelligence.extraction as extraction_module
 from app.intelligence.extraction import _extract_one_span
-
 
 # ---------------------------------------------------------------------------
 # Recording stub for record_span_extraction
@@ -118,19 +117,19 @@ async def test_cancelled_span_records_audit_row() -> None:
     assert call["document_id"] == document_id
     assert call["run_id"] == run_id
     assert call["attempts"] >= 1
-    assert call["error"] == "cancelled by sibling failure"
+    assert call["error"] == "cancelled"
 
 
-@pytest.mark.asyncio
-async def test_gather_uses_return_exceptions_so_audit_survives() -> None:
-    """Integration-style check: extract_spans's gather call uses
-    return_exceptions=True. Asserts the code shape rather than re-running the
-    whole graph (which needs Postgres)."""
+def test_extract_one_span_shields_cancellation_audit() -> None:
+    """Source-shape guard: _extract_one_span must wrap the cancellation
+    audit write in asyncio.shield(...) so the row reaches the DB even when
+    CancelledError is propagating through the task. Without the shield, the
+    write itself can be interrupted by cancellation, defeating F3."""
     import inspect
 
-    src = inspect.getsource(extraction_module.make_extraction_graph)
-    assert "return_exceptions=True" in src, (
-        "extract_spans must call asyncio.gather with return_exceptions=True "
-        "so that cancelled sibling tasks still record audit rows before the "
-        "controller propagates the network error."
+    src = inspect.getsource(_extract_one_span)
+    assert "asyncio.shield(" in src, (
+        "_extract_one_span must wrap record_span_extraction in "
+        "asyncio.shield(...) inside its except asyncio.CancelledError branch "
+        "so the cancellation audit row is durable even mid-cancel."
     )

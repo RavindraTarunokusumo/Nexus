@@ -191,18 +191,20 @@ async def _extract_one_span(
                         "error": str(exc),
                     }
         except asyncio.CancelledError:
-            # A sibling task in asyncio.gather raised LLMNetworkError; this
-            # task is being cancelled mid-flight. Record an audit row so the
-            # per-span trail does not silently lose this span, then re-raise
-            # to preserve cancellation semantics.
-            await record_span_extraction(
-                session_factory,
-                run_id=run_id,
-                span_id=span_id,
-                document_id=document_id,
-                status="cancelled",
-                attempts=attempts,
-                error="cancelled by sibling failure",
+            # This task is being cancelled mid-flight — sibling failure,
+            # request abort, timeout, or shutdown. Shield the audit write so
+            # the row reaches the DB before cancellation propagates, then
+            # re-raise to preserve cancellation semantics.
+            await asyncio.shield(
+                record_span_extraction(
+                    session_factory,
+                    run_id=run_id,
+                    span_id=span_id,
+                    document_id=document_id,
+                    status="cancelled",
+                    attempts=attempts,
+                    error="cancelled",
+                )
             )
             raise
     raise AssertionError("unreachable: retry loop should have returned")
@@ -292,31 +294,14 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                     source_prefix=source_prefix,
                 )
 
-        # return_exceptions=True so that when one task raises LLMNetworkError
-        # and its siblings are cancelled, each cancelled task still gets a chance
-        # to record its audit row in _extract_one_span before propagating.
-        gathered = await asyncio.gather(
-            *[bounded(s) for s in state["spans"]], return_exceptions=True
-        )
-
-        network_error: LLMNetworkError | None = None
-        results: list[dict] = []
-        for item in gathered:
-            if isinstance(item, LLMNetworkError):
-                if network_error is None:
-                    network_error = item
-            elif isinstance(item, asyncio.CancelledError):
-                # Audit row already written inside _extract_one_span; nothing
-                # to surface in `results` for this span.
-                continue
-            elif isinstance(item, BaseException):
-                # Unexpected exception — re-raise to fail loud.
-                raise item
-            else:
-                results.append(item)
-
-        if network_error is not None:
-            return {"error": str(network_error), "results": []}
+        # Default gather semantics: when one task raises LLMNetworkError,
+        # asyncio cancels the siblings immediately. Each cancelled task hits
+        # the CancelledError branch in _extract_one_span which shields its
+        # audit write before re-raising.
+        try:
+            results: list[dict] = await asyncio.gather(*[bounded(s) for s in state["spans"]])
+        except LLMNetworkError as exc:
+            return {"error": str(exc), "results": []}
 
         total = sum(r.get("tokens", 0) for r in results)
         return {"run_id": run_id, "results": results, "total_tokens": total}
