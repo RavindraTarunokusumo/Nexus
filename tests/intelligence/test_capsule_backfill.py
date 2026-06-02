@@ -33,7 +33,7 @@ from app.db.models import (
     Source,
     Span,
 )
-from app.intelligence.backfill import BackfillResult, backfill_capsules, capsule_from_claim
+from app.intelligence.backfill import backfill_capsules, capsule_from_claim
 from app.intelligence.projection import build_capsule_idempotency_key
 
 # ---------------------------------------------------------------------------
@@ -294,9 +294,13 @@ async def test_backfill_idempotent(session_factory: async_sessionmaker):
     # Confirm no duplicate capsule rows exist.
     async with session_factory() as session:
         count = len(
-            (await session.execute(select(SemanticCapsule).where(
-                SemanticCapsule.document_id == doc_id
-            ))).scalars().all()
+            (
+                await session.execute(
+                    select(SemanticCapsule).where(SemanticCapsule.document_id == doc_id)
+                )
+            )
+            .scalars()
+            .all()
         )
     assert count == 1
 
@@ -318,9 +322,13 @@ async def test_backfill_dry_run(session_factory: async_sessionmaker):
     # But no rows actually committed.
     async with session_factory() as session:
         caps = (
-            (await session.execute(select(SemanticCapsule).where(
-                SemanticCapsule.document_id == doc_id
-            ))).scalars().all()
+            (
+                await session.execute(
+                    select(SemanticCapsule).where(SemanticCapsule.document_id == doc_id)
+                )
+            )
+            .scalars()
+            .all()
         )
     assert len(caps) == 0
 
@@ -357,9 +365,13 @@ async def test_backfill_skips_phase_a_claim_without_v07_key(
 
     async with session_factory() as session:
         caps = (
-            (await session.execute(select(SemanticCapsule).where(
-                SemanticCapsule.document_id == doc_id
-            ))).scalars().all()
+            (
+                await session.execute(
+                    select(SemanticCapsule).where(SemanticCapsule.document_id == doc_id)
+                )
+            )
+            .scalars()
+            .all()
         )
     assert len(caps) == 0
 
@@ -383,17 +395,25 @@ async def test_backfill_multi_source_ref(session_factory: async_sessionmaker):
 
     async with session_factory() as session:
         caps = (
-            (await session.execute(select(SemanticCapsule).where(
-                SemanticCapsule.document_id == doc_id
-            ))).scalars().all()
+            (
+                await session.execute(
+                    select(SemanticCapsule).where(SemanticCapsule.document_id == doc_id)
+                )
+            )
+            .scalars()
+            .all()
         )
         assert len(caps) == 1
         cap = caps[0]
 
         segs = (
-            (await session.execute(select(CapsuleSegment).where(
-                CapsuleSegment.capsule_id == cap.id
-            ))).scalars().all()
+            (
+                await session.execute(
+                    select(CapsuleSegment).where(CapsuleSegment.capsule_id == cap.id)
+                )
+            )
+            .scalars()
+            .all()
         )
         assert len(segs) == 3
         seg_span_ids = {s.segment_id for s in segs}

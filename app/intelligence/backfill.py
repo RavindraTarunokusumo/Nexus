@@ -19,7 +19,7 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.db.models import CapsuleSegment, Claim, Document, SemanticCapsule, Source
@@ -187,14 +187,12 @@ async def backfill_capsules(
             existing_stmt = select(SemanticCapsule.idempotency_key).where(
                 SemanticCapsule.idempotency_key.in_(candidate_keys)
             )
-            existing_keys: set[str] = set(
-                (await session.execute(existing_stmt)).scalars().all()
-            )
+            existing_keys: set[str] = set((await session.execute(existing_stmt)).scalars().all())
 
         # Build the batch: embed texts, construct rows.
         new_claims_info: list[tuple[Claim, uuid.UUID, str]] = []
         new_texts: list[str] = []
-        for (claim, source_id, domain_pack), key in zip(to_process, candidate_keys):
+        for (claim, source_id, domain_pack), key in zip(to_process, candidate_keys, strict=False):
             if key in existing_keys:
                 result.claims_skipped_already_backfilled += 1
                 continue
@@ -214,15 +212,13 @@ async def backfill_capsules(
         async with session_factory() as session:
             rows_to_add: list = []
             for (claim, source_id, domain_pack), embedding in zip(
-                new_claims_info, embeddings
+                new_claims_info, embeddings, strict=False
             ):
                 if domain_pack not in telos_cache:
                     try:
                         pack = load_pack(domain_pack)
                         telos_cache[domain_pack] = (
-                            pack.telos.primary_purposes[0]
-                            if pack.telos.primary_purposes
-                            else None
+                            pack.telos.primary_purposes[0] if pack.telos.primary_purposes else None
                         )
                     except Exception as exc:
                         logger.warning("Could not load pack %r: %s", domain_pack, exc)
