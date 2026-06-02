@@ -11,7 +11,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -315,3 +315,172 @@ class EvalResult(Base):
     )
 
     run: Mapped["EvalRun"] = relationship("EvalRun", back_populates="results")
+
+
+# ---------------------------------------------------------------------------
+# Phase B — Semantic capsule layer (migration 0005).
+# Schema-only in B1; B2 wires dual-write from projection.
+# ---------------------------------------------------------------------------
+
+
+class DomainPackRegistry(Base):
+    __tablename__ = "domain_packs"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    version: Mapped[str] = mapped_column(Text, nullable=False)
+    domain: Mapped[str] = mapped_column(Text, nullable=False)
+    source_types: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    parent_pack_id: Mapped[str | None] = mapped_column(
+        Text, ForeignKey("domain_packs.id", ondelete="SET NULL"), nullable=True
+    )
+    pack_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+
+class SemanticCapsule(Base):
+    __tablename__ = "semantic_capsules"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sources.id", ondelete="CASCADE"), nullable=False
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    claim_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("claims.id", ondelete="SET NULL"), nullable=True
+    )
+    idempotency_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    core_type: Mapped[str] = mapped_column(Text, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    domain: Mapped[str] = mapped_column(Text, nullable=False)
+    source_telos: Mapped[str | None] = mapped_column(Text, nullable=True)
+    object_family: Mapped[str] = mapped_column(Text, nullable=False)
+    domain_object_type: Mapped[str] = mapped_column(Text, nullable=False)
+    function: Mapped[str | None] = mapped_column(Text, nullable=True)
+    facets: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    epistemic_state: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    salience: Mapped[float] = mapped_column(Float, nullable=False, default=0.5)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.5)
+    lifecycle_state: Mapped[str] = mapped_column(Text, nullable=False, default="active")
+    escalation_state: Mapped[str] = mapped_column(Text, nullable=False, default="none")
+    # 384 dims, same vector space as Span.embedding.
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
+    created_by_tier: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by_model: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+
+class CapsuleSegment(Base):
+    __tablename__ = "capsule_segments"
+
+    capsule_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("semantic_capsules.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    segment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("spans.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    role: Mapped[str] = mapped_column(Text, nullable=False, default="grounds")
+
+
+class Thesis(Base):
+    __tablename__ = "theses"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    domain: Mapped[str] = mapped_column(Text, nullable=False)
+    thesis_type: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    statement: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="active")
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.5)
+    scope: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    invalidation_criteria: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    supporting_capsule_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=False, default=list
+    )
+    contradicting_capsule_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=False, default=list
+    )
+    epistemic_state: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    lifecycle_state: Mapped[str] = mapped_column(Text, nullable=False, default="active")
+    created_by_tier: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+
+class SemanticRelation(Base):
+    __tablename__ = "semantic_relations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_capsule_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("semantic_capsules.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    target_capsule_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("semantic_capsules.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    target_thesis_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("theses.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    relation_type: Mapped[str] = mapped_column(Text, nullable=False)
+    domain_relation_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    polarity: Mapped[str | None] = mapped_column(Text, nullable=True)
+    strength: Mapped[float] = mapped_column(Float, nullable=False, default=0.5)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.5)
+    evidence_capsule_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=False, default=list
+    )
+    rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    epistemic_state: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_by_tier: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by_model: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_utcnow
+    )
+
+
+class DecisionArtefact(Base):
+    __tablename__ = "decision_artefacts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    artefact_type: Mapped[str] = mapped_column(Text, nullable=False)
+    domain: Mapped[str | None] = mapped_column(Text, nullable=True)
+    question: Mapped[str | None] = mapped_column(Text, nullable=True)
+    answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    linked_thesis_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=False, default=list
+    )
+    linked_capsule_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=False, default=list
+    )
+    source_refs: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    epistemic_state: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_by_tier: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_utcnow
+    )
