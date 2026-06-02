@@ -1,0 +1,9 @@
+Summary: B2 dual-write — SemanticCapsule + CapsuleSegment written in same transaction as Claim + ClaimEvidence during extraction.
+
+Scope: app/intelligence/extraction.py (store_claims, validate_and_project, ExtractionState, new helpers _get_embedder/_build_idempotency_key); tests/intelligence/test_capsules_dual_write.py (new); tests/test_extraction_graph.py (initial state updated).
+
+Tests: 5 integration tests in test_capsules_dual_write.py (require Postgres/Docker — cannot run without DB); 1 unit test (idempotency_key determinism, no DB needed). test_extraction_status.py ruff-reformatted (pre-existing lint, not a logic change).
+
+Risk: LOW — nested function changes in make_extraction_graph; no public API surface changed; downstream readers (chat) still read claims table only.
+
+Docs: No doc changes in this commit (doc-updater runs at Pre-PR).
