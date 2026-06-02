@@ -257,9 +257,9 @@ class IngestURLPayload(BaseModel):
     domain_pack: str = "personal_ai_tech"
     source_name: str = "manual"
 
-    @field_validator("domain_pack", "source_name")
+    @field_validator("domain_pack")
     @classmethod
-    def _check_identifier(cls, v: str, info) -> str:
+    def _check_domain_pack(cls, v: str, info) -> str:
         return validate_identifier(v)
 
 
@@ -322,9 +322,9 @@ class IngestTextPayload(BaseModel):
     source_name: str = "manual"
     domain_pack: str = "personal_ai_tech"
 
-    @field_validator("domain_pack", "source_name")
+    @field_validator("domain_pack")
     @classmethod
-    def _check_identifier(cls, v: str, info) -> str:
+    def _check_domain_pack(cls, v: str, info) -> str:
         return validate_identifier(v)
 
 
