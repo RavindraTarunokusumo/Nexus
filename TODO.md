@@ -2,37 +2,73 @@
 
 ## Active
 
-### Phase B — Semantic Capsule Schema (follow-up to Phase A)
+### Phase B — Capsule-Schema Foundation (follow-up to Phase A)
 
-Phase A landed the telos-aware extraction + projection bridge (see [archive](docs/iterations/archive/2026-05-30-phase-a-telos-semantic-bridge.md)). Phase B promotes the in-memory `SemanticObject` layer to durable tables and retires the legacy dual-path eval contract.
+Phase A landed the telos-aware extraction + projection bridge (see [archive](docs/iterations/archive/2026-05-30-phase-a-telos-semantic-bridge.md)). Phase B promotes the in-memory `SemanticObject` layer to durable tables, backfills from the Phase A `_v0_7` stash, and retires the legacy `ExtractedClaim` / `ExtractionOutput` dual-path.
 
-- [ ] **B1** — Alembic migration 0005: `semantic_capsules`, `capsule_segments`, `semantic_relations`, `theses`, `decision_artefacts` tables per `nexus_poc_v07_telos_semantic.md` §7.1.
-- [ ] **B2** — Dual-write from `projection.project()`: write a capsule (+ `capsule_segments`) alongside the projected `Claim` row.
-- [ ] **B3** — Backfill capsules from existing rows via the `entities_json["_v0_7"]` payload stash.
-- [ ] **B4** — Port `app/evaluation/runner.py` to `SemanticExtractionOutput` + an object-level eval gold set. Retire `ExtractedClaim` / `ExtractionOutput`.
-- [ ] **B5** — Wire the A7 T2 judge prompt into the graph behind a feature flag, writing escalations to `semantic_relations` (or a new audit table).
-- [ ] **B6** — Capsule retrieval + telos-aware hybrid scoring driven by `pack.retrieval_policy.hybrid_score_weights` + query-intent classification.
-- [ ] **B7** — Lifecycle / consolidation workers: capsule states (candidate → active → confirmed/qualified/superseded/stale/archived); thesis / narrative-arc / research-model synthesis.
-- [ ] **B8** — Ingestion-side detection of v3 source-type profile (replace `pack.metadata.supported_source_types[0]` fallback in `_resolve_pack_and_source_type`).
+Plan: [`docs/superpowers/plans/2026-06-02-phase-b-capsule-schema.md`](docs/superpowers/plans/2026-06-02-phase-b-capsule-schema.md).
+Embedded ADR (Q1 naming + Q4 pack inheritance) is at §8 of the plan.
 
-### Phase A — follow-up unit-test gap
-
-- [ ] Isolated unit test for `_resolve_pack_and_source_type` (currently covered only end-to-end). Test plan flagged in `docs/test-plan-phase-a-telos-semantic.md`.
-
-### Pre-existing issues surfaced during Phase A code review
-
-These predate Phase A and were out of PR #15's scope but worth fixing in a separate session:
-
-- [ ] **Empty-document status is misleading.** `app/intelligence/extraction.py::update_status` marks a document `STATUS_EXTRACTION_FAILED` when `results` is empty, even when no error occurred (the document simply produced 0 spans). Distinguish "no spans to process" from "all spans failed". Consider a `STATUS_EXTRACTION_EMPTY` or just route the no-error empty case to `STATUS_CLAIMS_EXTRACTED`.
-- [ ] **`source_name` validator is over-strict.** `app/api/routes_ingestion.py` applies `validate_identifier` (lowercase `[a-z0-9_-]{1,64}$`) to both `domain_pack` AND `source_name`. The validator is correct for `domain_pack` (flows into a filesystem path via `load_pack`) but unnecessarily restrictive for `source_name` — it's just a DB column. Pre-existing pattern; dropping `source_name` from the validator decorator would unblock mixed-case names like `"TechCrunch"` that prompt fixtures already use.
-- [ ] **Cancelled tasks in `asyncio.gather` skip `record_span_extraction` audit rows.** `app/intelligence/extraction.py::extract_spans` uses `asyncio.gather(*..., return_exceptions=False)`, so a single `LLMNetworkError` cancels siblings. Cancelled tasks raise `CancelledError` before reaching their `record_span_extraction` call, leaving an incomplete per-span audit trail. Wrap the `complete_json` call in `try/except CancelledError` to record `status="cancelled"` before re-raising, or switch to `return_exceptions=True` and audit each result.
-- [ ] **`load_pack` `lru_cache` serves stale YAML.** `app/domain_packs/loader.py::load_pack` is cached forever; on-disk edits don't invalidate. Either cache by `(pack_id, st_mtime)` or document explicitly that pack changes require a process restart.
+- [ ] **B1** — Alembic migration 0005 + ORM models: `semantic_capsules`, `capsule_segments`, `semantic_relations`, `theses`, `decision_artefacts`, `domain_packs`. Column-level schema fixed in the plan §4. `tests/db/test_capsules_migration.py`.
+- [ ] **B2** — Dual-write from `projection.project()` + `extraction.store_claims`: write a `SemanticCapsule` row + N `CapsuleSegment` rows in the same transaction as the existing `Claim` + `ClaimEvidence` writes. Embed capsule `text` at write time via `bge-small-en-v1.5`. `tests/intelligence/test_capsules_dual_write.py`.
+- [ ] **B3** — Backfill from existing `Claim.entities_json["_v0_7"]` payloads via `nexus capsules backfill [--dry-run]`. Idempotent (UUID5 from `idempotency_key`). Re-embeds `text` at write time. `tests/intelligence/test_capsule_backfill.py`.
+- [ ] **B4** — Ingestion-side detection of v3 source-type profile: replace `pack.metadata.supported_source_types[0]` fallback in `_resolve_pack_and_source_type` with URL-domain heuristic + title regex from the pack. Closes the Phase A `_resolve_pack_and_source_type` unit-test gap. `tests/intelligence/test_resolve_pack_and_source_type.py`.
+- [ ] **B5** — Eval-runner port + legacy retirement: port `app/evaluation/runner.py` to `SemanticExtractionOutput`; create `evals/gold/semantic_objects/ai_tech_v3.yaml`; delete `ExtractedClaim`, `ExtractionOutput`, `app/intelligence/prompts/extract_claims.py`, and the `schema_name="required"` correction path in `_shared.py`. Update `tests/test_llm_client.py` mocks. First object-level eval run must produce `mvp_claim_type_projection_accuracy` + at least one capsule-only metric.
 
 ### Phase 2 validation harness
 
 - [ ] Create and run a destructive CLI validation script that resets local data and exercises text, RSS, status, document inspection, and semantic search paths.
 
 ## Future
+
+### Phase C — Reasoning Layer
+
+- [ ] T2 judge wiring — connect the Phase A `judge_semantic_object.py` prompt to the extraction graph with `semantic_relations` as the destination; gated by `budgets.max_t2_calls_per_source`.
+- [ ] Relation classification (T2) — supports/contradicts/refines/qualifies/supersedes + per-domain relation_grammar entries.
+- [ ] Thesis layer — first `theses` writer; per-pack synthesis triggers.
+- [ ] Decision artefacts — first `decision_artefacts` writer.
+
+### Phase D — Retrieval & UI Over Meaning
+
+- [ ] Capsule retrieval (pgvector HNSW on `semantic_capsules.embedding`).
+- [ ] Query-intent classification (drives `retrieval_policy.query_intents`).
+- [ ] Telos-aware hybrid scoring from `pack.retrieval_policy.hybrid_score_weights`.
+- [ ] Context assembly per `pack.context_assembly`.
+- [ ] Chat-over-capsules — `/chat/answer` cuts over from `claims` to `semantic_capsules`.
+- [ ] Web UI updates — capsule cards, evidence-path expansion, lifecycle indicators.
+- [ ] Drop `claims` + `claim_evidence` tables (only after `/chat/answer` cutover is green for 1 week).
+
+### Phase E — Living Knowledge
+
+- [ ] Lifecycle worker — capsule state transitions (candidate → active → confirmed/qualified/superseded/stale/archived/rejected) driven by `pack.retention_policy` + `epistemic_policy`.
+- [ ] Consolidation worker — many capsules → thesis / narrative arc / research model / company risk model.
+- [ ] Stale / superseded detection — `pack.retention_policy.stale_conditions` + `supersession_rules`.
+
+### Phase F — Integrity & Multi-Domain
+
+- [ ] T4 audit pass — integrity checks; contradiction-as-mystery-thread for narrative packs.
+- [ ] Four standing reports (per v0.7) — coverage, contradiction, freshness, cost.
+- [ ] `sec_filing_v1` pack.
+- [ ] `scientific_paper_v1` pack.
+- [ ] `literary_narrative_v1` pack.
+- [ ] Pack inheritance resolution — implement `inherits_from` in the YAML loader; first consumer of the `domain_packs.parent_pack_id` column added in B1.
+- [ ] Cross-domain capsule linking — capsules from different domains referenced by the same thesis.
+- [ ] Optional `spans` → `segments` table rename (Phase B deferred this).
+
+### Phase G — Cost & Multimodal
+
+- [ ] T1 local stack — GLiNER2 + bge-small + DeBERTa-v3-xsmall + Qwen2.5-0.5B per v0.7 §11.2.
+- [ ] T1 candidate-capsule prompt + route-to-T2 gating.
+- [ ] Cost dashboard — per-tier / per-pack spend, ratio of T1-only vs T2-escalated.
+- [ ] Multimodal at T1 — image / table / chart segments.
+- [ ] Numeric chart extraction guard — Phase A guarded against this implicitly; codify as a T0 rule.
+
+### Phase H — Eval & Observability Hardening
+
+- [ ] Per-pack evaluation gold sets — extend `evals/gold/semantic_objects/` with one fixture per pack (matches `ai_tech_v3.yaml` shape).
+- [ ] 20-source test sets per domain pack.
+- [ ] Calibration sets for the T2 judge.
+- [ ] Object-level eval dashboard (HTML or web UI over `eval_runs` + `eval_results`).
 
 ### Phase 4 — Brief Synthesis + Query Answering
 
