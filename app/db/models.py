@@ -69,6 +69,9 @@ class Document(Base):
     source: Mapped["Source"] = relationship("Source", back_populates="documents")
     spans: Mapped[list["Span"]] = relationship("Span", back_populates="document")
     claims: Mapped[list["Claim"]] = relationship("Claim", back_populates="document")
+    capsules: Mapped[list["SemanticCapsule"]] = relationship(
+        "SemanticCapsule", back_populates="document"
+    )
 
 
 class Span(Base):
@@ -88,6 +91,9 @@ class Span(Base):
     document: Mapped["Document"] = relationship("Document", back_populates="spans")
     evidence_links: Mapped[list["ClaimEvidence"]] = relationship(
         "ClaimEvidence", back_populates="span"
+    )
+    capsule_segments: Mapped[list["CapsuleSegment"]] = relationship(
+        "CapsuleSegment", back_populates="span"
     )
 
 
@@ -382,6 +388,8 @@ class SemanticCapsule(Base):
         TIMESTAMP(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
     )
 
+    document: Mapped["Document"] = relationship("Document", back_populates="capsules")
+
 
 class CapsuleSegment(Base):
     __tablename__ = "capsule_segments"
@@ -397,6 +405,8 @@ class CapsuleSegment(Base):
         primary_key=True,
     )
     role: Mapped[str] = mapped_column(Text, nullable=False, default="grounds")
+
+    span: Mapped["Span"] = relationship("Span", back_populates="capsule_segments")
 
 
 class Thesis(Base):
