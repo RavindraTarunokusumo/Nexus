@@ -16,7 +16,7 @@ See [docs/commands.md](commands.md) for full flag reference and examples for eve
 | `search` | _(root)_ | HTTP → FastAPI |
 | `chat` | _(root)_ | HTTP → FastAPI |
 | `ingest` | `url`, `text`, `rss` | HTTP → FastAPI |
-| `extract` | _(root)_ | HTTP → FastAPI |
+| `extract` | _(root)_ | HTTP → FastAPI — internally uses the telos-aware semantic-object extraction path (Phase A) |
 
 ## `runs` Subcommand Group
 

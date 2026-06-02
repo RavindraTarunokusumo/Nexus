@@ -106,3 +106,46 @@ When working from a dedicated git worktree, `apply_patch` can still apply relati
 ### GitNexus query can require explicit repo paths in multi-worktree setups
 
 After indexing both the root checkout and a session worktree, `npx gitnexus query` can fail with "Multiple repositories indexed." Pass `--repo "<absolute worktree path>"` for `query`, `context`, `impact`, and `detect-changes` commands to avoid ambiguous repo selection.
+
+## Session: phase-a-telos-semantic-bridge (2026-05-30)
+
+### `pass_filenames: false` pre-commit hooks fail every commit on a dirty branch
+
+`mypy` and `pytest-fast` in `.pre-commit-config.yaml` use `pass_filenames: false`, so they always run against the whole `app/` tree regardless of what's staged. When a branch has pre-existing unstaged dirt (`session_memory.py` referencing functions absent from `main`) or a missing env dep (`langgraph.checkpoint.postgres`), every commit fails the hook even when the staged change is trivial and unrelated. Workflow Rule 6 says "note as pre-existing and proceed" — operationally that requires `SKIP=mypy,pytest-fast git commit ...`. The fix is to add `additional_dependencies: [langgraph-checkpoint-postgres>=2.0.0]` to the `pytest-fast` hook entry and `additional_dependencies: [types-PyYAML]` to the `mypy` hook (already TODO'd) so they have what they need in their isolated envs.
+
+### Inherited unstaged dirt across sessions can mask a real fix
+
+Started this session with `git status` clean. Within minutes `app/intelligence/session_memory.py` showed up as modified — a substantial in-flight diff (66 lines defining `make_memory_graph` / `invoke_with_memory`) inherited from another worktree sharing the venv. It silently broke mypy on every commit because `main.py` and `routes_chat_sessions.py` import those symbols. When the `/simplify` implementer accidentally swept the dirty file into a cleanup commit (Workflow Rule 3 violation — non-specific staging in the subagent), the long-standing mypy failure cleared. **Lesson:** when an inherited dirty file references symbols mypy says are missing in `main`, the unstaged diff probably IS the fix that needs to land — investigate it as a candidate commit rather than treating it as noise to be stashed away.
+
+### GitNexus `mcp__gitnexus__impact` requires `repo` parameter when multiple paths indexed
+
+The MCP tool version of `gitnexus_impact` errors out with "Multiple repositories indexed. Specify which one with the 'repo' parameter" when both the root checkout and a session worktree are indexed. Pass the absolute worktree path as `repo` — same fix as the CLI version, but the MCP tool is less obvious about which parameter to use.
+
+### GitNexus reports module-level imports as upstream impact — verify before trusting the risk score
+
+`gitnexus_impact` on `ExtractionOutput` returned MEDIUM risk with 11 file-level importers. Real usage (verified via `Grep`) was 2 files: `extraction.py` (being rewritten) and `evaluation/runner.py` (the SUT for eval). The other 9 imports were file-level coarsening — Python's `from llm_client import …` lights up the IMPORTS edge to the whole file in GitNexus's index, regardless of which symbol the importer actually uses. **Lesson:** when GitNexus reports >5 importers on a symbol, sanity-check with `Grep` for actual symbol use before deciding the change is high-risk.
+
+### Subagent `DONE_WITH_CONCERNS` framing can be misleading
+
+A `/simplify` implementer reported "All seven fixes were already applied to the working tree before this session" — confusing wording for what was actually "I just applied them." Verify subagent state claims with `git log` and `git show --stat <commit>` rather than trusting the prose. The skill template warns against this ("Trust but verify: an agent's summary describes what it intended to do, not necessarily what it did").
+
+### `ScheduleWakeup` clamps to 3600s — chained cycles needed for multi-hour sleeps
+
+User asked for a 4-hour sleep between A1 and A2. `ScheduleWakeup`'s `delaySeconds` clamps to [60, 3600] per call. To honor multi-hour pauses, the wakeup prompt must instruct the next-cycle controller to re-schedule. In practice the user overrode this and continued early — but the pattern is: schedule one cycle, on wake check elapsed time, re-schedule until target reached.
+
+### Test-plan-writer surfaces real bugs that per-task review missed
+
+The `test-plan-writer` skill ran as the 4th Pre-PR gate flagged an `IndexError` on `pack.metadata.supported_source_types[0]` when the list is empty. None of the per-task spec/quality reviewers caught it, even though they explicitly reviewed `_resolve_pack_and_source_type`. **Lesson:** the formal post-implementation test plan is not just paperwork — it forces a re-examination of acceptance criteria against actual code paths and finds edge cases that drift-by-drift reviews miss. Worth running on every multi-commit feature, not just security/architectural changes.
+
+### Path-traversal hardening checklist for any string that becomes a file path
+
+When a string from an external source becomes part of a `pathlib.Path` operation:
+1. Validate at the API boundary (regex allowlist — e.g. `^[a-z0-9_\-]{1,64}$`).
+2. Inside the loader, resolve both the base directory and the candidate path, and assert `candidate.is_relative_to(base)` AND `candidate.is_file()`.
+3. Sanitize error messages — never include the resolved absolute path; only the caller-supplied key.
+
+Without step 2, Python's `pathlib` does NOT collapse `..` segments — `Path("/safe/dir") / "../../etc/passwd"` resolves to `/etc/passwd`. Without step 3, the `FileNotFoundError` becomes a filesystem-layout disclosure vector via server logs.
+
+### `gh pr create --body` heredoc works on Windows bash for long PR bodies
+
+Multi-paragraph PR bodies with markdown, checkboxes, and code blocks can be passed inline via `"$(cat <<'EOF' ... EOF)"`. Tested with a ~3500-character body. The persisted-output / file-reference path is only needed when the diff itself is being passed (e.g., to a security-review skill that wants the full diff inline) — for `gh pr create` content authored by the controller, heredoc is fine.

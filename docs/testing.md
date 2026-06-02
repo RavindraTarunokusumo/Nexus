@@ -57,6 +57,17 @@ Network calls (RSS fetches, URL fetches) are patched with `unittest.mock.AsyncMo
 - `tests/test_cli_e2e.py` covers CLI command wiring with monkeypatched HTTP/database boundaries.
 - `tests/test_llm_client.py` covers OpenRouter response validation, token accounting, and `run_type` recording for both extraction and chat answers.
 
+### Phase A — semantic-object and projection unit tests
+
+All Phase A tests are no-DB and no-LLM; they exercise the new extraction layer in isolation.
+
+- `tests/domain_packs/test_loader.py` — v3 domain-pack loader: Pydantic validation, required fields, back-compat key presence.
+- `tests/intelligence/test_semantic_object_schema.py` — `CoreType`, `SemanticObject`, `SemanticExtractionOutput` schema validation.
+- `tests/intelligence/test_extract_semantic_objects_prompt.py` — `build_user_prompt` and `build_correction_prompt` output structure and pack injection.
+- `tests/intelligence/test_projection.py` — `validate_object`, `project`, `enforce_budgets` unit coverage.
+- `tests/intelligence/test_a6_projection_regression.py` — regression smoke: 5 representative `SemanticObject` payloads (`model_release`, `benchmark_result`, `funding_event`, `security_issue`, `forecast`) through the full validate→budgets→project chain using the real `personal_ai_tech` pack; asserts correct `claim_type` projection, presence of `_v0_7` / `_function` / `_domain_family`, and budget enforcement.
+- `tests/intelligence/test_judge_semantic_object_prompt.py` — `build_judge_prompt` and `JudgeVerdict` schema for the T2 judge scaffold.
+
 ## Critical Invariants Tested
 
 - Duplicate documents (by URL or content hash) are skipped, not double-inserted.

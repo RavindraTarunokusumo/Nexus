@@ -100,3 +100,38 @@ async def test_get_source_by_id(client: AsyncClient):
 async def test_get_source_not_found(client: AsyncClient):
     response = await client.get("/sources/00000000-0000-0000-0000-000000000000")
     assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Security: domain_pack path-traversal rejection
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad_pack",
+    [
+        "../../../etc/passwd",
+        "..\\..\\windows\\system32",
+        "a/../b",
+        "/etc/passwd",
+        "valid_but_" + "x" * 60,  # exceeds 64-char limit
+    ],
+)
+async def test_create_source_rejects_traversal_domain_pack(
+    client: AsyncClient, bad_pack: str
+) -> None:
+    """POST /sources must reject domain_pack values that fail the identifier regex."""
+    response = await client.post(
+        "/sources",
+        json={
+            "name": "Canary Source",
+            "source_type": "manual",
+            "domain_pack": bad_pack,
+        },
+    )
+    assert response.status_code == 422
+    body = response.json()
+    # Pydantic v2 surfaces the offending field in the error detail.
+    detail_str = str(body.get("detail", ""))
+    assert "domain_pack" in detail_str

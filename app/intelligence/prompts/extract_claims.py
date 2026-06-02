@@ -1,5 +1,9 @@
 """System and user prompt builders for claim extraction."""
 
+from __future__ import annotations
+
+from app.intelligence.prompts import _shared
+
 ## Comment: Consider including examples (1-2 shot prompting) in the SYSTEM_PROMPT to guide the model towards the desired output format and content, especially if the claims can be complex or nuanced.
 SYSTEM_PROMPT = """\
 You are a precise claim extractor for an intelligence research system.
@@ -30,11 +34,6 @@ def build_user_prompt(span_text: str, metadata: dict) -> str:
 
 def build_correction_prompt(original_user: str, invalid_response: str, error: str) -> str:
     """Append correction instructions when the model returns invalid output."""
-    return (
-        f"{original_user}\n\n"
-        f"---\n"
-        f"Your previous response was invalid.\n"
-        f"Error: {error}\n\n"
-        f"Previous response:\n{invalid_response}\n\n"
-        f"Please correct your response and return valid JSON matching the required schema exactly."
+    return _shared.build_correction_prompt(
+        original_user, invalid_response, error, schema_name="required"
     )

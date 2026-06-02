@@ -2,9 +2,10 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 
+from app.api._validation import validate_identifier
 from app.api.deps import DbSession
 from app.db.models import Source
 
@@ -20,6 +21,11 @@ class SourceCreate(BaseModel):
     domain_pack: str = "personal_ai_tech"
     enabled: bool = True
     credibility_score: float = Field(default=0.8, ge=0.0, le=1.0)
+
+    @field_validator("domain_pack")
+    @classmethod
+    def _validate_domain_pack(cls, v: str) -> str:
+        return validate_identifier(v)
 
 
 class SourceResponse(BaseModel):

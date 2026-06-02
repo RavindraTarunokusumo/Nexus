@@ -83,35 +83,39 @@ Deferred retrieval features:
 
 ## Claim Extraction
 
-> **Phase 3 Status: Implemented** — `app/intelligence/extraction.py` (LangGraph `StateGraph`), `app/intelligence/llm_client.py` (OpenRouter T2), `app/api/routes_claims.py`.
+> **Phase A Status: Telos-aware semantic-object extraction implemented** — `app/intelligence/extraction.py` (LangGraph `StateGraph`), `app/intelligence/prompts/extract_semantic_objects.py` (telos-aware prompt), `app/intelligence/projection.py` (validate → enforce_budgets → project), `app/intelligence/llm_client.py` (OpenRouter T2), `app/api/routes_claims.py`.
 
-Claim extraction converts spans into atomic evidence-grounded propositions.
+Claim extraction converts spans into atomic evidence-grounded propositions. As of Phase A, the production path produces `SemanticObject` instances that are projected to legacy `Claim` + `ClaimEvidence` rows via the domain pack's `mvp_claim_type` mapping.
 
-Structured output:
+Production structured output (`SemanticExtractionOutput`):
 
 ```json
 {
-  "claims": [
+  "objects": [
     {
+      "core_type": "string",
       "claim_text": "string",
-      "claim_type": "string",
-      "entities": ["string"],
-      "topics": ["string"],
-      "evidence_span_ids": ["string"],
-      "confidence": 0.0,
-      "rationale": "string"
+      "salience": 0.0,
+      "facets": {},
+      "epistemic_state": "string",
+      "evidence_span_ids": ["string"]
     }
   ]
 }
 ```
 
+The full `SemanticObject` is preserved under `entities_json["_v0_7"]` in the `claims` table for forward-compat.
+
 Extraction rules:
 
 - extract only claims directly supported by the text
 - map each claim to one or more evidence spans
-- prefer fewer high-quality claims
+- prefer fewer high-quality claims over many low-salience ones (floor: `SALIENCE_THRESHOLD = 0.3`)
 - do not use outside knowledge
 - do not summarize entire documents as claims
+- respect per-source-type budgets defined in the domain pack
+
+The legacy `ExtractionOutput` schema and `extract_claims.py` prompt remain in the codebase for `app/evaluation/runner.py` compatibility until Phase B.
 
 ## Retrieval
 

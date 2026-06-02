@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 class _MemoryState(TypedDict):
     messages: Annotated[list, add_messages]
     answer_result: dict[str, Any] | None
+    model: str
+    top_k: int
 
 
 def _to_psycopg_url(db_url: str) -> str:
@@ -43,6 +45,70 @@ def _derive_title(text: str, max_len: int = 60) -> str:
     if len(cleaned) <= max_len:
         return cleaned
     return cleaned[:max_len] + "..."
+
+
+def make_memory_graph(chat_graph: Any, checkpointer: Any) -> Any:
+    """Compile a memory-backed LangGraph wrapping *chat_graph*.
+
+    The compiled graph persists conversation state via *checkpointer*.
+    Pass the result to :func:`invoke_with_memory` to run a turn.
+    """
+
+    async def _answer_node(state: _MemoryState) -> dict:
+        human_msgs = [m for m in state["messages"] if isinstance(m, HumanMessage)]
+        q = str(human_msgs[-1].content)
+        from app.intelligence.chat import run_chat_with_context
+
+        model = state.get("model", "")
+        top_k = state.get("top_k", 5)
+        result = await run_chat_with_context(chat_graph, q, model, top_k=top_k)
+        if result.get("error"):
+            raise RuntimeError(f"Chat graph error: {result['error']}")
+        ai_msg = AIMessage(content=result.get("answer", ""))
+        return {"messages": [ai_msg], "answer_result": result}
+
+    builder: StateGraph = StateGraph(_MemoryState)
+    builder.add_node("answer", _answer_node)
+    builder.set_entry_point("answer")
+    builder.add_edge("answer", END)
+    return builder.compile(checkpointer=checkpointer)
+
+
+async def invoke_with_memory(
+    *,
+    memory_graph: Any,
+    thread_id: uuid.UUID,
+    user_message: str,
+    model: str,
+    top_k: int,
+) -> dict[str, Any]:
+    """Invoke one turn of a memory-backed graph compiled by :func:`make_memory_graph`.
+
+    Returns the structured answer result dict from the grounded chat graph.
+    Raises :class:`RuntimeError` on graph or checkpointer failure.
+    """
+    logger.info("session_turn.start session_id=%s", thread_id)
+    try:
+        final = await memory_graph.ainvoke(
+            {
+                "messages": [HumanMessage(content=user_message)],
+                "answer_result": None,
+                "model": model,
+                "top_k": top_k,
+            },
+            config={"configurable": {"thread_id": str(thread_id)}},
+        )
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        logger.error("session_turn.checkpointer_error session_id=%s error=%s", thread_id, exc)
+        raise RuntimeError("Session memory unavailable.") from exc
+
+    result = final.get("answer_result") or {}
+    logger.info(
+        "session_turn.done session_id=%s tokens=%s", thread_id, result.get("tokens_used", 0)
+    )
+    return result
 
 
 async def run_session_turn(

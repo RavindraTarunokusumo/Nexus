@@ -2,6 +2,32 @@
 
 ## Active
 
+### Phase B — Semantic Capsule Schema (follow-up to Phase A)
+
+Phase A landed the telos-aware extraction + projection bridge (see [archive](docs/iterations/archive/2026-05-30-phase-a-telos-semantic-bridge.md)). Phase B promotes the in-memory `SemanticObject` layer to durable tables and retires the legacy dual-path eval contract.
+
+- [ ] **B1** — Alembic migration 0005: `semantic_capsules`, `capsule_segments`, `semantic_relations`, `theses`, `decision_artefacts` tables per `nexus_poc_v07_telos_semantic.md` §7.1.
+- [ ] **B2** — Dual-write from `projection.project()`: write a capsule (+ `capsule_segments`) alongside the projected `Claim` row.
+- [ ] **B3** — Backfill capsules from existing rows via the `entities_json["_v0_7"]` payload stash.
+- [ ] **B4** — Port `app/evaluation/runner.py` to `SemanticExtractionOutput` + an object-level eval gold set. Retire `ExtractedClaim` / `ExtractionOutput`.
+- [ ] **B5** — Wire the A7 T2 judge prompt into the graph behind a feature flag, writing escalations to `semantic_relations` (or a new audit table).
+- [ ] **B6** — Capsule retrieval + telos-aware hybrid scoring driven by `pack.retrieval_policy.hybrid_score_weights` + query-intent classification.
+- [ ] **B7** — Lifecycle / consolidation workers: capsule states (candidate → active → confirmed/qualified/superseded/stale/archived); thesis / narrative-arc / research-model synthesis.
+- [ ] **B8** — Ingestion-side detection of v3 source-type profile (replace `pack.metadata.supported_source_types[0]` fallback in `_resolve_pack_and_source_type`).
+
+### Phase A — follow-up unit-test gap
+
+- [ ] Isolated unit test for `_resolve_pack_and_source_type` (currently covered only end-to-end). Test plan flagged in `docs/test-plan-phase-a-telos-semantic.md`.
+
+### Pre-existing issues surfaced during Phase A code review
+
+These predate Phase A and were out of PR #15's scope but worth fixing in a separate session:
+
+- [ ] **Empty-document status is misleading.** `app/intelligence/extraction.py::update_status` marks a document `STATUS_EXTRACTION_FAILED` when `results` is empty, even when no error occurred (the document simply produced 0 spans). Distinguish "no spans to process" from "all spans failed". Consider a `STATUS_EXTRACTION_EMPTY` or just route the no-error empty case to `STATUS_CLAIMS_EXTRACTED`.
+- [ ] **`source_name` validator is over-strict.** `app/api/routes_ingestion.py` applies `validate_identifier` (lowercase `[a-z0-9_-]{1,64}$`) to both `domain_pack` AND `source_name`. The validator is correct for `domain_pack` (flows into a filesystem path via `load_pack`) but unnecessarily restrictive for `source_name` — it's just a DB column. Pre-existing pattern; dropping `source_name` from the validator decorator would unblock mixed-case names like `"TechCrunch"` that prompt fixtures already use.
+- [ ] **Cancelled tasks in `asyncio.gather` skip `record_span_extraction` audit rows.** `app/intelligence/extraction.py::extract_spans` uses `asyncio.gather(*..., return_exceptions=False)`, so a single `LLMNetworkError` cancels siblings. Cancelled tasks raise `CancelledError` before reaching their `record_span_extraction` call, leaving an incomplete per-span audit trail. Wrap the `complete_json` call in `try/except CancelledError` to record `status="cancelled"` before re-raising, or switch to `return_exceptions=True` and audit each result.
+- [ ] **`load_pack` `lru_cache` serves stale YAML.** `app/domain_packs/loader.py::load_pack` is cached forever; on-disk edits don't invalidate. Either cache by `(pack_id, st_mtime)` or document explicitly that pack changes require a process restart.
+
 ### Phase 2 validation harness
 
 - [ ] Create and run a destructive CLI validation script that resets local data and exercises text, RSS, status, document inspection, and semantic search paths.

@@ -1,4 +1,3 @@
-import re
 import uuid
 from datetime import datetime
 from typing import Any
@@ -9,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.api._validation import validate_identifier
 from app.api.deps import DbSession
 from app.db.models import Document, Source, Span
 from app.ingestion.cleaner import content_hash, normalize_url
@@ -16,17 +16,7 @@ from app.ingestion.rss import fetch_rss_entries
 from app.ingestion.url_fetcher import fetch_and_clean
 from app.observability.tracer import mark_document_timestamp
 
-# Allowlist for user-supplied identifier fields stored to the database.
-_IDENTIFIER_RE = re.compile(r"^[a-z0-9_\-]{1,64}$")
 _MAX_TEXT_BYTES = 512 * 1024  # 512 KB
-
-
-def _validate_identifier(value: str, field_name: str) -> str:
-    if not _IDENTIFIER_RE.match(value):
-        raise ValueError(
-            f"'{field_name}' must be 1–64 lowercase alphanumeric characters, hyphens, or underscores."
-        )
-    return value
 
 
 router = APIRouter(tags=["ingestion"])
@@ -270,7 +260,7 @@ class IngestURLPayload(BaseModel):
     @field_validator("domain_pack", "source_name")
     @classmethod
     def _check_identifier(cls, v: str, info) -> str:
-        return _validate_identifier(v, info.field_name)
+        return validate_identifier(v)
 
 
 @router.post("/ingest/url", response_model=IngestResult)
@@ -335,7 +325,7 @@ class IngestTextPayload(BaseModel):
     @field_validator("domain_pack", "source_name")
     @classmethod
     def _check_identifier(cls, v: str, info) -> str:
-        return _validate_identifier(v, info.field_name)
+        return validate_identifier(v)
 
 
 @router.post("/ingest/text", response_model=IngestResult)
