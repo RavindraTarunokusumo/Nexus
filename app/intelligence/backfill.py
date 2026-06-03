@@ -47,7 +47,7 @@ def capsule_from_claim(
     domain: str,
     source_telos: str | None,
     embedding: list[float],
-    evidence_roles: dict[uuid.UUID, str] | None = None,
+    evidence_roles: dict[uuid.UUID, str],
 ) -> tuple[SemanticCapsule, list[CapsuleSegment]]:
     """Pure function: build SemanticCapsule + CapsuleSegment rows from a Claim row.
 
@@ -57,6 +57,7 @@ def capsule_from_claim(
     ``evidence_roles`` maps span_id → evidence_role from the existing ClaimEvidence
     rows for this claim; used to set CapsuleSegment.role. Falls back to "support"
     (what Phase A always writes) when a span_id has no matching ClaimEvidence row.
+    Pass ``{}`` when no evidence-role data is available.
 
     Field mapping mirrors store_claims in extraction.py line-for-line so both
     paths produce identical rows for identical inputs.
@@ -113,11 +114,10 @@ def capsule_from_claim(
         updated_at=claim.created_at,
     )
 
-    _roles: dict[uuid.UUID, str] = evidence_roles or {}
     segments = []
     for ref in source_refs:
         span_uuid = uuid.UUID(ref) if isinstance(ref, str) else ref
-        role = _roles.get(span_uuid, "support")
+        role = evidence_roles.get(span_uuid, "support")
         segments.append(
             CapsuleSegment(
                 capsule_id=capsule_id,
@@ -127,6 +127,105 @@ def capsule_from_claim(
         )
 
     return capsule, segments
+
+
+def _build_candidate_keys(
+    to_process: list[tuple[Claim, uuid.UUID, str]],
+) -> list[str]:
+    """Compute idempotency keys for every claim in the batch."""
+    keys: list[str] = []
+    for claim, _source_id, _domain_pack in to_process:
+        ej_checked: dict = claim.entities_json  # type: ignore[assignment]  # guarded above
+        v07 = ej_checked["_v0_7"]
+        keys.append(
+            build_capsule_idempotency_key(
+                document_id=claim.document_id,
+                source_refs=v07.get("source_refs", []),
+                domain_object_type=v07.get("domain_object_type", ""),
+                text=v07.get("text", ""),
+            )
+        )
+    return keys
+
+
+def _filter_new(
+    to_process: list[tuple[Claim, uuid.UUID, str]],
+    candidate_keys: list[str],
+    existing_keys: set[str],
+    result: BackfillResult,
+) -> tuple[list[tuple[Claim, uuid.UUID, str]], list[str]]:
+    """Drop claims whose idempotency key already exists; return lists of new items and texts."""
+    new_claims_info: list[tuple[Claim, uuid.UUID, str]] = []
+    new_texts: list[str] = []
+    for (claim, source_id, domain_pack), key in zip(to_process, candidate_keys, strict=False):
+        if key in existing_keys:
+            result.claims_skipped_already_backfilled += 1
+            continue
+        new_claims_info.append((claim, source_id, domain_pack))
+        ej_inner: dict = claim.entities_json  # type: ignore[assignment]  # guarded
+        new_texts.append(ej_inner["_v0_7"].get("text", ""))
+    return new_claims_info, new_texts
+
+
+async def _write_batch(
+    session_factory: async_sessionmaker,
+    new_claims_info: list[tuple[Claim, uuid.UUID, str]],
+    embeddings: list[list[float]],
+    result: BackfillResult,
+    dry_run: bool,
+) -> None:
+    """Embed text in one batch, call capsule_from_claim, session.add_all, then
+    commit or rollback per dry_run flag."""
+    telos_cache: dict[str, str | None] = {}
+
+    async with session_factory() as session:
+        rows_to_add: list = []
+        for (claim, source_id, domain_pack), embedding in zip(
+            new_claims_info, embeddings, strict=False
+        ):
+            if domain_pack not in telos_cache:
+                try:
+                    pack = load_pack(domain_pack)
+                    telos_cache[domain_pack] = (
+                        pack.telos.primary_purposes[0] if pack.telos.primary_purposes else None
+                    )
+                except Exception as exc:
+                    logger.warning("Could not load pack %r: %s", domain_pack, exc)
+                    telos_cache[domain_pack] = None
+
+            source_telos = telos_cache[domain_pack]
+
+            evidence_roles: dict[uuid.UUID, str] = {
+                ev.span_id: ev.evidence_role
+                for ev in (claim.evidence_links or [])
+                if ev.evidence_role is not None
+            }
+            try:
+                capsule, segments = capsule_from_claim(
+                    claim,
+                    source_id=source_id,
+                    domain=domain_pack,
+                    source_telos=source_telos,
+                    embedding=embedding,
+                    evidence_roles=evidence_roles,
+                )
+            except Exception as exc:
+                msg = f"claim {claim.id}: {exc}"
+                logger.warning("Backfill error for %s", msg)
+                result.errors.append(msg)
+                continue
+
+            rows_to_add.append(capsule)
+            rows_to_add.extend(segments)
+            result.capsules_written += 1
+            result.capsule_segments_written += len(segments)
+
+        if rows_to_add:
+            session.add_all(rows_to_add)
+            if dry_run:
+                await session.rollback()
+            else:
+                await session.commit()
 
 
 async def backfill_capsules(
@@ -184,17 +283,7 @@ async def backfill_capsules(
             continue
 
         # Batch-check which idempotency keys already exist.
-        candidate_keys: list[str] = []
-        for claim, source_id, domain_pack in to_process:
-            ej_checked: dict = claim.entities_json  # type: ignore[assignment]  # guarded above
-            v07 = ej_checked["_v0_7"]
-            key = build_capsule_idempotency_key(
-                document_id=claim.document_id,
-                source_refs=v07.get("source_refs", []),
-                domain_object_type=v07.get("domain_object_type", ""),
-                text=v07.get("text", ""),
-            )
-            candidate_keys.append(key)
+        candidate_keys = _build_candidate_keys(to_process)
 
         async with session_factory() as session:
             existing_stmt = select(SemanticCapsule.idempotency_key).where(
@@ -202,16 +291,7 @@ async def backfill_capsules(
             )
             existing_keys: set[str] = set((await session.execute(existing_stmt)).scalars().all())
 
-        # Build the batch: embed texts, construct rows.
-        new_claims_info: list[tuple[Claim, uuid.UUID, str]] = []
-        new_texts: list[str] = []
-        for (claim, source_id, domain_pack), key in zip(to_process, candidate_keys, strict=False):
-            if key in existing_keys:
-                result.claims_skipped_already_backfilled += 1
-                continue
-            new_claims_info.append((claim, source_id, domain_pack))
-            ej_inner: dict = claim.entities_json  # type: ignore[assignment]  # guarded
-            new_texts.append(ej_inner["_v0_7"].get("text", ""))
+        new_claims_info, new_texts = _filter_new(to_process, candidate_keys, existing_keys, result)
 
         if not new_claims_info:
             continue
@@ -219,57 +299,7 @@ async def backfill_capsules(
         # Embed all texts in one batch call.
         embeddings: list[list[float]] = embedder.embed(new_texts)
 
-        # Resolve source_telos per domain_pack (cached by load_pack's lru_cache).
-        telos_cache: dict[str, str | None] = {}
-
-        async with session_factory() as session:
-            rows_to_add: list = []
-            for (claim, source_id, domain_pack), embedding in zip(
-                new_claims_info, embeddings, strict=False
-            ):
-                if domain_pack not in telos_cache:
-                    try:
-                        pack = load_pack(domain_pack)
-                        telos_cache[domain_pack] = (
-                            pack.telos.primary_purposes[0] if pack.telos.primary_purposes else None
-                        )
-                    except Exception as exc:
-                        logger.warning("Could not load pack %r: %s", domain_pack, exc)
-                        telos_cache[domain_pack] = None
-
-                source_telos = telos_cache[domain_pack]
-
-                evidence_roles: dict[uuid.UUID, str] = {
-                    ev.span_id: ev.evidence_role
-                    for ev in (claim.evidence_links or [])
-                    if ev.evidence_role is not None
-                }
-                try:
-                    capsule, segments = capsule_from_claim(
-                        claim,
-                        source_id=source_id,
-                        domain=domain_pack,
-                        source_telos=source_telos,
-                        embedding=embedding,
-                        evidence_roles=evidence_roles,
-                    )
-                except Exception as exc:
-                    msg = f"claim {claim.id}: {exc}"
-                    logger.warning("Backfill error for %s", msg)
-                    result.errors.append(msg)
-                    continue
-
-                rows_to_add.append(capsule)
-                rows_to_add.extend(segments)
-                result.capsules_written += 1
-                result.capsule_segments_written += len(segments)
-
-            if rows_to_add:
-                session.add_all(rows_to_add)
-                if dry_run:
-                    await session.rollback()
-                else:
-                    await session.commit()
+        await _write_batch(session_factory, new_claims_info, embeddings, result, dry_run)
 
         if len(rows) < batch_size:
             # Last page — no more claims.
