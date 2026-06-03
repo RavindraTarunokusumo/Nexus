@@ -47,12 +47,40 @@ models: {t2: ..., t3: ...}
 
 The legacy top-level keys (`topics`, `claim_types`, `brief_sections`, `models`) are preserved at the bottom of the YAML for back-compat with tooling that has not yet been ported to v3.
 
+## `SourceTypeProfile` Fields (v3 + Phase B extension)
+
+Each entry under `source_type_profiles` is a `SourceTypeProfile`. The following fields are relevant to the Phase B source-type classifier:
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `claim_budget` | int | required | Maximum `SemanticObject` instances per span for this profile |
+| `url_domains` | list[str] | `[]` | Hostname prefixes for URL-based profile detection. Matching is performed against the hostname only (not the full URL), preventing suffix-spoofing — e.g. `"arxiv.org"` will match `arxiv.org/abs/...` but not `notarxiv.org`. |
+| `title_regex` | list[str] | `[]` | Regex patterns matched against the document title. Precompiled on pack load with `IGNORECASE` by default. Prefix a pattern with `(?-i)` for case-sensitive matching. |
+
+Example entries from the AI pack:
+
+```yaml
+source_type_profiles:
+  arxiv_paper:
+    claim_budget: 8
+    url_domains: ["arxiv.org"]
+    title_regex: ["\\barxiv\\b", "preprint"]
+  ai_news_article:
+    claim_budget: 5
+    url_domains: []
+    title_regex: []
+```
+
+See `app/domain_packs/personal_ai_tech.yaml` for all 10 profile definitions.
+
+The `_resolve_pack_and_source_type` function in `app/intelligence/extraction.py` runs four passes in order: (1) URL domain match, (2) title regex match, (3) `pack.metadata.supported_source_types[0]` fallback, (4) safety net `"ai_news_article"`. The URL is parsed once per classifier call; the title regex is precompiled at pack load time.
+
 ## Pack Responsibilities (v3)
 
 The `personal_ai_tech` pack now defines:
 
 - **Telos** — purpose, user role, and primary question that govern extraction focus
-- **Source-type profiles** — 10 profiles (e.g. `ai_news_article`) each with per-source claim budgets and extraction parameters
+- **Source-type profiles** — 10 profiles (e.g. `ai_news_article`) each with per-source claim budgets, URL domain hints, and title regex patterns
 - **Semantic-object families** — 10 families, each with `object_types`, `core_type_mapping`, `mvp_claim_type` (the projection target in the legacy claims table), `required_fields`
 - **Salience policy** — minimum salience threshold and triage rules
 - **AI facet list** — domain-specific facet keys injected into the extraction prompt
@@ -97,7 +125,7 @@ The long-term PoC describes richer domain packs with these capabilities:
 | Budgets | Maximum claims, signals, and relations | Live (per-source budgets + enforce_budgets, Phase A) |
 | Retention Policy | Hot/warm/cold windows and consolidation rules | Live (retention windows in pack; DB tiering deferred to Phase B) |
 | Image Policy | Which images to describe, enrich, or ignore | Deferred |
-| Lifecycle / semantic_capsules table | Native v0.7 DB storage | Deferred to Phase B |
+| Lifecycle / semantic_capsules table | Native v0.7 DB storage | Live (Phase B — migration 0005; dual-write in `store_claims`) |
 
 ## Extraction Budgets
 

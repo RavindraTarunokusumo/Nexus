@@ -16,7 +16,29 @@ See [docs/commands.md](commands.md) for full flag reference and examples for eve
 | `search` | _(root)_ | HTTP → FastAPI |
 | `chat` | _(root)_ | HTTP → FastAPI |
 | `ingest` | `url`, `text`, `rss` | HTTP → FastAPI |
-| `extract` | _(root)_ | HTTP → FastAPI — internally uses the telos-aware semantic-object extraction path (Phase A) |
+| `extract` | _(root)_ | HTTP → FastAPI — uses the telos-aware semantic-object extraction path; dual-writes capsules |
+| `capsules` | `backfill` | Direct Postgres |
+
+## `capsules` Subcommand Group
+
+The `capsules` group provides Phase B capsule management commands. Commands read and write Postgres directly — no server required.
+
+### `nexus capsules backfill`
+
+```sh
+nexus capsules backfill
+nexus capsules backfill --dry-run
+nexus capsules backfill --batch-size 50
+```
+
+Reads `Claim.entities_json["_v0_7"]` for existing claims that predate the Phase B dual-write and writes the corresponding `SemanticCapsule` + `CapsuleSegment` rows. Idempotent — rows with a conflicting `idempotency_key` are skipped. `--dry-run` prints what would be written without persisting. `--batch-size` controls the number of claims processed per DB transaction (default: 100).
+
+## `eval` Subcommand Group (updated flags)
+
+`nexus eval run` and `nexus eval calibrate` now accept two additional options:
+
+- `--pack-id <id>` — override the domain pack used to drive the SUT and judge.
+- `--source-type <type>` — restrict evaluation to examples matching a specific source-type profile.
 
 ## `runs` Subcommand Group
 

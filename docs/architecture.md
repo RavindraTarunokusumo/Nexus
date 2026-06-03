@@ -1,6 +1,6 @@
 # Architecture
 
-> **Phase 3 Status: Claim extraction + observability + hybrid chatbot + LLM-as-a-Judge eval framework implemented. Phase A (Telos-Semantic Extraction Bridge) landed: the extraction pipeline now produces telos-aware semantic objects projected to legacy claims.**
+> **Phase B Status: Durable capsule layer landed. Phase A (Telos-Semantic Extraction Bridge) established the in-memory `SemanticObject` layer projected to legacy claims. Phase B (`semantic_capsules` schema) makes that layer durable: extraction now dual-writes `SemanticCapsule` + `CapsuleSegment` rows alongside `Claim` + `ClaimEvidence` in the same transaction. The `_v0_7` stash from Phase A is actively backfilled via `nexus capsules backfill`. Legacy `ExtractedClaim` / `ExtractionOutput` schemas and the dual-path eval contract are retired; the eval runner now uses `SemanticExtractionOutput` and `SemanticObjectJudge`.**
 
 Nexus Lite is a private FastAPI application backed by PostgreSQL + pgvector, Redis, and local embeddings. The Phase 1 foundation covers source registration, document ingestion, and the full persistence schema.
 
@@ -47,7 +47,9 @@ app/
     tracer.py              # record_agent_run(), record_span_extraction(), mark_document_timestamp()
                            #   — all fire-and-forget, never raise
   db/
-    models.py              # SQLAlchemy ORM models (all 10 tables)
+    models.py              # SQLAlchemy ORM models (all 16 tables + Phase B capsule ORM;
+                           #   backrefs: Document.capsules, Span.capsule_segments,
+                           #   SemanticCapsule.segments, CapsuleSegment.capsule/span)
     session.py             # make_engine / make_session_factory helpers
     migrations/
       env.py               # Alembic env wired to DATABASE_URL
@@ -56,6 +58,8 @@ app/
         0002_observability.py   # Adds correlation ID columns to agent_runs/documents; new span_extractions table
         0003_evaluation.py      # Adds eval_datasets, eval_runs, eval_results tables
         0004_chat_sessions.py   # Adds chat_sessions and chat_messages tables
+        0005_semantic_capsules.py  # Adds semantic_capsules, capsule_segments, semantic_relations,
+                                   #   theses, decision_artefacts, domain_packs tables
   ingestion/
     cleaner.py             # normalize_text, content_hash, normalize_url, extract_text
     rss.py                 # fetch_rss_entries (feedparser + async httpx)
@@ -67,8 +71,8 @@ app/
     llm_client.py          # LLMClient.complete_json — OpenRouter calls, Pydantic validation;
                            #   CoreType (15-entry Literal), EpistemicState, SemanticObject,
                            #   SemanticExtractionOutput — v0.7 extraction schemas (production path);
-                           #   ExtractedClaim / ExtractionOutput — legacy schemas retained for
-                           #   app/evaluation/runner.py compatibility until Phase B;
+                           #   ExtractedClaim / ExtractionOutput — DELETED in Phase B (legacy eval
+                           #   runner ported to SemanticExtractionOutput);
                            #   LLMError / LLMNetworkError / LLMSchemaError hierarchy;
                            #   uses tracer.record_agent_run; tracks prompt_tokens / completion_tokens;
                            #   supports run_type for claim extraction and chat answers
@@ -78,7 +82,17 @@ app/
                            #   wraps graph in extraction_run context; span_scope per span;
                            #   writes span_extractions rows; marks extraction timestamps;
                            #   run_with_context() entry point; loads Source + DomainPack per run;
-                           #   source_type mapped to v3 source-type profile (MVP: ai_news_article)
+                           #   _resolve_pack_and_source_type: 4-pass classifier (URL domain match →
+                           #   title regex → pack fallback → safety net); source_type → v3 profile;
+                           #   store_claims dual-writes SemanticCapsule+CapsuleSegment alongside
+                           #   Claim+ClaimEvidence in the same transaction (Phase B)
+    capsules.py            # Shared capsule assembly: get_embedder() singleton (bge-small-en-v1.5),
+                           #   build_capsule_idempotency_key, build_capsule_row —
+                           #   single source of truth for SemanticObject → SemanticCapsule +
+                           #   CapsuleSegment mapping; called by store_claims (B2) and
+                           #   capsule_from_claim backfill (B3)
+    backfill.py            # Phase A → B backfill: reads Claim.entities_json["_v0_7"], constructs
+                           #   capsule rows via build_capsule_row; idempotent; batched
     projection.py          # ProjectedClaim dataclass; validate_object, project, enforce_budgets;
                            #   SALIENCE_THRESHOLD = 0.3; maps SemanticObject → legacy Claim+ClaimEvidence
                            #   shape via mvp_claim_type; splits facets into entities_json / topics_json;
@@ -88,15 +102,13 @@ app/
                            #   thread_id = session_id; _to_psycopg_url(); _derive_title()
     prompts/
       chat_answer.py       # SYSTEM_PROMPT plus question/context prompt builder for grounded chat
-      extract_claims.py    # SYSTEM_PROMPT, build_user_prompt, build_correction_prompt (legacy; used
-                           #   by eval runner only — production pipeline uses extract_semantic_objects.py)
       extract_semantic_objects.py  # SYSTEM_PROMPT, build_user_prompt(segment_text, metadata, pack,
                            #   source_type), build_correction_prompt; injects telos, applicable
                            #   semantic-object families, salience rules, facet keys, per-segment
                            #   budgets, and response schema from the domain pack
       judge_semantic_object.py     # SYSTEM_PROMPT, JudgeVerdict schema, build_judge_prompt — T2
                            #   judge scaffold for semantic-object quality escalation; not yet wired
-                           #   into the graph (Phase B)
+                           #   into the graph
   domain_packs/
     loader.py              # Pydantic v2 loader for v3 (telos-based purpose-grammar) domain packs
     personal_ai_tech.yaml  # Default domain pack — full v3 pack (telos, 10 source-type profiles,
@@ -109,14 +121,14 @@ app/
     datasets.py            # Pydantic schemas (GoldClaim, ClaimExtractionExample,
                            #   SpanRetrievalExample, Dataset); load_dataset(path) with SHA-256 checksum
     metrics.py             # precision_recall_f1, precision_at_k, ndcg_at_k, align_claims (Jaccard greedy)
-    judges.py              # ClaimExtractionJudge (active);
+    judges.py              # SemanticObjectJudge (active, Phase B — replaces ClaimExtractionJudge);
                            #   BriefSynthesisJudge, GroundedAnswerJudge (Phase 4 stubs)
     runner.py              # execute_run(*) entry point; SUTConfig / EvalRunResult dataclasses;
-                           #   budget gate; per-example error tolerance; Postgres persistence
+                           #   budget gate; per-example error tolerance; Postgres persistence;
+                           #   response_model=SemanticExtractionOutput (Phase B)
     meta_eval.py           # compute_kappa, compute_pearson, load_human_labels
     prompts/
       __init__.py
-      claim_extraction_judge.py  # JUDGE_SYSTEM_PROMPT, build_judge_prompt(), ClaimPairVerdict model
   cli/
     __init__.py
     config.py              # CLISettings (API_URL, DB_URL, rich/json output flags)
@@ -125,10 +137,13 @@ app/
     http.py                # HTTP wrappers for ingest/search/chat/extract (FastAPI server)
     render.py              # Rich+JSON formatters; includes search/chat/extract and run renderers
     eval.py                # Typer sub-app — nexus eval commands:
-                           #   register-dataset, list-datasets, run, show, diff, calibrate
+                           #   register-dataset, list-datasets, run (--pack-id, --source-type),
+                           #   show, diff, calibrate (--pack-id, --source-type)
+    capsules.py            # Typer sub-app — nexus capsules commands:
+                           #   backfill [--dry-run] [--batch-size N]
     main.py                # Typer app — nexus console-script entry point;
                            #   registers `runs` sub-app with `list` and `show` commands;
-                           #   registers `eval` sub-app
+                           #   registers `eval` sub-app; registers `capsules` sub-app
 tests/
   conftest.py              # testcontainers fixtures, Alembic migration, per-test DB clean
   test_sources.py          # Source CRUD integration tests (8 tests)
@@ -140,6 +155,8 @@ tests/
   test_cli_e2e.py          # CLI end-to-end integration tests (10 tests)
   domain_packs/
     test_loader.py         # Unit tests for the v3 domain-pack loader (no DB, no LLM)
+  db/
+    test_capsule_schema.py            # DB-bound: migration 0005 schema + ORM backref integration
   intelligence/
     test_semantic_object_schema.py    # CoreType / SemanticObject / SemanticExtractionOutput schema tests
     test_extract_semantic_objects_prompt.py  # build_user_prompt / build_correction_prompt unit tests
@@ -148,6 +165,16 @@ tests/
                                       #   through the full validate→budgets→project chain using the real
                                       #   personal_ai_tech pack; asserts _v0_7 / _function / _domain_family
     test_judge_semantic_object_prompt.py  # build_judge_prompt / JudgeVerdict unit tests
+    test_capsules_dual_write.py       # DB-bound: store_claims dual-writes SemanticCapsule+CapsuleSegment
+                                      #   alongside Claim+ClaimEvidence in the same transaction
+    test_capsule_backfill.py          # DB-bound: backfill reads _v0_7 stash, writes capsule rows;
+                                      #   idempotency via build_capsule_idempotency_key
+    test_resolve_pack_and_source_type.py  # No-DB: 4-pass URL/title classifier; spoof-resistance;
+                                          #   fallback + safety-net coverage
+evals/
+  gold/
+    semantic_objects/
+      ai_tech_v3.yaml               # 10 examples, 6 mvp_claim_types — gold set for SemanticObjectJudge
 docker-compose.yml         # postgres (pgvector/pgvector:pg16), redis:7-alpine, app
 alembic.ini
 pyproject.toml
@@ -164,12 +191,18 @@ external source
 -> chunking -> spans -> embeddings
 -> claim extraction (LangGraph, OpenRouter T2):
      span
+     -> _resolve_pack_and_source_type  (4-pass classifier: URL domain → title regex →
+                                        pack fallback → safety net "ai_news_article")
      -> semantic-object extraction  (telos-aware prompt + SemanticExtractionOutput,
                                      extract_semantic_objects.py)
      -> validate-and-project        (validate_object → enforce_budgets → project,
                                      projection.py; uses source's domain pack)
-     -> store as Claim + ClaimEvidence  (legacy claims table; full v0.7 SemanticObject
-                                        stashed under entities_json["_v0_7"])
+     -> store_claims (dual-write, same transaction):
+          Claim + ClaimEvidence      (legacy read path; full v0.7 SemanticObject
+                                      stashed under entities_json["_v0_7"])
+          SemanticCapsule +          (durable Phase B native storage; 384-dim
+          CapsuleSegment              embedding written at ingest time via
+                                      bge-small-en-v1.5 shared singleton)
 -> query answering:
      single-turn  POST /chat/answer  (stateless, no session)
      multi-turn   POST /chat/sessions/{id}/messages
@@ -265,6 +298,8 @@ Claims are typed using an 11-entry Pydantic `Literal`:
 
 As of Phase A, this 11-type list is the **projection target**, not the direct extraction output. The v3 domain pack maps each semantic-object type to one of these values via the `mvp_claim_type` field on each semantic-object family. The production extraction path produces a `SemanticObject` (with `CoreType` from a 15-entry Literal), and the projection layer in `app/intelligence/projection.py` maps it to the legacy `claim_type` column via `mvp_claim_type` from the active domain pack.
 
+As of Phase B, the `claims` + `claim_evidence` tables remain the **read path** (chat retrieval is unchanged until Phase D). The `semantic_capsules` + `capsule_segments` tables are the durable native storage for v0.7 semantic objects written at extraction time. Both paths are populated in the same transaction by `store_claims`. Chat and claim-retrieval endpoints continue to read from `claims`; the capsule tables are populated but not yet served via any API (Phase C/D will add capsule-based retrieval, relations, and lifecycle management).
+
 ## LLM Tier Model
 
 | Tier | Purpose | Config key | Default |
@@ -274,7 +309,7 @@ As of Phase A, this 11-type list is the **projection target**, not the direct ex
 | T3 | Brief synthesis (Phase 4); LLM judge for eval | `settings.t3_model` | `deepseek/deepseek-v4-pro` |
 | T4 | Integrity audits | — | Aspirational |
 
-The T2 prompt is now the telos-aware semantic-object prompt (`app/intelligence/prompts/extract_semantic_objects.py`). The legacy `extract_claims.py` prompt remains in the codebase and is consumed exclusively by `app/evaluation/runner.py` until Phase B ports the eval runner to `SemanticExtractionOutput`. The T2 judge scaffold (`judge_semantic_object.py`) exists but is not yet wired into the extraction graph.
+The T2 prompt is the telos-aware semantic-object prompt (`app/intelligence/prompts/extract_semantic_objects.py`). The legacy `extract_claims.py` prompt was deleted in Phase B; `app/evaluation/runner.py` now uses `SemanticExtractionOutput` and `SemanticObjectJudge`. Capsule embeddings (384-dim) are computed at write time via the T1 `bge-small-en-v1.5` shared singleton in `app/intelligence/capsules.py`; one batched embed call per `store_claims` invocation. The T2 judge scaffold (`judge_semantic_object.py`) exists but is not yet wired into the extraction graph.
 
 Cost is tracked per call: `0.30 / 1_000_000 * total_tokens` stored in the `agent_runs.cost_estimate` column.
 
@@ -334,7 +369,7 @@ gold YAML
 
 ### Judge architecture
 
-`ClaimExtractionJudge` is the only active judge. It uses `align_claims()` (Jaccard greedy matching) to pair gold and predicted claims, then calls the LLM judge for each pair to get a `ClaimPairVerdict` (match_status, groundedness, factuality scores). Deterministic metrics (precision, recall, f1) are computed from the verdicts in `metrics.py`.
+`SemanticObjectJudge` is the active judge (Phase B replacement for the retired `ClaimExtractionJudge`). It uses the same `align_claims()` (Jaccard greedy matching) approach to pair gold and predicted objects, then calls the LLM judge. Deterministic metrics (precision, recall, f1) are computed in `metrics.py`. The `mvp_claim_type_projection_accuracy` metric (target > 90%, defined in `personal_ai_tech.yaml` `evaluation_contract`) is tracked alongside `type_accuracy`.
 
 `BriefSynthesisJudge` and `GroundedAnswerJudge` are Phase 4 stubs — they exist as class skeletons in `judges.py` but are not callable.
 
@@ -344,30 +379,32 @@ Gold-set YAML files live in `evals/gold/`. Each file must be registered with `ne
 
 | File | Task | Examples |
 |---|---|---|
-| `evals/gold/claim_extraction/ai_tech_v1.yaml` | `claim_extraction` | 30 |
+| `evals/gold/semantic_objects/ai_tech_v3.yaml` | `semantic_object_extraction` | 10 |
 | `evals/gold/span_retrieval/queries_v1.yaml` | `span_retrieval` | 20 |
 
-Human calibration labels for the judge live in `evals/human_labels/claim_extraction.yaml` (6-seed set). Use `nexus eval calibrate` to compute kappa against these.
+Human calibration labels for the judge live in `evals/human_labels/claim_extraction.yaml` (6-seed set). Use `nexus eval calibrate --pack-id <id> --source-type <type>` to compute kappa against these.
 
-### Phase A — Dual extraction paths and eval compatibility contract
+### Phase A — Dual extraction paths and eval compatibility contract (historical)
 
-Phase A (Telos-Semantic Extraction Bridge) introduced a second extraction path alongside the legacy eval path. Both paths are active simultaneously:
+Phase A introduced a second extraction path alongside the legacy eval path. Both paths were active simultaneously in Phase A:
 
-- **Legacy eval path (unchanged).** `app/evaluation/runner.py` drives the SUT using the legacy `ExtractionOutput` / `ExtractedClaim` schema. The gold set `evals/gold/claim_extraction/ai_tech_v2.yaml` remains the compatibility fixture for this path. No changes to `app/evaluation/` are made in Phase A.
-- **Production extraction path (A6).** The live ingestion pipeline now produces `SemanticExtractionOutput` (containing `SemanticObject` instances) and routes through the `validate_object` → `enforce_budgets` → `project` chain in `app/intelligence/projection.py`. The projection layer maps each accepted semantic object to a `ProjectedClaim` that writes into the legacy `claims` table, preserving the `claim_type`, `claim_text`, `entities_json`, and `topics_json` columns. The `entities_json` stash key `_v0_7` carries the full serialised `SemanticObject` for forward-compat.
-- **Regression test (A8).** `tests/intelligence/test_a6_projection_regression.py` is the contract smoke test for the production path. It runs hand-authored `SemanticObject` payloads covering five representative MVP claim types (`model_release`, `benchmark_result`, `funding_event`, `security_issue`, `forecast`) through the real `personal_ai_tech` pack and asserts schema validity, correct claim-type projection, presence of all three forward-compat stash keys, and budget enforcement. It requires no DB and no LLM.
-- **Phase B prerequisite.** Once Phase B ports the eval runner to `SemanticExtractionOutput`, the new metric `mvp_claim_type_projection_accuracy` (target > 90%, defined in `personal_ai_tech.yaml` `evaluation_contract`) should be added to the eval framework and tracked alongside the existing `type_accuracy` metric.
+- The legacy eval path drove the SUT using `ExtractionOutput` / `ExtractedClaim` schemas; the gold set `evals/gold/claim_extraction/ai_tech_v2.yaml` was the compatibility fixture.
+- The production extraction path produced `SemanticExtractionOutput` and stashed full `SemanticObject` payloads under `entities_json["_v0_7"]` as a forward-compat bridge.
+
+**Phase B retired the dual-path eval contract.** `ExtractedClaim`, `ExtractionOutput`, `app/intelligence/prompts/extract_claims.py`, `app/evaluation/prompts/claim_extraction_judge.py`, and `ClaimExtractionJudge` are all deleted. `app/evaluation/runner.py` now uses `SemanticExtractionOutput` and `SemanticObjectJudge` exclusively. The regression smoke test `test_a6_projection_regression.py` remains as a no-DB contract test for the projection layer.
 
 ## Current Boundary
 
 The MVP implements the simplified hierarchy:
 
 ```text
-Source -> Document -> Span -> [SemanticObject (in-memory, Phase A)] -> Claim -> Brief
+Source -> Document -> Span -> SemanticObject -> SemanticCapsule (durable, Phase B)
+                                              -> Claim (projection, legacy read path)
+                                              -> Brief (Phase 4+)
 ```
 
-As of Phase A, a v0.7 semantic-object layer exists in-memory between Span and Claim. The DB schema is unchanged — `SemanticObject` instances are projected to the existing `claims` + `claim_evidence` tables. The full serialised `SemanticObject` is stashed under `entities_json["_v0_7"]` as a forward-compat bridge to Phase B. The `semantic_capsules` table and any schema migration for native v0.7 storage are deferred to Phase B.
+As of Phase B, the v0.7 semantic-object layer is durable in `semantic_capsules` + `capsule_segments`. The `claims` + `claim_evidence` tables remain the active read path (chat retrieval, claim listing). The `semantic_capsules` tables are populated at extraction time and via the `nexus capsules backfill` command for Phase A data. Phase C/D will add capsule-based retrieval, relation ingestion (`semantic_relations`, `theses`), and lifecycle state management. Phase E and beyond cover `decision_artefacts` and active `domain_packs` registry use.
 
-All 8 core tables are schema-ready (migration 0001). Migration 0002 extends `agent_runs` and `documents` with correlation/timestamp columns and adds `span_extractions`. Migration 0003 adds the 3 eval tables. Migration 0004 adds `chat_sessions` and `chat_messages` for multi-turn session memory. Phases 1–3 populate `sources`, `documents`, `spans`, `claims`, `claim_evidence`, `agent_runs`, and `span_extractions`. The `eval_*` tables are populated by `nexus eval run`. The `chat_sessions` and `chat_messages` tables are populated by the session chat endpoints. Brief synthesis is Phase 4+.
+Migrations: 0001 (8 core tables), 0002 (observability columns + `span_extractions`), 0003 (eval tables), 0004 (`chat_sessions` + `chat_messages`), 0005 (6 capsule-layer tables: `semantic_capsules`, `capsule_segments`, `semantic_relations`, `theses`, `decision_artefacts`, `domain_packs`). The `semantic_relations`, `theses`, `decision_artefacts`, and `domain_packs` tables exist in the schema but are not yet populated by the pipeline.
 
 The broader PoC hierarchy adds entities, relations, signals, clusters, theses, and decision artefacts. Those remain future-facing until the core ingestion-to-synthesis loop is stable.
