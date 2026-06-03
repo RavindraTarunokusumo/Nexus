@@ -209,7 +209,7 @@ source_type_profiles:
     url_domains: []
     title_regex:
       - "launch(es|ing)?"
-      - "(introducing|announcing) [A-Z]"
+      - "(?-i)([Ii]ntroducing|[Aa]nnouncing) (?=[A-Z][a-z])"
 
   pricing_or_terms_update:
     structural_features:

@@ -16,6 +16,7 @@ import logging
 import re
 import uuid
 from typing import Any, TypedDict
+from urllib.parse import urlsplit
 
 from langgraph.graph import END, StateGraph
 from pydantic import ValidationError
@@ -80,6 +81,35 @@ def _get_embedder() -> Embedder:
     if _embedder is None:
         _embedder = Embedder()
     return _embedder
+
+
+def _url_matches_domain(url: str, hint: str) -> bool:
+    """Return True if *url* matches *hint* without allowing suffix spoofing.
+
+    hint may be:
+    - a bare hostname          e.g. "arxiv.org"
+    - hostname + path prefix   e.g. "openai.com/blog"
+
+    Matching rules:
+    - hostname must equal host_hint or end with "." + host_hint
+      (so "notarxiv.org" does NOT match "arxiv.org").
+    - when hint includes a path, the URL path must start with "/" + path_hint.
+    """
+    if "/" in hint:
+        host_hint, path_hint = hint.split("/", 1)
+    else:
+        host_hint, path_hint = hint, None
+
+    parsed = urlsplit(url if "://" in url else "https://" + url)
+    hostname = (parsed.hostname or "").lower()
+    host_hint = host_hint.lower()
+
+    host_ok = hostname == host_hint or hostname.endswith("." + host_hint)
+    if not host_ok:
+        return False
+    if path_hint is not None:
+        return parsed.path.startswith("/" + path_hint)
+    return True
 
 
 def _load_spans_failure(error_msg: str) -> dict:
@@ -149,14 +179,21 @@ def _resolve_pack_and_source_type(source: Source, document: Document) -> tuple[D
     if url:
         for profile_name, profile in pack.source_type_profiles.items():
             for domain_hint in profile.url_domains:
-                if domain_hint in url:
+                if _url_matches_domain(url, domain_hint):
                     return pack, profile_name
 
     # Pass 2 — title regex matching
+    # Patterns prefixed with "(?-i)" opt out of IGNORECASE so they can
+    # assert literal case (e.g. requiring a proper-noun capital letter).
     if title:
         for profile_name, profile in pack.source_type_profiles.items():
             for pattern in profile.title_regex:
-                if re.search(pattern, title, re.IGNORECASE):
+                if pattern.startswith("(?-i)"):
+                    flags = 0
+                    pattern = pattern[5:]
+                else:
+                    flags = re.IGNORECASE
+                if re.search(pattern, title, flags):
                     return pack, profile_name
 
     # Pass 3 — pack default
