@@ -1,0 +1,9 @@
+Summary: Harden B4 source-type classifier — fix IGNORECASE regex bug, URL suffix spoofing, add test docstrings, drop redundant cache-clear fixture.
+
+Scope: app/domain_packs/personal_ai_tech.yaml, app/intelligence/extraction.py, tests/intelligence/test_resolve_pack_and_source_type.py
+
+Tests: 40 passed (23 in test_resolve_pack_and_source_type.py, 17 in test_loader.py)
+
+Risk: Low — fixes are narrowly scoped; no behaviour change for correct inputs.
+
+Docs: None required.
