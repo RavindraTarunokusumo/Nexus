@@ -136,6 +136,27 @@ class TestAggregateScores:
         assert agg["core_type_accuracy"] == pytest.approx(0.75)
         assert agg["salience_precision"] == pytest.approx(0.75)
 
+    def test_error_example_divides_by_full_count(self):
+        """A missing key (judge error) counts as 0.0, denominator stays len(score_list)."""
+        full = {
+            "precision": 0.9,
+            "recall": 0.9,
+            "f1": 0.9,
+            "mvp_claim_type_projection_accuracy": 0.9,
+            "core_type_accuracy": 0.9,
+            "domain_family_accuracy": 0.9,
+            "mean_groundedness": 0.9,
+            "mean_factuality": 0.9,
+            "mean_capsule_completeness": 0.9,
+            "salience_precision": 0.9,
+        }
+        # 3-example run: first two scored, third errored (no keys)
+        scores = [full, full, {}]
+        agg = _aggregate_scores(scores)
+        # 0.9 + 0.9 + 0.0 = 1.8 / 3 = 0.6
+        assert agg["precision"] == pytest.approx(0.6)
+        assert agg["salience_precision"] == pytest.approx(0.6)
+
 
 # ── execute_run ───────────────────────────────────────────────────────────────
 

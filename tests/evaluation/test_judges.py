@@ -82,9 +82,6 @@ class TestSemanticObjectJudge:
 
     @pytest.mark.asyncio
     async def test_missing_object_lowers_recall(self):
-        judge = _make_judge([])  # no LLM call needed when pred is empty (gold,None unmatched)
-        # Actually align_semantic_objects produces (gold, None) pair which triggers an
-        # LLM call for the missing-side judgement. Provide one verdict.
         judge = _make_judge(
             [
                 {

@@ -118,7 +118,11 @@ class SemanticObjectJudge:
         gold: dict | None,
         pred: dict | None,
     ) -> tuple[dict, int]:
-        """Call LLM judge for a single (gold, pred) pair."""
+        """Call LLM judge for a single (gold, pred) pair.
+
+        Returns a (verdict_dict, token_count) tuple. Tokens are 0 on error
+        or when the LLM call is skipped (both gold and pred are None).
+        """
         if gold is None and pred is None:
             return {
                 "match_status": "error",

@@ -37,7 +37,19 @@ _DEFAULT_EVAL_SOURCE_TYPE = "ai_news_article"
 
 @dataclass
 class SUTConfig:
-    """Configuration for the System Under Test (SUT)."""
+    """Configuration for the System Under Test (SUT) — the production
+    extraction prompt the eval framework should drive.
+
+    Fields:
+        model: OpenRouter model id (e.g. "deepseek/deepseek-v4-flash").
+        prompt_version: Identifier baked into eval run rows for provenance.
+        temperature: Sampling temperature for the SUT call. Defaults to 0.0.
+        pack_id: Domain pack id whose telos/families/salience rules drive
+            the SUT prompt prefix. Defaults to "personal_ai_tech".
+        source_type: v3 source-type profile name the prompt should narrow
+            to. Defaults to "ai_news_article". Out-of-domain eval runs
+            must override this.
+    """
 
     model: str
     prompt_version: str
@@ -258,7 +270,12 @@ async def _persist_result(
 
 
 def _aggregate_scores(score_list: list[dict]) -> dict:
-    """Average per-example metric dicts into a run-level aggregate."""
+    """Average per-example metric dicts into a run-level aggregate.
+
+    Missing keys are treated as 0.0 so a judge error on one example counts as
+    zero for every metric on that example — the denominator is always
+    len(score_list), never the smaller count of examples that have the key.
+    """
     if not score_list:
         return {}
     keys = [
@@ -273,8 +290,9 @@ def _aggregate_scores(score_list: list[dict]) -> dict:
         "mean_capsule_completeness",
         "salience_precision",
     ]
+    n = len(score_list)
     return {
-        k: round(sum(s[k] for s in score_list if k in s) / len(score_list), 4)
+        k: round(sum(s.get(k, 0.0) for s in score_list) / n, 4)
         for k in keys
         if any(k in s for s in score_list)
     }
