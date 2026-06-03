@@ -1,0 +1,9 @@
+Summary: B4 — Replace MVP fallback in _resolve_pack_and_source_type with URL-domain + title-regex classifier.
+
+Scope: app/domain_packs/loader.py (SourceTypeProfile +2 fields), app/domain_packs/personal_ai_tech.yaml (url_domains+title_regex for all 10 profiles), app/intelligence/extraction.py (_resolve_pack_and_source_type refactored, load_spans caller updated). New test file: tests/intelligence/test_resolve_pack_and_source_type.py (20 tests).
+
+Tests: 37 passed (20 new B4 tests + 17 existing loader tests). All green.
+
+Risk: LOW. _resolve_pack_and_source_type is a private function called only from load_spans (nested inside make_extraction_graph). Signature change (added Document param) is internal. No public API changes. No migration changes.
+
+Docs: No doc changes needed for this commit; doc-updater runs at Pre-PR gate.
