@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest
 
 from app.evaluation.metrics import (
-    align_claims,
+    align_semantic_objects,
     ndcg_at_k,
     precision_at_k,
     precision_recall_f1,
@@ -102,43 +102,41 @@ class TestNdcgAtK:
         assert ndcg_at_k(rel, k=1) == pytest.approx(1.0)
 
 
-class TestAlignClaims:
+class TestAlignSemanticObjects:
     def test_exact_text_match(self):
-        gold = [{"claim_text": "OpenAI released GPT-5", "claim_type": "model_release"}]
-        pred = [{"claim_text": "OpenAI released GPT-5", "claim_type": "model_release"}]
-        pairs = align_claims(gold, pred)
+        gold = [{"text": "OpenAI released GPT-5", "mvp_claim_type": "model_release"}]
+        pred = [{"text": "OpenAI released GPT-5", "mvp_claim_type": "model_release"}]
+        pairs = align_semantic_objects(gold, pred)
         assert len(pairs) == 1
         assert pairs[0][0] is not None  # gold matched
         assert pairs[0][1] is not None  # pred matched
 
     def test_unmatched_gold_is_missing(self):
-        gold = [{"claim_text": "OpenAI released GPT-5", "claim_type": "model_release"}]
-        pred = []
-        pairs = align_claims(gold, pred)
+        gold = [{"text": "OpenAI released GPT-5", "mvp_claim_type": "model_release"}]
+        pred: list[dict] = []
+        pairs = align_semantic_objects(gold, pred)
         assert len(pairs) == 1
-        assert pairs[0][0] is not None  # gold present
-        assert pairs[0][1] is None  # no pred match → missing
+        assert pairs[0][0] is not None
+        assert pairs[0][1] is None
 
     def test_unmatched_pred_is_spurious(self):
-        gold = []
-        pred = [{"claim_text": "Some hallucinated claim", "claim_type": "other"}]
-        pairs = align_claims(gold, pred)
+        gold: list[dict] = []
+        pred = [{"text": "Some hallucinated object", "mvp_claim_type": "other"}]
+        pairs = align_semantic_objects(gold, pred)
         assert len(pairs) == 1
-        assert pairs[0][0] is None  # no gold → spurious
-        assert pairs[0][1] is not None  # pred present
+        assert pairs[0][0] is None
+        assert pairs[0][1] is not None
 
     def test_empty_both(self):
-        pairs = align_claims([], [])
+        pairs = align_semantic_objects([], [])
         assert pairs == []
 
     def test_partial_match(self):
-        # Two gold claims, one pred that matches the second
         gold = [
-            {"claim_text": "OpenAI released GPT-5", "claim_type": "model_release"},
-            {"claim_text": "Google released Gemini", "claim_type": "model_release"},
+            {"text": "OpenAI released GPT-5", "mvp_claim_type": "model_release"},
+            {"text": "Google released Gemini", "mvp_claim_type": "model_release"},
         ]
-        pred = [{"claim_text": "Google released Gemini Ultra", "claim_type": "model_release"}]
-        pairs = align_claims(gold, pred, similarity_threshold=0.3)
-        # One gold should be unmatched (missing), one pair matched or spurious
+        pred = [{"text": "Google released Gemini Ultra", "mvp_claim_type": "model_release"}]
+        pairs = align_semantic_objects(gold, pred, similarity_threshold=0.3)
         missing = [p for p in pairs if p[0] is not None and p[1] is None]
         assert len(missing) >= 1

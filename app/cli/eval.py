@@ -345,7 +345,7 @@ def eval_diff(
 
 @eval_app.command("calibrate")
 def eval_calibrate(
-    task: str = typer.Argument(..., help="Task name: claim_extraction"),
+    task: str = typer.Argument(..., help="Task name: semantic_object_extraction"),
     labels_path: Path = typer.Option(..., "--labels-path", help="Path to human_labels YAML."),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:

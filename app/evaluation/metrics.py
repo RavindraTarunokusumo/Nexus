@@ -69,29 +69,26 @@ def _jaccard(a: str, b: str) -> float:
     return len(intersection) / len(union)
 
 
-def align_claims(
-    gold_claims: list[dict],
-    pred_claims: list[dict],
+def _align_by_text_key(
+    gold: list[dict],
+    pred: list[dict],
+    text_key: str,
     similarity_threshold: float = 0.5,
 ) -> list[tuple[dict | None, dict | None]]:
-    """Greedily align predicted claims to gold claims by Jaccard word-overlap.
+    """Greedily align two dict lists by Jaccard word-overlap on the named text key.
 
-    Returns a list of (gold | None, pred | None) pairs:
-    - (gold, pred)  → matched pair
-    - (gold, None)  → missing (gold claim not predicted)
-    - (None, pred)  → spurious (pred claim not in gold)
+    Returns (gold | None, pred | None) pairs covering matches, missing, and spurious.
     """
-    unmatched_gold = list(gold_claims)
-    unmatched_pred = list(pred_claims)
+    unmatched_gold = list(gold)
+    unmatched_pred = list(pred)
     pairs: list[tuple[dict | None, dict | None]] = []
 
-    # Build similarity matrix and greedy-match highest pairs first
     while unmatched_gold and unmatched_pred:
         best_sim = -1.0
         best_gi = best_pi = -1
         for gi, g in enumerate(unmatched_gold):
             for pi, p in enumerate(unmatched_pred):
-                sim = _jaccard(g.get("claim_text", ""), p.get("claim_text", ""))
+                sim = _jaccard(g.get(text_key, ""), p.get(text_key, ""))
                 if sim > best_sim:
                     best_sim = sim
                     best_gi, best_pi = gi, pi
@@ -99,12 +96,20 @@ def align_claims(
         if best_sim >= similarity_threshold:
             pairs.append((unmatched_gold.pop(best_gi), unmatched_pred.pop(best_pi)))
         else:
-            break  # no more matches above threshold
+            break
 
-    # Remaining gold → missing; remaining pred → spurious
     for g in unmatched_gold:
         pairs.append((g, None))
     for p in unmatched_pred:
         pairs.append((None, p))
 
     return pairs
+
+
+def align_semantic_objects(
+    gold_objects: list[dict],
+    pred_objects: list[dict],
+    similarity_threshold: float = 0.5,
+) -> list[tuple[dict | None, dict | None]]:
+    """Align two lists of SemanticObject dicts by Jaccard on the `text` field."""
+    return _align_by_text_key(gold_objects, pred_objects, "text", similarity_threshold)

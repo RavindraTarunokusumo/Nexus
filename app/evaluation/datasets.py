@@ -13,22 +13,37 @@ from pydantic import BaseModel, Field
 
 
 class EvalTask(str, Enum):
-    claim_extraction = "claim_extraction"
+    semantic_object_extraction = "semantic_object_extraction"
     span_retrieval = "span_retrieval"
 
 
-class GoldClaim(BaseModel):
-    claim_type: str
-    claim_text: str
+class GoldSemanticObject(BaseModel):
+    """Gold-set shape for one v0.7 semantic object.
+
+    Mirrors `app.intelligence.llm_client.SemanticObject` but loosened for
+    hand-authored YAML — facets/epistemic are optional and only the fields
+    the judge needs are required.
+    """
+
+    text: str
+    core_type: str
+    domain_family: str
+    domain_object_type: str
+    function: str | None = None
+    facets: dict[str, list[str]] = Field(default_factory=dict)
+    epistemic: dict = Field(default_factory=dict)
+    salience: float = Field(default=0.5, ge=0.0, le=1.0)
+    mvp_claim_type: str
     supporting_span: tuple[int, int] | None = None
     notes: str | None = None
 
 
-class ClaimExtractionExample(BaseModel):
+class SemanticObjectExtractionExample(BaseModel):
     example_id: str
     document_text: str | None = None
     document_id: str | None = None
-    gold_claims: list[GoldClaim]
+    source_type: str | None = None
+    gold_objects: list[GoldSemanticObject]
     notes: str | None = None
 
 
@@ -45,7 +60,7 @@ class Dataset(BaseModel):
     task: EvalTask
     version: int
     description: str | None = None
-    examples: list[Union[ClaimExtractionExample, SpanRetrievalExample]]
+    examples: list[Union[SemanticObjectExtractionExample, SpanRetrievalExample]]
     checksum: str = ""
 
 
@@ -70,11 +85,11 @@ def load_dataset(path: Path) -> Dataset:
         ) from None
 
     raw_examples = data.get("examples") or []
-    examples: list[ClaimExtractionExample | SpanRetrievalExample] = []
+    examples: list[SemanticObjectExtractionExample | SpanRetrievalExample] = []
 
     for ex in raw_examples:
-        if task == EvalTask.claim_extraction:
-            examples.append(ClaimExtractionExample.model_validate(ex))
+        if task == EvalTask.semantic_object_extraction:
+            examples.append(SemanticObjectExtractionExample.model_validate(ex))
         elif task == EvalTask.span_retrieval:
             examples.append(SpanRetrievalExample.model_validate(ex))
 

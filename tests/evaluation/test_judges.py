@@ -1,5 +1,5 @@
 # tests/evaluation/test_judges.py
-"""Unit tests for LLM judge classes."""
+"""Unit tests for LLM judge classes (v0.7 semantic-object judge)."""
 
 from __future__ import annotations
 
@@ -9,103 +9,159 @@ import pytest
 
 from app.evaluation.judges import (
     BriefSynthesisJudge,
-    ClaimExtractionJudge,
     GroundedAnswerJudge,
+    SemanticObjectJudge,
 )
+from app.evaluation.prompts.semantic_object_judge import SemanticObjectPairVerdict
 
 
-class TestClaimExtractionJudge:
-    def _make_judge(self, mock_verdicts: list[dict]) -> ClaimExtractionJudge:
-        """Build a ClaimExtractionJudge with a mocked LLMClient."""
-        mock_client = MagicMock()
-        # complete_json returns (ClaimPairVerdict, total_tokens)
-        from app.evaluation.prompts.claim_extraction_judge import ClaimPairVerdict
+def _make_judge(mock_verdicts: list[dict]) -> SemanticObjectJudge:
+    """Build a SemanticObjectJudge with a mocked LLMClient."""
+    mock_client = MagicMock()
+    verdicts = [SemanticObjectPairVerdict(**v) for v in mock_verdicts]
+    mock_client.complete_json = AsyncMock(side_effect=[(v, 100) for v in verdicts])
+    return SemanticObjectJudge(model="test-model", llm_client=mock_client)
 
-        verdicts = [ClaimPairVerdict(**v) for v in mock_verdicts]
-        mock_client.complete_json = AsyncMock(side_effect=[(v, 100) for v in verdicts])
-        return ClaimExtractionJudge(model="test-model", llm_client=mock_client)
 
-    @pytest.mark.asyncio
-    async def test_name_is_class_attribute(self):
-        assert ClaimExtractionJudge.name == "claim_extraction_judge_v1"
+def _obj(text: str, **overrides) -> dict:
+    base = {
+        "text": text,
+        "core_type": "event",
+        "domain_family": "model_system",
+        "domain_object_type": "model_release",
+        "function": "f",
+        "facets": {"orgs": ["X"]},
+        "epistemic": {
+            "status": "asserted_by_source",
+            "source_authority": "primary",
+            "confidence": 0.9,
+            "evidence_quality": "high",
+        },
+        "salience": 0.8,
+        "mvp_claim_type": "model_release",
+    }
+    base.update(overrides)
+    return base
+
+
+class TestSemanticObjectJudge:
+    def test_name_is_class_attribute(self):
+        assert SemanticObjectJudge.name == "semantic_object_judge_v1"
 
     @pytest.mark.asyncio
     async def test_perfect_match_score(self):
-        """One gold, one pred, exact match — should return high scores."""
-        judge = self._make_judge(
+        judge = _make_judge(
             [
                 {
                     "match_status": "exact",
-                    "type_correct": True,
+                    "mvp_claim_type_correct": True,
+                    "core_type_correct": True,
+                    "domain_family_correct": True,
                     "groundedness": 1.0,
                     "factuality": 1.0,
+                    "capsule_completeness": 0.9,
                     "rationale": "Perfect match.",
                 }
             ]
         )
         result = await judge.score(
             document_text="Anthropic released Claude 4.",
-            gold_claims=[
-                {"claim_text": "Anthropic released Claude 4", "claim_type": "model_release"}
-            ],
-            pred_claims=[
-                {"claim_text": "Anthropic released Claude 4", "claim_type": "model_release"}
-            ],
+            gold_objects=[_obj("Anthropic released Claude 4")],
+            pred_objects=[_obj("Anthropic released Claude 4")],
         )
         assert result["precision"] == pytest.approx(1.0)
         assert result["recall"] == pytest.approx(1.0)
         assert result["f1"] == pytest.approx(1.0)
-        assert result["type_accuracy"] == pytest.approx(1.0)
+        assert result["mvp_claim_type_projection_accuracy"] == pytest.approx(1.0)
+        assert result["core_type_accuracy"] == pytest.approx(1.0)
+        assert result["domain_family_accuracy"] == pytest.approx(1.0)
         assert result["mean_groundedness"] == pytest.approx(1.0)
         assert result["mean_factuality"] == pytest.approx(1.0)
+        assert result["mean_capsule_completeness"] == pytest.approx(0.9)
+        assert result["salience_precision"] == pytest.approx(0.8)
 
     @pytest.mark.asyncio
-    async def test_missing_claim_lowers_recall(self):
-        """One gold, no pred — recall should be 0."""
-        judge = self._make_judge([])  # no LLM calls for missing claims
+    async def test_missing_object_lowers_recall(self):
+        judge = _make_judge([])  # no LLM call needed when pred is empty (gold,None unmatched)
+        # Actually align_semantic_objects produces (gold, None) pair which triggers an
+        # LLM call for the missing-side judgement. Provide one verdict.
+        judge = _make_judge(
+            [
+                {
+                    "match_status": "missing",
+                    "mvp_claim_type_correct": False,
+                    "core_type_correct": False,
+                    "domain_family_correct": False,
+                    "groundedness": 0.0,
+                    "factuality": 0.0,
+                    "capsule_completeness": 0.0,
+                    "rationale": "Missing.",
+                }
+            ]
+        )
         result = await judge.score(
-            document_text="Anthropic released Claude 4.",
-            gold_claims=[
-                {"claim_text": "Anthropic released Claude 4", "claim_type": "model_release"}
-            ],
-            pred_claims=[],
+            document_text="doc",
+            gold_objects=[_obj("Anthropic released Claude 4")],
+            pred_objects=[],
         )
         assert result["recall"] == pytest.approx(0.0)
-        assert result["precision"] == pytest.approx(0.0)  # no predictions
+        assert result["precision"] == pytest.approx(0.0)
 
     @pytest.mark.asyncio
-    async def test_spurious_claim_lowers_precision(self):
-        """No gold, one pred — precision should be 0."""
-        judge = self._make_judge([])  # no LLM calls for spurious with no gold
+    async def test_spurious_object_lowers_precision(self):
+        judge = _make_judge(
+            [
+                {
+                    "match_status": "spurious",
+                    "mvp_claim_type_correct": False,
+                    "core_type_correct": False,
+                    "domain_family_correct": False,
+                    "groundedness": 0.0,
+                    "factuality": 0.0,
+                    "capsule_completeness": 0.0,
+                    "rationale": "Hallucinated.",
+                }
+            ]
+        )
         result = await judge.score(
-            document_text="Some document.",
-            gold_claims=[],
-            pred_claims=[{"claim_text": "Made up claim", "claim_type": "other"}],
+            document_text="doc",
+            gold_objects=[],
+            pred_objects=[_obj("Made-up claim")],
         )
         assert result["precision"] == pytest.approx(0.0)
-        assert result["recall"] == pytest.approx(0.0)  # no gold
+        assert result["recall"] == pytest.approx(0.0)
 
     @pytest.mark.asyncio
     async def test_returns_per_pair_verdicts(self):
-        """score() result must include per_pair_verdicts list."""
-        judge = self._make_judge(
+        judge = _make_judge(
             [
                 {
                     "match_status": "exact",
-                    "type_correct": True,
+                    "mvp_claim_type_correct": True,
+                    "core_type_correct": True,
+                    "domain_family_correct": True,
                     "groundedness": 0.9,
                     "factuality": 0.9,
+                    "capsule_completeness": 0.8,
                     "rationale": "Good.",
                 }
             ]
         )
         result = await judge.score(
             document_text="doc",
-            gold_claims=[{"claim_text": "x", "claim_type": "other"}],
-            pred_claims=[{"claim_text": "x", "claim_type": "other"}],
+            gold_objects=[_obj("x")],
+            pred_objects=[_obj("x")],
         )
         assert "per_pair_verdicts" in result
         assert len(result["per_pair_verdicts"]) >= 1
+
+    @pytest.mark.asyncio
+    async def test_both_empty_returns_perfect(self):
+        judge = _make_judge([])
+        result = await judge.score(document_text="doc", gold_objects=[], pred_objects=[])
+        assert result["precision"] == pytest.approx(1.0)
+        assert result["recall"] == pytest.approx(1.0)
+        assert result["f1"] == pytest.approx(1.0)
 
 
 class TestStubJudges:
