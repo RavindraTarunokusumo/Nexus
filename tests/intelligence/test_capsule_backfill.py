@@ -207,14 +207,20 @@ def test_capsule_from_claim_pure_function():
     - idempotency_key matches build_capsule_idempotency_key output exactly.
     - N segments == len(source_refs).
     - Every capsule field matches the plan §6 mapping.
+    - CapsuleSegment.role reflects the evidence_roles lookup (not a hardcoded value).
+    - Falls back to "support" when a span_id has no entry in evidence_roles.
     """
     doc_id = uuid.uuid4()
     source_id = uuid.uuid4()
-    span_id = uuid.uuid4()
+    span_id_a = uuid.uuid4()
+    span_id_b = uuid.uuid4()
     dummy_embedding = [0.0] * 384
 
-    claim = _FakeClaim(doc_id=doc_id, span_ids=[span_id])
+    claim = _FakeClaim(doc_id=doc_id, span_ids=[span_id_a, span_id_b])
     v07 = claim.entities_json["_v0_7"]
+
+    # span_id_a → "support", span_id_b → "refute"; verifies both propagate correctly.
+    evidence_roles = {span_id_a: "support", span_id_b: "refute"}
 
     capsule, segments = capsule_from_claim(
         claim,
@@ -222,12 +228,13 @@ def test_capsule_from_claim_pure_function():
         domain="personal_ai_tech",
         source_telos="Track the AI landscape.",
         embedding=dummy_embedding,
+        evidence_roles=evidence_roles,
     )
 
     # idempotency_key must match the shared formula
     expected_key = build_capsule_idempotency_key(
         document_id=doc_id,
-        source_refs=[str(span_id)],
+        source_refs=[str(span_id_a), str(span_id_b)],
         domain_object_type="model_release",
         text="GPT-5 was released.",
     )
@@ -258,11 +265,26 @@ def test_capsule_from_claim_pure_function():
     assert capsule.created_by_model is None
     assert capsule.created_at == _NOW
 
-    # One segment per source_ref
-    assert len(segments) == 1
-    assert segments[0].capsule_id == capsule.id
-    assert segments[0].segment_id == span_id
-    assert segments[0].role == "grounds"
+    # Two segments — one per source_ref — roles from evidence_roles lookup
+    assert len(segments) == 2
+    seg_by_span = {s.segment_id: s for s in segments}
+    assert seg_by_span[span_id_a].capsule_id == capsule.id
+    assert seg_by_span[span_id_a].role == "support"
+    assert seg_by_span[span_id_b].capsule_id == capsule.id
+    assert seg_by_span[span_id_b].role == "refute"
+
+    # Fallback: a span not in evidence_roles should receive "support"
+    span_id_unknown = uuid.uuid4()
+    claim_single = _FakeClaim(doc_id=doc_id, span_ids=[span_id_unknown])
+    _, segs_fallback = capsule_from_claim(
+        claim_single,
+        source_id=source_id,
+        domain="personal_ai_tech",
+        source_telos=None,
+        embedding=dummy_embedding,
+        evidence_roles={},  # empty — triggers fallback
+    )
+    assert segs_fallback[0].role == "support"
 
 
 # ---------------------------------------------------------------------------

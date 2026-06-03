@@ -468,12 +468,15 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                         status="active",
                     )
                 )
+                evidence_role = (
+                    "support"  # source-of-truth for both ClaimEvidence and CapsuleSegment
+                )
                 for ev_span in projected.evidence_span_ids:
                     all_rows.append(
                         ClaimEvidence(
                             claim_id=claim_id,
                             span_id=uuid.UUID(ev_span),
-                            evidence_role="support",
+                            evidence_role=evidence_role,
                             confidence=projected.confidence,
                         )
                     )
@@ -485,7 +488,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                     domain_object_type=obj.domain_object_type,
                     text=obj.text,
                 )
-                escalation_state = "escalated" if obj.epistemic.needs_escalation else "none"
+                escalation_state = "flagged" if obj.epistemic.needs_escalation else "none"
                 embedding = embeddings[idx]
                 all_rows.append(
                     SemanticCapsule(
@@ -518,7 +521,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                         CapsuleSegment(
                             capsule_id=capsule_id,
                             segment_id=uuid.UUID(ev_span),
-                            role="grounds",
+                            role=evidence_role,
                         )
                     )
 

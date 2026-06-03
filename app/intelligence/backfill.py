@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.orm import selectinload
 
 from app.db.models import CapsuleSegment, Claim, Document, SemanticCapsule, Source
 from app.domain_packs.loader import load_pack
@@ -46,11 +47,16 @@ def capsule_from_claim(
     domain: str,
     source_telos: str | None,
     embedding: list[float],
+    evidence_roles: dict[uuid.UUID, str] | None = None,
 ) -> tuple[SemanticCapsule, list[CapsuleSegment]]:
     """Pure function: build SemanticCapsule + CapsuleSegment rows from a Claim row.
 
     Reads claim.entities_json["_v0_7"] for all semantic fields.
     The caller is responsible for verifying the _v0_7 key exists before calling.
+
+    ``evidence_roles`` maps span_id → evidence_role from the existing ClaimEvidence
+    rows for this claim; used to set CapsuleSegment.role. Falls back to "support"
+    (what Phase A always writes) when a span_id has no matching ClaimEvidence row.
 
     Field mapping mirrors store_claims in extraction.py line-for-line so both
     paths produce identical rows for identical inputs.
@@ -75,7 +81,7 @@ def capsule_from_claim(
 
     epistemic: dict = v07.get("epistemic", {})
     needs_escalation = epistemic.get("needs_escalation", False)
-    escalation_state = "escalated" if needs_escalation else "none"
+    escalation_state = "flagged" if needs_escalation else "none"
 
     # lifecycle_state mirrors Claim.status
     status_map = {"active": "active", "rejected": "rejected"}
@@ -107,14 +113,18 @@ def capsule_from_claim(
         updated_at=claim.created_at,
     )
 
-    segments = [
-        CapsuleSegment(
-            capsule_id=capsule_id,
-            segment_id=uuid.UUID(ref) if isinstance(ref, str) else ref,
-            role="grounds",
+    _roles: dict[uuid.UUID, str] = evidence_roles or {}
+    segments = []
+    for ref in source_refs:
+        span_uuid = uuid.UUID(ref) if isinstance(ref, str) else ref
+        role = _roles.get(span_uuid, "support")
+        segments.append(
+            CapsuleSegment(
+                capsule_id=capsule_id,
+                segment_id=span_uuid,
+                role=role,
+            )
         )
-        for ref in source_refs
-    ]
 
     return capsule, segments
 
@@ -141,11 +151,14 @@ async def backfill_capsules(
 
     while True:
         # Load a page of claims joined to their document for source_id.
+        # Eager-load evidence_links so capsule_from_claim can build the
+        # span_id → evidence_role lookup without additional queries.
         async with session_factory() as session:
             stmt = (
                 select(Claim, Document.source_id, Source.domain_pack)
                 .join(Document, Claim.document_id == Document.id)
                 .join(Source, Document.source_id == Source.id)
+                .options(selectinload(Claim.evidence_links))
                 .order_by(Claim.created_at)
                 .limit(batch_size)
                 .offset(offset)
@@ -226,6 +239,11 @@ async def backfill_capsules(
 
                 source_telos = telos_cache[domain_pack]
 
+                evidence_roles: dict[uuid.UUID, str] = {
+                    ev.span_id: ev.evidence_role
+                    for ev in (claim.evidence_links or [])
+                    if ev.evidence_role is not None
+                }
                 try:
                     capsule, segments = capsule_from_claim(
                         claim,
@@ -233,6 +251,7 @@ async def backfill_capsules(
                         domain=domain_pack,
                         source_telos=source_telos,
                         embedding=embedding,
+                        evidence_roles=evidence_roles,
                     )
                 except Exception as exc:
                     msg = f"claim {claim.id}: {exc}"
