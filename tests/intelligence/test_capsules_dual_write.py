@@ -29,8 +29,8 @@ from app.db.models import (
     Source,
     Span,
 )
+from app.intelligence.capsules import build_capsule_idempotency_key
 from app.intelligence.extraction import make_extraction_graph
-from app.intelligence.projection import build_capsule_idempotency_key
 
 # ---------------------------------------------------------------------------
 # Fake LLM client (no HTTP calls)

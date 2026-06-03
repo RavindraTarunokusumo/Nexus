@@ -91,23 +91,20 @@ class SemanticObjectJudge:
         if n_gold == 0 and n_pred == 0:
             precision = recall = f1 = 1.0
 
-        def _avg(xs: list[float]) -> float:
-            return sum(xs) / len(xs) if xs else 0.0
-
-        def _frac(xs: list[bool]) -> float:
+        def _mean(xs: list[float] | list[bool]) -> float:
             return sum(xs) / len(xs) if xs else 0.0
 
         return {
             "precision": round(precision, 4),
             "recall": round(recall, 4),
             "f1": round(f1, 4),
-            "mvp_claim_type_projection_accuracy": round(_frac(mvp_correct), 4),
-            "core_type_accuracy": round(_frac(core_correct), 4),
-            "domain_family_accuracy": round(_frac(family_correct), 4),
-            "mean_groundedness": round(_avg(groundedness_scores), 4),
-            "mean_factuality": round(_avg(factuality_scores), 4),
-            "mean_capsule_completeness": round(_avg(completeness_scores), 4),
-            "salience_precision": round(_avg(matched_pred_salience), 4),
+            "mvp_claim_type_projection_accuracy": round(_mean(mvp_correct), 4),
+            "core_type_accuracy": round(_mean(core_correct), 4),
+            "domain_family_accuracy": round(_mean(family_correct), 4),
+            "mean_groundedness": round(_mean(groundedness_scores), 4),
+            "mean_factuality": round(_mean(factuality_scores), 4),
+            "mean_capsule_completeness": round(_mean(completeness_scores), 4),
+            "salience_precision": round(_mean(matched_pred_salience), 4),
             "per_pair_verdicts": per_pair,
             "total_judge_tokens": total_judge_tokens,
         }

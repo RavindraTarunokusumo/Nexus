@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ---------------------------------------------------------------------------
 # Pydantic v2 models — v3 minimal MVP subset
@@ -41,6 +42,24 @@ class SourceTypeProfile(BaseModel):
     telos_override: dict[str, Any] | None = None
     url_domains: list[str] = Field(default_factory=list)
     title_regex: list[str] = Field(default_factory=list)
+    # Derived: compiled forms of title_regex. Built once on pack load so the
+    # classifier never recompiles per document. Patterns are IGNORECASE by
+    # default; embed "(?-i)" at the start to opt out and assert literal case.
+    title_regex_compiled: list[re.Pattern] = Field(default_factory=list, exclude=True)
+
+    @model_validator(mode="after")
+    def _compile_title_regex(self) -> "SourceTypeProfile":
+        compiled: list[re.Pattern] = []
+        for pattern in self.title_regex:
+            # "(?-i)" at the start opts out of IGNORECASE (legacy syntax;
+            # Python's re doesn't accept a bare scope-less "(?-i)" so we
+            # strip the prefix and compile without IGNORECASE).
+            if pattern.startswith("(?-i)"):
+                compiled.append(re.compile(pattern[5:]))
+            else:
+                compiled.append(re.compile(pattern, re.IGNORECASE))
+        object.__setattr__(self, "title_regex_compiled", compiled)
+        return self
 
 
 class SemanticObjectFamily(BaseModel):

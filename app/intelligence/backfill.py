@@ -5,7 +5,7 @@ stash Phase A's projection left behind) and constructs SemanticCapsule +
 CapsuleSegment rows for every Phase-A-produced claim.
 
 Idempotency contract:
-  - Uses the shared build_capsule_idempotency_key from projection.py.
+  - Uses the shared build_capsule_idempotency_key from capsules.py.
   - Checks for existence BEFORE attempting INSERT to avoid IntegrityError noise.
   - Re-runs produce zero new writes when all capsules already exist.
 
@@ -25,8 +25,12 @@ from sqlalchemy.orm import selectinload
 
 from app.db.models import CapsuleSegment, Claim, Document, SemanticCapsule, Source
 from app.domain_packs.loader import load_pack
-from app.intelligence.extraction import _get_embedder
-from app.intelligence.projection import build_capsule_idempotency_key
+from app.intelligence.capsules import (
+    build_capsule_idempotency_key,
+    build_capsule_row,
+    get_embedder,
+)
+from app.intelligence.llm_client import SemanticObject
 
 logger = logging.getLogger(__name__)
 
@@ -49,122 +53,62 @@ def capsule_from_claim(
     embedding: list[float],
     evidence_roles: dict[uuid.UUID, str],
 ) -> tuple[SemanticCapsule, list[CapsuleSegment]]:
-    """Pure function: build SemanticCapsule + CapsuleSegment rows from a Claim row.
+    """Build SemanticCapsule + CapsuleSegment rows from a Phase-A Claim row.
 
-    Reads claim.entities_json["_v0_7"] for all semantic fields.
-    The caller is responsible for verifying the _v0_7 key exists before calling.
+    Reconstructs the live ``SemanticObject`` from ``claim.entities_json["_v0_7"]``
+    and delegates to ``build_capsule_row`` so the column mapping is shared with
+    the live extraction path (``store_claims``).  The caller is responsible for
+    verifying the ``_v0_7`` key exists before calling.
 
     ``evidence_roles`` maps span_id → evidence_role from the existing ClaimEvidence
-    rows for this claim; used to set CapsuleSegment.role. Falls back to "support"
-    (what Phase A always writes) when a span_id has no matching ClaimEvidence row.
-    Pass ``{}`` when no evidence-role data is available.
-
-    Field mapping mirrors store_claims in extraction.py line-for-line so both
-    paths produce identical rows for identical inputs.
+    rows for this claim; falls back to "support" when missing.
     """
     ej: dict = claim.entities_json  # type: ignore[assignment]  # caller guarantees non-None
     v07: dict = ej["_v0_7"]
 
-    text_value: str = v07["text"]
-    core_type: str = v07["core_type"]
-    domain_object_type: str = v07["domain_object_type"]
-    source_refs: list[str] = v07.get("source_refs", [])
+    # Backfill tolerates older / partial payloads — fill in defaults that the
+    # live extraction path always supplies, then reconstruct the SemanticObject.
+    payload = dict(v07)
+    payload.setdefault("domain_family", ej.get("_domain_family", ""))
+    payload.setdefault("function", ej.get("_function") or "")
+    payload.setdefault("facets", {})
+    payload.setdefault("salience", 0.5)
+    epistemic = dict(payload.get("epistemic") or {})
+    epistemic.setdefault("confidence", claim.confidence or 0.5)
+    epistemic.setdefault("status", "asserted_by_source")
+    payload["epistemic"] = epistemic
+
+    obj = SemanticObject.model_validate(payload)
 
     idempotency_key = build_capsule_idempotency_key(
         document_id=claim.document_id,
-        source_refs=source_refs,
-        domain_object_type=domain_object_type,
-        text=text_value,
+        source_refs=obj.source_refs,
+        domain_object_type=obj.domain_object_type,
+        text=obj.text,
     )
-
     # Deterministic capsule UUID so re-runs produce the same PK.
     capsule_id = uuid.uuid5(uuid.NAMESPACE_OID, idempotency_key)
-
-    epistemic: dict = v07.get("epistemic", {})
-    needs_escalation = epistemic.get("needs_escalation", False)
-    escalation_state = "flagged" if needs_escalation else "none"
 
     # lifecycle_state mirrors Claim.status
     status_map = {"active": "active", "rejected": "rejected"}
     lifecycle_state = status_map.get(claim.status or "active", "active")
 
-    capsule = SemanticCapsule(
-        id=capsule_id,
+    return build_capsule_row(
+        capsule_id=capsule_id,
         source_id=source_id,
         document_id=claim.document_id,
         claim_id=claim.id,
-        idempotency_key=idempotency_key,
-        core_type=core_type,
-        text=text_value,
+        obj=obj,
         domain=domain,
         source_telos=source_telos,
-        object_family=v07.get("domain_family") or ej.get("_domain_family", ""),
-        domain_object_type=domain_object_type,
-        function=v07.get("function") or ej.get("_function"),
-        facets=v07.get("facets", {}),
-        epistemic_state=epistemic,
-        salience=v07.get("salience", 0.5),
-        confidence=epistemic.get("confidence", claim.confidence or 0.5),
-        lifecycle_state=lifecycle_state,
-        escalation_state=escalation_state,
         embedding=embedding,
         created_by_tier="backfill",
         created_by_model=None,
+        lifecycle_state=lifecycle_state,
+        evidence_roles=evidence_roles,
         created_at=claim.created_at,
         updated_at=claim.created_at,
     )
-
-    segments = []
-    for ref in source_refs:
-        span_uuid = uuid.UUID(ref) if isinstance(ref, str) else ref
-        role = evidence_roles.get(span_uuid, "support")
-        segments.append(
-            CapsuleSegment(
-                capsule_id=capsule_id,
-                segment_id=span_uuid,
-                role=role,
-            )
-        )
-
-    return capsule, segments
-
-
-def _build_candidate_keys(
-    to_process: list[tuple[Claim, uuid.UUID, str]],
-) -> list[str]:
-    """Compute idempotency keys for every claim in the batch."""
-    keys: list[str] = []
-    for claim, _source_id, _domain_pack in to_process:
-        ej_checked: dict = claim.entities_json  # type: ignore[assignment]  # guarded above
-        v07 = ej_checked["_v0_7"]
-        keys.append(
-            build_capsule_idempotency_key(
-                document_id=claim.document_id,
-                source_refs=v07.get("source_refs", []),
-                domain_object_type=v07.get("domain_object_type", ""),
-                text=v07.get("text", ""),
-            )
-        )
-    return keys
-
-
-def _filter_new(
-    to_process: list[tuple[Claim, uuid.UUID, str]],
-    candidate_keys: list[str],
-    existing_keys: set[str],
-    result: BackfillResult,
-) -> tuple[list[tuple[Claim, uuid.UUID, str]], list[str]]:
-    """Drop claims whose idempotency key already exists; return lists of new items and texts."""
-    new_claims_info: list[tuple[Claim, uuid.UUID, str]] = []
-    new_texts: list[str] = []
-    for (claim, source_id, domain_pack), key in zip(to_process, candidate_keys, strict=False):
-        if key in existing_keys:
-            result.claims_skipped_already_backfilled += 1
-            continue
-        new_claims_info.append((claim, source_id, domain_pack))
-        ej_inner: dict = claim.entities_json  # type: ignore[assignment]  # guarded
-        new_texts.append(ej_inner["_v0_7"].get("text", ""))
-    return new_claims_info, new_texts
 
 
 async def _write_batch(
@@ -245,7 +189,7 @@ async def backfill_capsules(
         BackfillResult with counts of what was (or would be) written.
     """
     result = BackfillResult()
-    embedder = _get_embedder()
+    embedder = get_embedder()
     offset = 0
 
     while True:
@@ -282,8 +226,20 @@ async def backfill_capsules(
         if not to_process:
             continue
 
-        # Batch-check which idempotency keys already exist.
-        candidate_keys = _build_candidate_keys(to_process)
+        # Batch-check which idempotency keys already exist. Stash the _v0_7
+        # payload alongside the key so we don't re-index entities_json in the
+        # filter loop (and so mypy sees a concrete dict, not dict | None).
+        candidate: list[tuple[Claim, uuid.UUID, str, dict, str]] = []
+        for claim, source_id, domain_pack in to_process:
+            v07: dict = claim.entities_json["_v0_7"]  # type: ignore[index]  # _v0_7 guarded above
+            key = build_capsule_idempotency_key(
+                document_id=claim.document_id,
+                source_refs=v07.get("source_refs", []),
+                domain_object_type=v07.get("domain_object_type", ""),
+                text=v07.get("text", ""),
+            )
+            candidate.append((claim, source_id, domain_pack, v07, key))
+        candidate_keys = [c[4] for c in candidate]
 
         async with session_factory() as session:
             existing_stmt = select(SemanticCapsule.idempotency_key).where(
@@ -291,7 +247,14 @@ async def backfill_capsules(
             )
             existing_keys: set[str] = set((await session.execute(existing_stmt)).scalars().all())
 
-        new_claims_info, new_texts = _filter_new(to_process, candidate_keys, existing_keys, result)
+        new_claims_info: list[tuple[Claim, uuid.UUID, str]] = []
+        new_texts: list[str] = []
+        for claim, source_id, domain_pack, v07, key in candidate:
+            if key in existing_keys:
+                result.claims_skipped_already_backfilled += 1
+                continue
+            new_claims_info.append((claim, source_id, domain_pack))
+            new_texts.append(v07.get("text", ""))
 
         if not new_claims_info:
             continue

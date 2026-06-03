@@ -34,7 +34,7 @@ from app.db.models import (
     Span,
 )
 from app.intelligence.backfill import backfill_capsules, capsule_from_claim
-from app.intelligence.projection import build_capsule_idempotency_key
+from app.intelligence.capsules import build_capsule_idempotency_key
 
 # ---------------------------------------------------------------------------
 # Helpers — build minimal Claim / v0_7 payload dicts

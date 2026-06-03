@@ -8,10 +8,10 @@ import uuid
 import pytest
 
 from app.domain_packs.loader import load_pack
+from app.intelligence.capsules import build_capsule_idempotency_key
 from app.intelligence.llm_client import EpistemicState, SemanticObject
 from app.intelligence.projection import (
     ProjectedClaim,
-    build_capsule_idempotency_key,
     enforce_budgets,
     project,
     validate_object,

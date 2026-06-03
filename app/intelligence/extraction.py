@@ -13,10 +13,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import uuid
 from typing import Any, TypedDict
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit
 
 from langgraph.graph import END, StateGraph
 from pydantic import ValidationError
@@ -24,16 +23,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.db.models import (
-    CapsuleSegment,
     Claim,
     ClaimEvidence,
     Document,
-    SemanticCapsule,
     Source,
     Span,
 )
 from app.domain_packs.loader import DomainPack, load_pack
-from app.intelligence.embedder import Embedder
+from app.intelligence.capsules import build_capsule_row, get_embedder
 from app.intelligence.llm_client import (
     LLMError,
     LLMNetworkError,
@@ -43,7 +40,6 @@ from app.intelligence.llm_client import (
 )
 from app.intelligence.projection import (
     ProjectedClaim,
-    build_capsule_idempotency_key,
     enforce_budgets,
     project,
     validate_object,
@@ -67,24 +63,9 @@ logger = logging.getLogger(__name__)
 
 _MAX_RETRIES = 2
 
-# Module-level embedder singleton.  Lazy-init on first use so test environments
-# that never call store_claims don't pay the model-load cost.  The same
-# Embedder class is used by the FastAPI lifespan (app.state.embedder), but
-# extraction runs as a background graph with no request context to pull from,
-# so we maintain a separate process-level instance here rather than threading
-# the app through the graph.
-_embedder: Embedder | None = None
 
-
-def _get_embedder() -> Embedder:
-    global _embedder
-    if _embedder is None:
-        _embedder = Embedder()
-    return _embedder
-
-
-def _url_matches_domain(url: str, hint: str) -> bool:
-    """Return True if *url* matches *hint* without allowing suffix spoofing.
+def _url_matches_domain(parsed: SplitResult | None, hint: str) -> bool:
+    """Return True if the pre-parsed URL matches *hint* without suffix spoofing.
 
     hint may be:
     - a bare hostname          e.g. "arxiv.org"
@@ -94,13 +75,17 @@ def _url_matches_domain(url: str, hint: str) -> bool:
     - hostname must equal host_hint or end with "." + host_hint
       (so "notarxiv.org" does NOT match "arxiv.org").
     - when hint includes a path, the URL path must start with "/" + path_hint.
+
+    Callers pre-parse with ``urlsplit`` once per document and pass the result
+    in; pass ``None`` when there is no URL to match.
     """
+    if parsed is None:
+        return False
     if "/" in hint:
         host_hint, path_hint = hint.split("/", 1)
     else:
         host_hint, path_hint = hint, None
 
-    parsed = urlsplit(url if "://" in url else "https://" + url)
     hostname = (parsed.hostname or "").lower()
     host_hint = host_hint.lower()
 
@@ -172,28 +157,25 @@ def _resolve_pack_and_source_type(source: Source, document: Document) -> tuple[D
     """
     pack = load_pack(source.domain_pack)
 
-    url = document.url or source.url if hasattr(source, "url") else document.url
-    title = document.title or source.name if hasattr(source, "name") else document.title
+    url = (document.url or source.url) or ""
+    title = (document.title or source.name) or ""
 
-    # Pass 1 — URL-domain matching
+    # Pass 1 — URL-domain matching (parse URL once, not per profile)
+    parsed_url: SplitResult | None = None
     if url:
+        parsed_url = urlsplit(url if "://" in url else "https://" + url)
         for profile_name, profile in pack.source_type_profiles.items():
             for domain_hint in profile.url_domains:
-                if _url_matches_domain(url, domain_hint):
+                if _url_matches_domain(parsed_url, domain_hint):
                     return pack, profile_name
 
-    # Pass 2 — title regex matching
-    # Patterns prefixed with "(?-i)" opt out of IGNORECASE so they can
-    # assert literal case (e.g. requiring a proper-noun capital letter).
+    # Pass 2 — title regex matching against pre-compiled patterns.
+    # Patterns prefixed with "(?-i)" opt out of IGNORECASE (handled at
+    # compile time in SourceTypeProfile).
     if title:
         for profile_name, profile in pack.source_type_profiles.items():
-            for pattern in profile.title_regex:
-                if pattern.startswith("(?-i)"):
-                    flags = 0
-                    pattern = pattern[5:]
-                else:
-                    flags = re.IGNORECASE
-                if re.search(pattern, title, flags):
+            for pattern in profile.title_regex_compiled:
+                if pattern.search(title):
                     return pack, profile_name
 
     # Pass 3 — pack default
@@ -485,7 +467,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
             return {"stored_claim_ids": []}
 
         # Embed all capsule texts in one batch call to avoid repeated model init overhead.
-        embedder = _get_embedder()
+        embedder = get_embedder()
         texts = [obj.text for obj in semantic_objects]
         embeddings: list[list[float]] = embedder.embed(texts) if texts else []
 
@@ -504,11 +486,6 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
             all_rows: list[Any] = []
             stored_ids: list[uuid.UUID] = []
 
-            if len(projected_claims) != len(semantic_objects):
-                raise ValueError(
-                    f"projected_claims ({len(projected_claims)}) and semantic_objects "
-                    f"({len(semantic_objects)}) must be the same length"
-                )
             for idx, (projected, obj) in enumerate(
                 zip(projected_claims, semantic_objects, strict=True)
             ):
@@ -528,62 +505,31 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                         status="active",
                     )
                 )
-                evidence_role = (
-                    "support"  # source-of-truth for both ClaimEvidence and CapsuleSegment
-                )
                 for ev_span in projected.evidence_span_ids:
                     all_rows.append(
                         ClaimEvidence(
                             claim_id=claim_id,
                             span_id=uuid.UUID(ev_span),
-                            evidence_role=evidence_role,
+                            evidence_role="support",
                             confidence=projected.confidence,
                         )
                     )
 
-                # --- SemanticCapsule ---
-                idempotency_key = build_capsule_idempotency_key(
+                # --- SemanticCapsule + CapsuleSegment (shared assembly) ---
+                capsule, segments = build_capsule_row(
+                    capsule_id=capsule_id,
+                    source_id=source_id,
                     document_id=document_id,
-                    source_refs=obj.source_refs,
-                    domain_object_type=obj.domain_object_type,
-                    text=obj.text,
+                    claim_id=claim_id,
+                    obj=obj,
+                    domain=domain,
+                    source_telos=source_telos,
+                    embedding=embeddings[idx],
+                    created_by_tier="t2",
+                    created_by_model=model_name,
                 )
-                escalation_state = "flagged" if obj.epistemic.needs_escalation else "none"
-                embedding = embeddings[idx]
-                all_rows.append(
-                    SemanticCapsule(
-                        id=capsule_id,
-                        source_id=source_id,
-                        document_id=document_id,
-                        claim_id=claim_id,
-                        idempotency_key=idempotency_key,
-                        core_type=obj.core_type,
-                        text=obj.text,
-                        domain=domain,
-                        source_telos=source_telos,
-                        object_family=obj.domain_family,
-                        domain_object_type=obj.domain_object_type,
-                        function=obj.function,
-                        facets=obj.facets,
-                        epistemic_state=obj.epistemic.model_dump(mode="json"),
-                        salience=obj.salience,
-                        confidence=obj.epistemic.confidence,
-                        lifecycle_state="active",
-                        escalation_state=escalation_state,
-                        embedding=embedding,
-                        created_by_tier="t2",
-                        created_by_model=model_name,
-                    )
-                )
-                # --- CapsuleSegment rows (one per evidence span) ---
-                for ev_span in projected.evidence_span_ids:
-                    all_rows.append(
-                        CapsuleSegment(
-                            capsule_id=capsule_id,
-                            segment_id=uuid.UUID(ev_span),
-                            role=evidence_role,
-                        )
-                    )
+                all_rows.append(capsule)
+                all_rows.extend(segments)
 
                 stored_ids.append(claim_id)
 
