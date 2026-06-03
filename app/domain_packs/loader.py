@@ -39,6 +39,8 @@ class SourceTypeProfile(BaseModel):
     expected_semantic_families: list[str] = Field(default_factory=list)
     default_processing_mode: Literal["cheap", "balanced", "deep"] = "balanced"
     telos_override: dict[str, Any] | None = None
+    url_domains: list[str] = Field(default_factory=list)
+    title_regex: list[str] = Field(default_factory=list)
 
 
 class SemanticObjectFamily(BaseModel):

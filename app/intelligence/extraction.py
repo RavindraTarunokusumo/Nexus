@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 from typing import Any, TypedDict
 
@@ -125,23 +126,45 @@ class ExtractionState(TypedDict):
     error: str | None
 
 
-def _resolve_pack_and_source_type(source: Source) -> tuple[DomainPack, str]:
-    """Resolve the domain pack and v3 source-type profile name from a Source row.
+def _resolve_pack_and_source_type(source: Source, document: Document) -> tuple[DomainPack, str]:
+    """Resolve the domain pack and v3 source-type profile name for a document.
 
-    Source.source_type currently is one of {rss, manual, api} which is the
-    ingestion mode, NOT a v0.7 source-type profile. Until ingestion learns
-    to detect the v3 profile per item, fall back to 'ai_news_article' as the
-    most common AI domain source profile.
+    Resolution order:
+    1. Match document URL (or source URL if document URL is null) against each
+       profile's ``url_domains`` entries.  First matching profile wins.
+    2. Else match document title (or source name) against each profile's
+       ``title_regex`` entries (case-insensitive).  First matching profile wins.
+    3. Else fall back to ``pack.metadata.supported_source_types[0]``.
+    4. Else (empty list) fall back to ``"ai_news_article"`` (safety net).
+
+    Profiles are iterated in pack declaration order; first match wins on both
+    URL-domain and title-regex passes.
     """
     pack = load_pack(source.domain_pack)
-    # MVP: pack-aware profile detection is deferred; default to the pack's first
-    # declared source-type until ingestion learns to detect the v3 profile per item.
-    # Empty-list defense: fall back to a known-good profile rather than IndexError.
+
+    url = document.url or source.url if hasattr(source, "url") else document.url
+    title = document.title or source.name if hasattr(source, "name") else document.title
+
+    # Pass 1 — URL-domain matching
+    if url:
+        for profile_name, profile in pack.source_type_profiles.items():
+            for domain_hint in profile.url_domains:
+                if domain_hint in url:
+                    return pack, profile_name
+
+    # Pass 2 — title regex matching
+    if title:
+        for profile_name, profile in pack.source_type_profiles.items():
+            for pattern in profile.title_regex:
+                if re.search(pattern, title, re.IGNORECASE):
+                    return pack, profile_name
+
+    # Pass 3 — pack default
     if pack.metadata.supported_source_types:
-        v3_source_type = pack.metadata.supported_source_types[0]
-    else:
-        v3_source_type = "ai_news_article"
-    return pack, v3_source_type
+        return pack, pack.metadata.supported_source_types[0]
+
+    # Pass 4 — absolute safety net
+    return pack, "ai_news_article"
 
 
 async def _extract_one_span(
@@ -276,7 +299,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                 return _load_spans_failure(f"Source for document {state['document_id']} not found")
 
             try:
-                pack, v3_source_type = _resolve_pack_and_source_type(source)
+                pack, v3_source_type = _resolve_pack_and_source_type(source, doc)
             except (FileNotFoundError, ValidationError) as exc:
                 return _load_spans_failure(
                     f"Failed to load domain pack '{source.domain_pack}': {exc}"
