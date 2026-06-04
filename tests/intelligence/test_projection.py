@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
+import uuid
+
 import pytest
 
 from app.domain_packs.loader import load_pack
+from app.intelligence.capsules import build_capsule_idempotency_key
 from app.intelligence.llm_client import EpistemicState, SemanticObject
 from app.intelligence.projection import (
     ProjectedClaim,
@@ -273,3 +277,53 @@ def test_budget_per_segment_cap():
     all_sal = sorted([o.salience for o in objs], reverse=True)
     result_sal = sorted([o.salience for o in result], reverse=True)
     assert result_sal == all_sal[:5]
+
+
+# ---------------------------------------------------------------------------
+# 9. build_capsule_idempotency_key
+# ---------------------------------------------------------------------------
+
+
+def test_build_capsule_idempotency_key_is_deterministic():
+    """build_capsule_idempotency_key produces stable, correctly-shaped keys."""
+    doc_id = uuid.UUID("12345678-1234-5678-1234-567812345678")
+    source_refs = ["aaa", "bbb"]
+    dot = "model_release"
+    text = "GPT-5 was released."
+
+    # Same inputs always produce the same key
+    key1 = build_capsule_idempotency_key(
+        document_id=doc_id, source_refs=source_refs, domain_object_type=dot, text=text
+    )
+    key2 = build_capsule_idempotency_key(
+        document_id=doc_id, source_refs=source_refs, domain_object_type=dot, text=text
+    )
+    assert key1 == key2
+    assert isinstance(key1, str)
+    assert len(key1) > 0
+
+    # Different text → different key
+    key_diff_text = build_capsule_idempotency_key(
+        document_id=doc_id, source_refs=source_refs, domain_object_type=dot, text="Different text."
+    )
+    assert key1 != key_diff_text
+
+    # source_refs order must NOT matter (sorted internally)
+    key_reversed = build_capsule_idempotency_key(
+        document_id=doc_id, source_refs=["bbb", "aaa"], domain_object_type=dot, text=text
+    )
+    assert key1 == key_reversed
+
+    # Different domain_object_type → different key
+    key_diff_type = build_capsule_idempotency_key(
+        document_id=doc_id,
+        source_refs=source_refs,
+        domain_object_type="benchmark_result",
+        text=text,
+    )
+    assert key1 != key_diff_type
+
+    # Output matches expected {doc_id}:{refs}:{type}:{hex} shape
+    expected_digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+    expected = f"{doc_id}:aaa,bbb:{dot}:{expected_digest}"
+    assert key1 == expected

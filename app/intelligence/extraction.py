@@ -1,6 +1,13 @@
 """LangGraph extraction graph: per-span semantic-object extraction (v0.7),
 validate-and-project against the source's domain pack, and write the
-projected claims into the legacy claims/claim_evidence tables."""
+projected claims into the legacy claims/claim_evidence tables.
+
+B2 dual-write: store_claims also writes SemanticCapsule + CapsuleSegment rows
+in the same transaction as Claim + ClaimEvidence. validate_and_project threads
+live SemanticObject instances alongside ProjectedClaims via the new
+`semantic_objects` state field so store_claims has both without extending
+ProjectedClaim (option b — keeps projection layer clean).
+"""
 
 from __future__ import annotations
 
@@ -8,14 +15,22 @@ import asyncio
 import logging
 import uuid
 from typing import Any, TypedDict
+from urllib.parse import SplitResult, urlsplit
 
 from langgraph.graph import END, StateGraph
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.db.models import Claim, ClaimEvidence, Document, Source, Span
+from app.db.models import (
+    Claim,
+    ClaimEvidence,
+    Document,
+    Source,
+    Span,
+)
 from app.domain_packs.loader import DomainPack, load_pack
+from app.intelligence.capsules import build_capsule_row, get_embedder
 from app.intelligence.llm_client import (
     LLMError,
     LLMNetworkError,
@@ -49,9 +64,48 @@ logger = logging.getLogger(__name__)
 _MAX_RETRIES = 2
 
 
+def _url_matches_domain(parsed: SplitResult | None, hint: str) -> bool:
+    """Return True if the pre-parsed URL matches *hint* without suffix spoofing.
+
+    hint may be:
+    - a bare hostname          e.g. "arxiv.org"
+    - hostname + path prefix   e.g. "openai.com/blog"
+
+    Matching rules:
+    - hostname must equal host_hint or end with "." + host_hint
+      (so "notarxiv.org" does NOT match "arxiv.org").
+    - when hint includes a path, the URL path must start with "/" + path_hint.
+
+    Callers pre-parse with ``urlsplit`` once per document and pass the result
+    in; pass ``None`` when there is no URL to match.
+    """
+    if parsed is None:
+        return False
+    if "/" in hint:
+        host_hint, path_hint = hint.split("/", 1)
+    else:
+        host_hint, path_hint = hint, None
+
+    hostname = (parsed.hostname or "").lower()
+    host_hint = host_hint.lower()
+
+    host_ok = hostname == host_hint or hostname.endswith("." + host_hint)
+    if not host_ok:
+        return False
+    if path_hint is not None:
+        return parsed.path.startswith("/" + path_hint)
+    return True
+
+
 def _load_spans_failure(error_msg: str) -> dict:
     """Return a uniform failure dict for the load_spans node early-exit paths."""
-    return {"error": error_msg, "run_id": None, "pack": None, "source_type": None}
+    return {
+        "error": error_msg,
+        "run_id": None,
+        "pack": None,
+        "source_type": None,
+        "source_id": None,
+    }
 
 
 # Document status lifecycle constants (extends the ingestion statuses with the
@@ -75,31 +129,61 @@ class ExtractionState(TypedDict):
     model: str
     pack: DomainPack | None  # set in load_spans
     source_type: str | None  # set in load_spans
+    source_id: uuid.UUID | None  # set in load_spans; needed by store_claims for capsule.source_id
     spans: list[dict]
     results: list[dict]  # {span_id, objects, tokens, error} — status/error per span
     projected_claims: list[ProjectedClaim]
+    # B2: live SemanticObject instances parallel to projected_claims (same index mapping).
+    # Allows store_claims to build SemanticCapsule rows without extending ProjectedClaim.
+    semantic_objects: list[SemanticObject]
     stored_claim_ids: list[uuid.UUID]
     total_tokens: int
     error: str | None
 
 
-def _resolve_pack_and_source_type(source: Source) -> tuple[DomainPack, str]:
-    """Resolve the domain pack and v3 source-type profile name from a Source row.
+def _resolve_pack_and_source_type(source: Source, document: Document) -> tuple[DomainPack, str]:
+    """Resolve the domain pack and v3 source-type profile name for a document.
 
-    Source.source_type currently is one of {rss, manual, api} which is the
-    ingestion mode, NOT a v0.7 source-type profile. Until ingestion learns
-    to detect the v3 profile per item, fall back to 'ai_news_article' as the
-    most common AI domain source profile.
+    Resolution order:
+    1. Match document URL (or source URL if document URL is null) against each
+       profile's ``url_domains`` entries.  First matching profile wins.
+    2. Else match document title (or source name) against each profile's
+       ``title_regex`` entries (case-insensitive).  First matching profile wins.
+    3. Else fall back to ``pack.metadata.supported_source_types[0]``.
+    4. Else (empty list) fall back to ``"ai_news_article"`` (safety net).
+
+    Profiles are iterated in pack declaration order; first match wins on both
+    URL-domain and title-regex passes.
     """
     pack = load_pack(source.domain_pack)
-    # MVP: pack-aware profile detection is deferred; default to the pack's first
-    # declared source-type until ingestion learns to detect the v3 profile per item.
-    # Empty-list defense: fall back to a known-good profile rather than IndexError.
+
+    url = (document.url or source.url) or ""
+    title = (document.title or source.name) or ""
+
+    # Pass 1 — URL-domain matching (parse URL once, not per profile)
+    parsed_url: SplitResult | None = None
+    if url:
+        parsed_url = urlsplit(url if "://" in url else "https://" + url)
+        for profile_name, profile in pack.source_type_profiles.items():
+            for domain_hint in profile.url_domains:
+                if _url_matches_domain(parsed_url, domain_hint):
+                    return pack, profile_name
+
+    # Pass 2 — title regex matching against pre-compiled patterns.
+    # Patterns prefixed with "(?-i)" opt out of IGNORECASE (handled at
+    # compile time in SourceTypeProfile).
+    if title:
+        for profile_name, profile in pack.source_type_profiles.items():
+            for pattern in profile.title_regex_compiled:
+                if pattern.search(title):
+                    return pack, profile_name
+
+    # Pass 3 — pack default
     if pack.metadata.supported_source_types:
-        v3_source_type = pack.metadata.supported_source_types[0]
-    else:
-        v3_source_type = "ai_news_article"
-    return pack, v3_source_type
+        return pack, pack.metadata.supported_source_types[0]
+
+    # Pass 4 — absolute safety net
+    return pack, "ai_news_article"
 
 
 async def _extract_one_span(
@@ -234,7 +318,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                 return _load_spans_failure(f"Source for document {state['document_id']} not found")
 
             try:
-                pack, v3_source_type = _resolve_pack_and_source_type(source)
+                pack, v3_source_type = _resolve_pack_and_source_type(source, doc)
             except (FileNotFoundError, ValidationError) as exc:
                 return _load_spans_failure(
                     f"Failed to load domain pack '{source.domain_pack}': {exc}"
@@ -264,7 +348,12 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         await mark_document_timestamp(
             session_factory, state["document_id"], "extraction_started_at"
         )
-        return {"spans": spans, "pack": pack, "source_type": v3_source_type}
+        return {
+            "spans": spans,
+            "pack": pack,
+            "source_type": v3_source_type,
+            "source_id": doc.source_id,
+        }
 
     async def extract_spans(state: ExtractionState) -> dict:
         if state.get("error"):
@@ -344,27 +433,70 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         # Apply source-level budgets
         budgeted_objects = enforce_budgets(accepted_objects, pack, source_type)
 
-        # Project to ProjectedClaim form; span ids are inside ProjectedClaim.evidence_span_ids
+        # Project to ProjectedClaim form; span ids are inside ProjectedClaim.evidence_span_ids.
+        # B2: keep the live SemanticObject parallel to each ProjectedClaim so store_claims
+        # can build SemanticCapsule rows without re-parsing the _v0_7 stash.
         projected: list[ProjectedClaim] = []
+        semantic_objects: list[SemanticObject] = []
         for obj in budgeted_objects:
             projected.append(project(obj))
+            semantic_objects.append(obj)
 
-        return {"projected_claims": projected}
+        return {"projected_claims": projected, "semantic_objects": semantic_objects}
 
     async def store_claims(state: ExtractionState) -> dict:
+        """Write Claim + ClaimEvidence + SemanticCapsule + CapsuleSegment in one transaction.
+
+        B2 dual-write: every accepted SemanticObject lands as both a legacy Claim row
+        and a SemanticCapsule row.  All four ORM types are added in a single session
+        and committed atomically.  If the commit fails, both Claims and Capsules roll
+        back — there is no partial state.
+
+        Re-extraction safety: if a capsule with the same idempotency_key already exists
+        (e.g. ?force=true re-extraction) the INSERT raises IntegrityError and the entire
+        transaction is rolled back.  Idempotent upsert is B3's responsibility; B2 lets
+        the failure propagate.
+        """
         if state.get("error"):
             return {}
+
+        projected_claims: list[ProjectedClaim] = state.get("projected_claims", [])
+        semantic_objects: list[SemanticObject] = state.get("semantic_objects", [])
+
+        if not projected_claims:
+            return {"stored_claim_ids": []}
+
+        # Embed all capsule texts in one batch call to avoid repeated model init overhead.
+        embedder = get_embedder()
+        texts = [obj.text for obj in semantic_objects]
+        embeddings: list[list[float]] = embedder.embed(texts) if texts else []
+
+        # Resolve pack telos snapshot once for the whole batch.
+        pack: DomainPack | None = state.get("pack")
+        source_telos: str | None = None
+        if pack is not None and pack.telos.primary_purposes:
+            source_telos = pack.telos.primary_purposes[0]
+
+        domain: str = pack.metadata.pack_id if pack is not None else ""
+        document_id: uuid.UUID = state["document_id"]
+        source_id: uuid.UUID | None = state.get("source_id")
+        model_name: str | None = state.get("model")
+
         async with session_factory() as session:
-            claims_to_add: list[Claim] = []
-            evidence_to_add: list[ClaimEvidence] = []
+            all_rows: list[Any] = []
             stored_ids: list[uuid.UUID] = []
 
-            for projected in state.get("projected_claims", []):
+            for idx, (projected, obj) in enumerate(
+                zip(projected_claims, semantic_objects, strict=True)
+            ):
                 claim_id = uuid.uuid4()
-                claims_to_add.append(
+                capsule_id = uuid.uuid4()
+
+                # --- legacy Claim + ClaimEvidence ---
+                all_rows.append(
                     Claim(
                         id=claim_id,
-                        document_id=state["document_id"],
+                        document_id=document_id,
                         claim_text=projected.claim_text,
                         claim_type=projected.claim_type,
                         entities_json=projected.entities_json,
@@ -374,7 +506,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                     )
                 )
                 for ev_span in projected.evidence_span_ids:
-                    evidence_to_add.append(
+                    all_rows.append(
                         ClaimEvidence(
                             claim_id=claim_id,
                             span_id=uuid.UUID(ev_span),
@@ -382,12 +514,28 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                             confidence=projected.confidence,
                         )
                     )
+
+                # --- SemanticCapsule + CapsuleSegment (shared assembly) ---
+                capsule, segments = build_capsule_row(
+                    capsule_id=capsule_id,
+                    source_id=source_id,
+                    document_id=document_id,
+                    claim_id=claim_id,
+                    obj=obj,
+                    domain=domain,
+                    source_telos=source_telos,
+                    embedding=embeddings[idx],
+                    created_by_tier="t2",
+                    created_by_model=model_name,
+                )
+                all_rows.append(capsule)
+                all_rows.extend(segments)
+
                 stored_ids.append(claim_id)
 
-            if claims_to_add:
-                session.add_all(claims_to_add)
-                session.add_all(evidence_to_add)
-                await session.commit()
+            session.add_all(all_rows)
+            await session.commit()
+
         return {"stored_claim_ids": stored_ids}
 
     async def update_status(state: ExtractionState) -> dict:
@@ -453,9 +601,11 @@ async def run_with_context(graph, document_id: uuid.UUID, model: str) -> dict:
                 "model": model,
                 "pack": None,
                 "source_type": None,
+                "source_id": None,
                 "spans": [],
                 "results": [],
                 "projected_claims": [],
+                "semantic_objects": [],
                 "stored_claim_ids": [],
                 "total_tokens": 0,
                 "error": None,

@@ -12,7 +12,13 @@ from app.intelligence.llm_client import ClaimType, SemanticObject
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["validate_object", "project", "enforce_budgets", "ProjectedClaim"]
+__all__ = [
+    "validate_object",
+    "project",
+    "enforce_budgets",
+    "ProjectedClaim",
+]
+
 
 # Facet keys that route to topics_json; everything else goes to entities_json.
 # NOTE: personal_ai_tech.yaml's current facet vocabulary does not include either

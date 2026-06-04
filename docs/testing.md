@@ -68,6 +68,17 @@ All Phase A tests are no-DB and no-LLM; they exercise the new extraction layer i
 - `tests/intelligence/test_a6_projection_regression.py` — regression smoke: 5 representative `SemanticObject` payloads (`model_release`, `benchmark_result`, `funding_event`, `security_issue`, `forecast`) through the full validate→budgets→project chain using the real `personal_ai_tech` pack; asserts correct `claim_type` projection, presence of `_v0_7` / `_function` / `_domain_family`, and budget enforcement.
 - `tests/intelligence/test_judge_semantic_object_prompt.py` — `build_judge_prompt` and `JudgeVerdict` schema for the T2 judge scaffold.
 
+### Phase B — capsule layer and classifier tests
+
+Phase B adds three DB-bound tests (require Docker / Postgres via testcontainers) and one no-DB classifier test.
+
+- `tests/db/test_capsule_schema.py` — migration 0005 schema correctness: CHECK constraints on `core_type`, `lifecycle_state`, `escalation_state`; UNIQUE on `idempotency_key`; FK cascade for `capsule_segments`; ORM backrefs (`Document.capsules`, `SemanticCapsule.segments`).
+- `tests/intelligence/test_capsules_dual_write.py` — `store_claims` writes `SemanticCapsule` + `CapsuleSegment` rows in the same transaction as `Claim` + `ClaimEvidence`; asserts row counts, idempotency key, and embedding dimension (384).
+- `tests/intelligence/test_capsule_backfill.py` — `capsule_from_claim` reads `Claim.entities_json["_v0_7"]`, writes capsule rows; reruns are idempotent via `idempotency_key` UNIQUE conflict handling.
+- `tests/intelligence/test_resolve_pack_and_source_type.py` — no-DB; 4-pass classifier: URL domain match, title regex match, pack fallback, and safety-net `"ai_news_article"`; spoof-resistance (suffix attacks); `(?-i)` case-sensitive override.
+
+The gold set for the Phase B eval runner is `evals/gold/semantic_objects/ai_tech_v3.yaml` (10 examples, 6 `mvp_claim_types`). The legacy gold set `evals/gold/claim_extraction/ai_tech_v2.yaml` is obsolete — the `SemanticObjectJudge` replaces `ClaimExtractionJudge`.
+
 ## Critical Invariants Tested
 
 - Duplicate documents (by URL or content hash) are skipped, not double-inserted.

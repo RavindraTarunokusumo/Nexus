@@ -9,8 +9,6 @@ from pydantic import ValidationError
 
 from app.intelligence.llm_client import (
     EpistemicState,
-    ExtractedClaim,
-    ExtractionOutput,
     SemanticExtractionOutput,
     SemanticObject,
 )
@@ -141,29 +139,3 @@ def test_semantic_extraction_output_round_trip() -> None:
     assert len(restored.objects) == 2
     assert restored.objects[0].text == obj1.text
     assert restored.objects[1].core_type == "event"
-
-
-# ---------------------------------------------------------------------------
-# 8. Legacy ExtractedClaim / ExtractionOutput still parse (back-compat smoke)
-# ---------------------------------------------------------------------------
-
-
-def test_legacy_extraction_output_still_parses() -> None:
-    payload = {
-        "claims": [
-            {
-                "claim_text": "OpenAI released GPT-4.",
-                "claim_type": "model_release",
-                "entities": ["OpenAI", "GPT-4"],
-                "topics": ["AI", "language models"],
-                "confidence": 0.95,
-                "rationale": "Direct statement in article.",
-            }
-        ]
-    }
-    output = ExtractionOutput(**payload)
-    assert len(output.claims) == 1
-    claim = output.claims[0]
-    assert isinstance(claim, ExtractedClaim)
-    assert claim.claim_type == "model_release"
-    assert claim.confidence == 0.95

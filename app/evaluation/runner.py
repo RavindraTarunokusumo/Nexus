@@ -1,5 +1,10 @@
 # app/evaluation/runner.py
-"""Eval runner: orchestrates SUT invocation, judge scoring, and result persistence."""
+"""Eval runner: orchestrates SUT invocation, judge scoring, and result persistence.
+
+Cut over in B5 from the legacy `ExtractionOutput` (claim-only) path to the v0.7
+`SemanticExtractionOutput` path. The SUT now emits `SemanticObject`s and the
+judge scores capsule alignment (mvp_claim_type projection, core_type, etc.).
+"""
 
 from __future__ import annotations
 
@@ -12,20 +17,45 @@ from sqlalchemy import select
 
 from app.db.models import EvalDataset as EvalDatasetModel
 from app.db.models import EvalResult, EvalRun
-from app.evaluation.datasets import ClaimExtractionExample, Dataset
-from app.evaluation.judges import ClaimExtractionJudge
-from app.intelligence.llm_client import _COST_PER_TOKEN_USD, ExtractionOutput
-from app.intelligence.prompts.extract_claims import SYSTEM_PROMPT as SUT_SYSTEM_PROMPT
-from app.intelligence.prompts.extract_claims import build_user_prompt as _build_sut_prompt
+from app.domain_packs.loader import load_pack
+from app.evaluation.datasets import Dataset, SemanticObjectExtractionExample
+from app.evaluation.judges import SemanticObjectJudge
+from app.intelligence.llm_client import _COST_PER_TOKEN_USD, SemanticExtractionOutput
+from app.intelligence.prompts.extract_semantic_objects import (
+    SYSTEM_PROMPT as SUT_SYSTEM_PROMPT,
+)
+from app.intelligence.prompts.extract_semantic_objects import (
+    build_source_prompt_prefix,
+)
+from app.intelligence.prompts.extract_semantic_objects import (
+    build_user_prompt as _build_sut_prompt,
+)
+
+_DEFAULT_EVAL_PACK_ID = "personal_ai_tech"
+_DEFAULT_EVAL_SOURCE_TYPE = "ai_news_article"
 
 
 @dataclass
 class SUTConfig:
-    """Configuration for the System Under Test (SUT)."""
+    """Configuration for the System Under Test (SUT) — the production
+    extraction prompt the eval framework should drive.
+
+    Fields:
+        model: OpenRouter model id (e.g. "deepseek/deepseek-v4-flash").
+        prompt_version: Identifier baked into eval run rows for provenance.
+        temperature: Sampling temperature for the SUT call. Defaults to 0.0.
+        pack_id: Domain pack id whose telos/families/salience rules drive
+            the SUT prompt prefix. Defaults to "personal_ai_tech".
+        source_type: v3 source-type profile name the prompt should narrow
+            to. Defaults to "ai_news_article". Out-of-domain eval runs
+            must override this.
+    """
 
     model: str
     prompt_version: str
     temperature: float = 0.0
+    pack_id: str = _DEFAULT_EVAL_PACK_ID
+    source_type: str = _DEFAULT_EVAL_SOURCE_TYPE
 
 
 @dataclass
@@ -51,7 +81,7 @@ async def execute_run(
     max_cost_usd: float = 1.0,
     notes: str | None = None,
 ) -> EvalRunResult:
-    """Execute one complete eval run for a claim_extraction dataset.
+    """Execute one complete eval run for a semantic_object_extraction dataset.
 
     Raises ValueError if the dataset has not been registered via
     `nexus eval register-dataset`.
@@ -78,7 +108,7 @@ async def execute_run(
             dataset_id=dataset_row.id,
             sut_model=sut_config.model,
             sut_prompt_version=sut_config.prompt_version,
-            judge_name=ClaimExtractionJudge.name,
+            judge_name=SemanticObjectJudge.name,
             judge_model=judge_model,
             judge_prompt_version=judge_prompt_version,
             started_at=started_at,
@@ -88,13 +118,19 @@ async def execute_run(
         session.add(run_row)
         await session.commit()
 
-    judge = ClaimExtractionJudge(model=judge_model, llm_client=llm_client)
+    judge = SemanticObjectJudge(model=judge_model, llm_client=llm_client)
+
+    # Build the static SUT prompt prefix once per run — it depends only on
+    # the pack + source_type, not on individual examples.
+    pack = load_pack(sut_config.pack_id)
+    source_prefix = build_source_prompt_prefix(pack, sut_config.source_type)
+
     score_accumulator: list[dict] = []
     error_count = 0
     total_cost = 0.0
 
     for example in dataset.examples:
-        if not isinstance(example, ClaimExtractionExample):
+        if not isinstance(example, SemanticObjectExtractionExample):
             continue
         # Budget gate: approximate — current example's cost is checked *before* scoring,
         # so one example may overshoot the limit by its own cost. Gate is not atomic.
@@ -105,6 +141,7 @@ async def execute_run(
             run_id=run_id,
             example=example,
             sut_config=sut_config,
+            source_prefix=source_prefix,
             judge=judge,
             session_factory=session_factory,
             llm_client=llm_client,
@@ -141,25 +178,30 @@ async def execute_run(
 async def _score_example(
     *,
     run_id: uuid.UUID,
-    example: ClaimExtractionExample,
+    example: SemanticObjectExtractionExample,
     sut_config: SUTConfig,
-    judge: ClaimExtractionJudge,
+    source_prefix: str,
+    judge: SemanticObjectJudge,
     session_factory: Any,
     llm_client: Any,
 ) -> dict:
-    """Score one ClaimExtractionExample. Returns {status, deterministic_metrics}."""
+    """Score one SemanticObjectExtractionExample."""
     document_text = example.document_text or ""
 
     try:
-        user_prompt = _build_sut_prompt(document_text, {})
+        user_prompt = _build_sut_prompt(
+            document_text,
+            {"segment_id": f"eval-{example.example_id}"},
+            source_prefix=source_prefix,
+        )
         sut_output, sut_tokens = await llm_client.complete_json(
             model=sut_config.model,
             system=SUT_SYSTEM_PROMPT,
             user=user_prompt,
-            response_model=ExtractionOutput,
+            response_model=SemanticExtractionOutput,
             temperature=sut_config.temperature,
         )
-        pred_claims = [c.model_dump() for c in sut_output.claims]
+        pred_objects = [o.model_dump() for o in sut_output.objects]
     except Exception as exc:  # noqa: BLE001
         await _persist_result(
             run_id=run_id,
@@ -173,11 +215,11 @@ async def _score_example(
         )
         return {"status": "error", "cost": 0.0}
 
-    gold_claims = [c.model_dump() for c in example.gold_claims]
+    gold_objects = [o.model_dump() for o in example.gold_objects]
     verdict = await judge.score(
         document_text=document_text,
-        gold_claims=gold_claims,
-        pred_claims=pred_claims,
+        gold_objects=gold_objects,
+        pred_objects=pred_objects,
     )
     judge_tokens: int = verdict.pop("total_judge_tokens", 0)
     det_metrics = {k: v for k, v in verdict.items() if k != "per_pair_verdicts"}
@@ -186,7 +228,7 @@ async def _score_example(
     await _persist_result(
         run_id=run_id,
         example_id=example.example_id,
-        sut_output={"claims": pred_claims},
+        sut_output={"objects": pred_objects},
         judge_verdict=verdict,
         deterministic_metrics=det_metrics,
         status="scored",
@@ -228,12 +270,29 @@ async def _persist_result(
 
 
 def _aggregate_scores(score_list: list[dict]) -> dict:
-    """Average per-example metric dicts into a run-level aggregate."""
+    """Average per-example metric dicts into a run-level aggregate.
+
+    Missing keys are treated as 0.0 so a judge error on one example counts as
+    zero for every metric on that example — the denominator is always
+    len(score_list), never the smaller count of examples that have the key.
+    """
     if not score_list:
         return {}
-    keys = ["precision", "recall", "f1", "type_accuracy", "mean_groundedness", "mean_factuality"]
+    keys = [
+        "precision",
+        "recall",
+        "f1",
+        "mvp_claim_type_projection_accuracy",
+        "core_type_accuracy",
+        "domain_family_accuracy",
+        "mean_groundedness",
+        "mean_factuality",
+        "mean_capsule_completeness",
+        "salience_precision",
+    ]
+    n = len(score_list)
     return {
-        k: round(sum(s[k] for s in score_list if k in s) / len(score_list), 4)
+        k: round(sum(s.get(k, 0.0) for s in score_list) / n, 4)
         for k in keys
         if any(k in s for s in score_list)
     }

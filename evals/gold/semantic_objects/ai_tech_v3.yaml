@@ -1,0 +1,278 @@
+name: ai_tech_v3
+task: semantic_object_extraction
+version: 3
+description: |
+  Hand-authored AI/tech gold set for the v0.7 semantic-object extractor.
+  Each example carries one or more SemanticObject gold targets covering
+  core_type, domain_family, mvp_claim_type, facets, epistemic, and salience.
+  Adapted and expanded from tests/fixtures/a8_projection_input.json
+  to cover ≥5 mvp_claim_types and 4 different core_types.
+
+examples:
+  # --- model_release (event / model_system) ---
+  - example_id: so_001
+    source_type: ai_news_article
+    document_text: >
+      Mistral AI released Mistral Large 2 on 2024-07-24, featuring a 128k context window,
+      native function calling, and strong performance on multilingual benchmarks.
+      The model is available via La Plateforme and open-weights under the Mistral Research License.
+    gold_objects:
+      - text: >-
+          Mistral AI released Mistral Large 2 on 2024-07-24, featuring a 128k context window,
+          native function calling, and strong performance on multilingual benchmarks.
+        core_type: event
+        domain_family: model_system
+        domain_object_type: model_release
+        function: Announces the release of Mistral Large 2 with 128k context and multilingual capabilities.
+        facets:
+          orgs: [Mistral AI]
+          models: [Mistral Large 2]
+          dates: ["2024-07-24"]
+          licenses: [Mistral Research License]
+        epistemic:
+          status: asserted_by_source
+          source_authority: primary
+          confidence: 0.95
+          evidence_quality: high
+        salience: 0.92
+        mvp_claim_type: model_release
+
+  - example_id: so_002
+    source_type: ai_news_article
+    document_text: >
+      Anthropic shipped Claude 4 Opus on March 12, 2025, the company's new flagship model.
+      Claude 4 Opus features a 200K token context window and improved reasoning over Claude 3.5.
+    gold_objects:
+      - text: Anthropic shipped Claude 4 Opus on March 12, 2025.
+        core_type: event
+        domain_family: model_system
+        domain_object_type: model_release
+        function: Announces the release of Claude 4 Opus as Anthropic's new flagship model.
+        facets:
+          orgs: [Anthropic]
+          models: [Claude 4 Opus, Claude 3.5]
+          dates: ["2025-03-12"]
+        epistemic:
+          status: asserted_by_source
+          source_authority: primary
+          confidence: 0.95
+          evidence_quality: high
+        salience: 0.9
+        mvp_claim_type: model_release
+
+  # --- benchmark_result (result / evaluation_evidence) ---
+  - example_id: so_003
+    source_type: benchmark_report
+    document_text: >
+      A reranker-augmented dense retrieval pipeline achieved an average NDCG@10 of 0.512 on BEIR,
+      outperforming the BM25 baseline of 0.423 by 21% across 18 datasets.
+      Evaluation was conducted with Cohere Rerank 3 applied on top of OpenAI text-embedding-3-large.
+    gold_objects:
+      - text: >-
+          A reranker-augmented dense retrieval pipeline achieved NDCG@10 of 0.512 on BEIR,
+          outperforming the BM25 baseline of 0.423 by 21% across 18 datasets.
+        core_type: result
+        domain_family: evaluation_evidence
+        domain_object_type: benchmark_result
+        function: Reports that a reranker-augmented retrieval pipeline outperforms BM25 on BEIR.
+        facets:
+          orgs: [Cohere, OpenAI]
+          models: [text-embedding-3-large, Cohere Rerank 3]
+          benchmarks: [BEIR]
+          metrics: ["NDCG@10"]
+        epistemic:
+          status: asserted_by_source
+          source_authority: primary
+          confidence: 0.88
+          evidence_quality: high
+        salience: 0.87
+        mvp_claim_type: benchmark_result
+
+  - example_id: so_004
+    source_type: benchmark_report
+    document_text: >
+      OpenAI's o3 model achieved 87.5% on the SWE-bench Verified benchmark, surpassing
+      Anthropic's Claude 3.7 Sonnet which previously held the record at 70.3%.
+    gold_objects:
+      - text: OpenAI's o3 model achieved 87.5% on the SWE-bench Verified benchmark.
+        core_type: result
+        domain_family: evaluation_evidence
+        domain_object_type: benchmark_result
+        function: Reports o3's record-setting score on SWE-bench Verified.
+        facets:
+          orgs: [OpenAI, Anthropic]
+          models: [o3, Claude 3.7 Sonnet]
+          benchmarks: [SWE-bench Verified]
+          metrics: ["pass@1"]
+        epistemic:
+          status: asserted_by_source
+          source_authority: primary
+          confidence: 0.9
+          evidence_quality: high
+        salience: 0.88
+        mvp_claim_type: benchmark_result
+
+  # --- funding_event (event / economics_pricing) ---
+  - example_id: so_005
+    source_type: funding_or_company_update
+    document_text: >
+      Mistral AI closed a €600M Series B funding round in June 2024, led by General Catalyst
+      with participation from Andreessen Horowitz and Salesforce Ventures, at a post-money
+      valuation of €6 billion. Proceeds will fund model R&D and data-center expansion.
+    gold_objects:
+      - text: >-
+          Mistral AI closed a €600M Series B funding round in June 2024 at a €6B post-money valuation,
+          led by General Catalyst with participation from Andreessen Horowitz and Salesforce Ventures.
+        core_type: event
+        domain_family: economics_pricing
+        domain_object_type: funding_round
+        function: Reports Mistral AI closing a €600M Series B at a €6B valuation.
+        facets:
+          orgs: [Mistral AI, General Catalyst, Andreessen Horowitz, Salesforce Ventures]
+          dates: ["2024-06"]
+          money: ["€600M", "€6B"]
+        epistemic:
+          status: asserted_by_source
+          source_authority: secondary
+          confidence: 0.9
+          evidence_quality: high
+        salience: 0.85
+        mvp_claim_type: funding_event
+
+  - example_id: so_006
+    source_type: funding_or_company_update
+    document_text: >
+      Anthropic closed a $2.5 billion Series E funding round in March 2024 led by Google,
+      with participation from Spark Capital. The round values Anthropic at approximately $18 billion.
+    gold_objects:
+      - text: Anthropic closed a $2.5 billion Series E funding round led by Google in March 2024.
+        core_type: event
+        domain_family: economics_pricing
+        domain_object_type: funding_round
+        function: Reports Anthropic's Series E funding round led by Google.
+        facets:
+          orgs: [Anthropic, Google, Spark Capital]
+          dates: ["2024-03"]
+          money: ["$2.5B", "$18B"]
+        epistemic:
+          status: asserted_by_source
+          source_authority: secondary
+          confidence: 0.9
+          evidence_quality: high
+        salience: 0.84
+        mvp_claim_type: funding_event
+
+  # --- security_issue (risk / safety_security) ---
+  - example_id: so_007
+    source_type: security_or_safety_disclosure
+    document_text: >
+      Researchers disclosed a prompt injection vulnerability affecting LLM agents that render
+      untrusted HTML or markdown from external web pages. An attacker-controlled page can embed
+      hidden instructions that override the agent's system prompt, potentially exfiltrating
+      conversation history or executing unauthorized tool calls. No official patch is available.
+    gold_objects:
+      - text: >-
+          Researchers disclosed a prompt injection vulnerability in LLM agents that render
+          untrusted HTML, allowing hidden instructions to override the agent's system prompt
+          and exfiltrate conversation history or execute unauthorized tool calls.
+        core_type: risk
+        domain_family: safety_security
+        domain_object_type: prompt_injection_issue
+        function: Discloses a prompt injection vulnerability in LLM agents handling untrusted web content.
+        facets:
+          vulnerabilities: [prompt injection]
+          domain_terms: [LLM agent, system prompt override, tool call exfiltration]
+        epistemic:
+          status: asserted_by_source
+          source_authority: primary
+          confidence: 0.82
+          evidence_quality: medium
+          uncertainty: Patch status may have changed since disclosure.
+        salience: 0.89
+        mvp_claim_type: security_issue
+
+  - example_id: so_008
+    source_type: security_or_safety_disclosure
+    document_text: >
+      Stability AI disclosed an unauthorized access incident in March 2024 in which an attacker
+      gained access to internal systems via a compromised employee credential. No model weights
+      or customer data were confirmed to have been exfiltrated.
+    gold_objects:
+      - text: >-
+          Stability AI disclosed an unauthorized access incident involving a compromised employee
+          credential; no model weights or customer data were confirmed exfiltrated.
+        core_type: risk
+        domain_family: safety_security
+        domain_object_type: security_incident
+        function: Reports an unauthorized access incident at Stability AI via compromised credentials.
+        facets:
+          orgs: [Stability AI]
+          dates: ["2024-03"]
+          vulnerabilities: [credential compromise]
+        epistemic:
+          status: asserted_by_source
+          source_authority: primary
+          confidence: 0.85
+          evidence_quality: medium
+        salience: 0.78
+        mvp_claim_type: security_issue
+
+  # --- forecast (claim / forecast_outlook) ---
+  - example_id: so_009
+    source_type: forecast_or_opinion
+    document_text: >
+      Epoch AI forecasts that frontier LLM inference cost will decline approximately 10x by 2027,
+      driven by hardware efficiency gains (H200, Blackwell) and algorithmic improvements
+      (speculative decoding, quantization). At this trajectory, GPT-4-class inference would cost
+      under $0.10 per million tokens by end-2027, enabling commodity-scale deployment.
+    gold_objects:
+      - text: >-
+          Epoch AI forecasts frontier LLM inference cost will decline ~10x by 2027 driven by
+          hardware and algorithmic efficiency, putting GPT-4-class inference under $0.10 per
+          million tokens by end-2027.
+        core_type: claim
+        domain_family: forecast_outlook
+        domain_object_type: capability_forecast
+        function: Forecasts a ~10x decline in frontier LLM inference cost by 2027.
+        facets:
+          orgs: [Epoch AI]
+          models: [GPT-4]
+          hardware: [H200, Blackwell]
+          dates: ["2027"]
+          money: ["$0.10 per million tokens"]
+        epistemic:
+          status: forward_looking
+          source_authority: secondary
+          confidence: 0.65
+          evidence_quality: medium
+          uncertainty: Forecast assumes continued hardware and algorithmic scaling.
+        salience: 0.83
+        mvp_claim_type: forecast
+
+  # --- pricing_change (state_change / economics_pricing) ---
+  - example_id: so_010
+    source_type: pricing_or_terms_update
+    document_text: >
+      OpenAI cut the price of GPT-4o by 50% for API customers effective November 2024,
+      reducing the input token cost from $5 to $2.50 per million tokens.
+      Output tokens were reduced from $15 to $10 per million tokens.
+    gold_objects:
+      - text: >-
+          OpenAI cut the price of GPT-4o by 50% for API customers in November 2024,
+          reducing input tokens from $5 to $2.50/M and output tokens from $15 to $10/M.
+        core_type: state_change
+        domain_family: economics_pricing
+        domain_object_type: api_price_change
+        function: Reports a 50% reduction in GPT-4o API pricing.
+        facets:
+          orgs: [OpenAI]
+          models: [GPT-4o]
+          dates: ["2024-11"]
+          money: ["$5/M", "$2.50/M", "$15/M", "$10/M"]
+        epistemic:
+          status: asserted_by_source
+          source_authority: primary
+          confidence: 0.93
+          evidence_quality: high
+        salience: 0.8
+        mvp_claim_type: pricing_change

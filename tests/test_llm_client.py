@@ -200,11 +200,11 @@ async def test_agent_run_stores_full_payload_without_truncation(session_factory)
     """After the tracer switch, input/output must not be truncated to 300/500 chars."""
     from unittest.mock import AsyncMock, MagicMock, patch
 
-    from app.intelligence.llm_client import ExtractionOutput, LLMClient
+    from app.intelligence.llm_client import LLMClient, SemanticExtractionOutput
 
     long_prompt = "A" * 2000
     fake_response = {
-        "choices": [{"message": {"content": '{"claims": []}'}}],
+        "choices": [{"message": {"content": '{"objects": []}'}}],
         "usage": {"total_tokens": 10, "prompt_tokens": 6, "completion_tokens": 4},
     }
     mock_resp = MagicMock()
@@ -220,7 +220,7 @@ async def test_agent_run_stores_full_payload_without_truncation(session_factory)
             model="m",
             system=long_prompt,
             user=long_prompt,
-            response_model=ExtractionOutput,
+            response_model=SemanticExtractionOutput,
         )
 
     async with session_factory() as session:
@@ -239,10 +239,10 @@ async def test_agent_run_stores_full_payload_without_truncation(session_factory)
 async def test_agent_run_split_tokens_populated(session_factory):
     from unittest.mock import AsyncMock, MagicMock, patch
 
-    from app.intelligence.llm_client import ExtractionOutput, LLMClient
+    from app.intelligence.llm_client import LLMClient, SemanticExtractionOutput
 
     fake_response = {
-        "choices": [{"message": {"content": '{"claims": []}'}}],
+        "choices": [{"message": {"content": '{"objects": []}'}}],
         "usage": {"total_tokens": 15, "prompt_tokens": 10, "completion_tokens": 5},
     }
     mock_resp = MagicMock()
@@ -258,7 +258,7 @@ async def test_agent_run_split_tokens_populated(session_factory):
             model="m",
             system="s",
             user="u",
-            response_model=ExtractionOutput,
+            response_model=SemanticExtractionOutput,
         )
 
     async with session_factory() as session:

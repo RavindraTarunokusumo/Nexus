@@ -83,9 +83,9 @@ Deferred retrieval features:
 
 ## Claim Extraction
 
-> **Phase A Status: Telos-aware semantic-object extraction implemented** — `app/intelligence/extraction.py` (LangGraph `StateGraph`), `app/intelligence/prompts/extract_semantic_objects.py` (telos-aware prompt), `app/intelligence/projection.py` (validate → enforce_budgets → project), `app/intelligence/llm_client.py` (OpenRouter T2), `app/api/routes_claims.py`.
+> **Phase B Status: Durable capsule layer implemented** — `app/intelligence/extraction.py` `store_claims` now dual-writes `SemanticCapsule` + `CapsuleSegment` alongside `Claim` + `ClaimEvidence` in one transaction. `app/intelligence/capsules.py` consolidates embedder singleton, idempotency key, and row-building logic. `app/intelligence/backfill.py` + `app/cli/capsules.py` backfill the Phase A `_v0_7` stash.
 
-Claim extraction converts spans into atomic evidence-grounded propositions. As of Phase A, the production path produces `SemanticObject` instances that are projected to legacy `Claim` + `ClaimEvidence` rows via the domain pack's `mvp_claim_type` mapping.
+Claim extraction converts spans into atomic evidence-grounded propositions. The production path produces `SemanticObject` instances that are: (1) projected to legacy `Claim` + `ClaimEvidence` rows for the current read path, and (2) written as `SemanticCapsule` + `CapsuleSegment` rows for the durable capsule layer.
 
 Production structured output (`SemanticExtractionOutput`):
 
@@ -104,7 +104,7 @@ Production structured output (`SemanticExtractionOutput`):
 }
 ```
 
-The full `SemanticObject` is preserved under `entities_json["_v0_7"]` in the `claims` table for forward-compat.
+The full `SemanticObject` is preserved under `entities_json["_v0_7"]` in the `claims` table and also stored natively in `semantic_capsules` (with a 384-dim embedding via `bge-small-en-v1.5`). The embedder is a shared singleton in `app/intelligence/capsules.py`; embedding is batched — one call per `store_claims` invocation covers all capsule texts in the span batch.
 
 Extraction rules:
 
@@ -115,7 +115,7 @@ Extraction rules:
 - do not summarize entire documents as claims
 - respect per-source-type budgets defined in the domain pack
 
-The legacy `ExtractionOutput` schema and `extract_claims.py` prompt remain in the codebase for `app/evaluation/runner.py` compatibility until Phase B.
+The legacy `ExtractionOutput` schema and `extract_claims.py` prompt were deleted in Phase B. `app/evaluation/runner.py` now uses `SemanticExtractionOutput` and `SemanticObjectJudge`.
 
 ## Retrieval
 

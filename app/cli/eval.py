@@ -153,6 +153,14 @@ def eval_run(
     max_cost: float = typer.Option(1.0, "--max-cost", help="Budget gate in USD."),
     db_url: Optional[str] = typer.Option(None, "--db-url"),
     json_output: bool = typer.Option(False, "--json"),
+    pack_id: str = typer.Option(
+        "personal_ai_tech", "--pack-id", help="Domain pack id to use for the SUT prompt prefix"
+    ),
+    source_type: str = typer.Option(
+        "ai_news_article",
+        "--source-type",
+        help="v3 source-type profile to drive the SUT prompt",
+    ),
 ) -> None:
     """Execute one eval run and print aggregate scores."""
     import asyncio
@@ -188,7 +196,12 @@ def eval_run(
     result = asyncio.run(
         execute_run(
             dataset=ds,
-            sut_config=SUTConfig(model=resolved_sut, prompt_version=prompt_sha),
+            sut_config=SUTConfig(
+                model=resolved_sut,
+                prompt_version=prompt_sha,
+                pack_id=pack_id,
+                source_type=source_type,
+            ),
             judge_model=resolved_judge,
             judge_prompt_version=prompt_sha,
             session_factory=sf,
@@ -345,7 +358,7 @@ def eval_diff(
 
 @eval_app.command("calibrate")
 def eval_calibrate(
-    task: str = typer.Argument(..., help="Task name: claim_extraction"),
+    task: str = typer.Argument(..., help="Task name: semantic_object_extraction"),
     labels_path: Path = typer.Option(..., "--labels-path", help="Path to human_labels YAML."),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:

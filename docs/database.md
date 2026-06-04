@@ -1,6 +1,6 @@
 # Database / Persistence
 
-> **Phase 3 Status: Implemented** — migration 0001 creates all 8 tables; migration 0002 extends `agent_runs` and `documents` with correlation/timestamp columns and adds `span_extractions`; migration 0003 adds the 3 eval tables; migration 0004 adds `chat_sessions` and `chat_messages`. `sources`, `documents`, `spans`, `claims`, `claim_evidence`, `agent_runs`, and `span_extractions` are actively populated by the pipeline. `eval_datasets`, `eval_runs`, and `eval_results` are populated by the `nexus eval` CLI. `chat_sessions` and `chat_messages` are populated by the chat session endpoints.
+> **Phase B Status: Durable capsule layer landed** — migration 0005 adds 6 new tables (`semantic_capsules`, `capsule_segments`, `semantic_relations`, `theses`, `decision_artefacts`, `domain_packs`). `semantic_capsules` and `capsule_segments` are actively populated by `store_claims` (dual-write) and `nexus capsules backfill`. `semantic_relations`, `theses`, `decision_artefacts`, and `domain_packs` are schema-ready but not yet populated by the pipeline.
 
 The persistence layer is PostgreSQL 16 with the `pgvector` extension. SQLAlchemy 2.x async ORM + asyncpg is used throughout. Alembic manages migrations.
 
@@ -30,6 +30,7 @@ alembic upgrade head
 | 0002 | Observability: adds `run_id`, `document_id`, `span_id`, `prompt_tokens`, `completion_tokens` to `agent_runs`; adds `chunked_at`, `embedded_at`, `extraction_started_at`, `extraction_completed_at` to `documents`; creates `span_extractions` table |
 | 0003 | Evaluation: creates `eval_datasets`, `eval_runs`, `eval_results` tables |
 | 0004 | Chat session memory: creates `chat_sessions` and `chat_messages` tables |
+| 0005 | Capsule layer: creates `semantic_capsules`, `capsule_segments`, `semantic_relations`, `theses`, `decision_artefacts`, `domain_packs` tables |
 
 ## Schema
 
@@ -286,6 +287,96 @@ One row per user or assistant turn within a session. Both the user message and t
 | created_at | TIMESTAMPTZ | Auto-set |
 
 Indexes: `session_id`, `created_at`.
+
+### `semantic_capsules`
+
+Durable v0.7 semantic objects. One row per extracted `SemanticObject`, written by `store_claims` (B2 dual-write) or `nexus capsules backfill` (B3). The `idempotency_key` column is UNIQUE and is computed by `build_capsule_idempotency_key` in `app/intelligence/capsules.py`, preventing duplicate capsules from re-extraction or backfill reruns.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| document_id | UUID | FK → documents (CASCADE) |
+| idempotency_key | TEXT | UNIQUE; deterministic hash of (document_id, span_index, core_type, claim_text) |
+| core_type | TEXT | 15-value CHECK constraint (CoreType Literal) |
+| claim_text | TEXT | Canonical claim text |
+| salience | FLOAT | Salience score from extraction |
+| epistemic_state | TEXT | Epistemic qualifier |
+| facets_json | JSONB | Full SemanticObject facets dict |
+| embedding | vector(384) | bge-small-en-v1.5 embedding of claim_text; written at ingest time |
+| lifecycle_state | TEXT | 9-state CHECK: `active`, `superseded`, `retracted`, … |
+| escalation_state | TEXT | 4-state CHECK: `none`, `flagged`, `escalated`, `resolved` |
+| created_by_tier | TEXT | `extraction`, `backfill` |
+| created_at | TIMESTAMPTZ | Auto-set |
+
+Indexes: `document_id`, `idempotency_key` (unique), `core_type`, `lifecycle_state`.
+
+### `capsule_segments`
+
+Join table linking a `SemanticCapsule` to the `Span`(s) that support it. Populated in the same transaction as `semantic_capsules`. FK cascade on both sides ensures cleanup when a capsule or span is deleted.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| capsule_id | UUID | FK → semantic_capsules (CASCADE) |
+| span_id | UUID | FK → spans (CASCADE) |
+| role | TEXT | Evidence role (e.g. `support`, `context`) |
+
+Index: `capsule_id`, `span_id`.
+
+### `semantic_relations`
+
+Directed edges between two `SemanticCapsule` rows. Represents the knowledge-graph relation layer. Not yet populated by the pipeline (Phase C+).
+
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| source_capsule_id | UUID | FK → semantic_capsules |
+| target_capsule_id | UUID | FK → semantic_capsules |
+| target_thesis_id | UUID | FK → theses; nullable |
+| relation_type | TEXT | CHECK constraint on allowed relation types |
+| confidence | FLOAT | Nullable |
+| rationale | TEXT | Nullable |
+| created_at | TIMESTAMPTZ | Auto-set |
+
+### `theses`
+
+Higher-order interpretations built from sets of capsules. Not yet populated by the pipeline (Phase C+).
+
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| title | TEXT | |
+| summary | TEXT | Nullable |
+| supporting_capsule_ids | UUID[] | Array of SemanticCapsule UUIDs |
+| contradicting_capsule_ids | UUID[] | Array of SemanticCapsule UUIDs |
+| created_at | TIMESTAMPTZ | Auto-set |
+
+### `decision_artefacts`
+
+Memos, alerts, and trade-ideas synthesized from theses and capsules. Not yet populated by the pipeline (Phase E+).
+
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| artefact_type | TEXT | e.g. `memo`, `alert`, `trade_idea` |
+| title | TEXT | |
+| body | TEXT | Nullable |
+| linked_thesis_ids | UUID[] | Array of Thesis UUIDs |
+| linked_capsule_ids | UUID[] | Array of SemanticCapsule UUIDs |
+| created_at | TIMESTAMPTZ | Auto-set |
+
+### `domain_packs`
+
+Registry table for domain packs. The `parent_pack_id` self-FK supports pack inheritance hierarchies; inheritance resolution is deferred (ADR §8/Q4). Not yet populated by the pipeline — packs are currently loaded from YAML at runtime.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| pack_id | TEXT | UNIQUE; matches the YAML `id` field |
+| version | TEXT | Pack schema version (e.g. `3.0`) |
+| metadata_json | JSONB | Full pack metadata |
+| parent_pack_id | UUID | FK → domain_packs (self-referential); nullable |
+| created_at | TIMESTAMPTZ | Auto-set |
 
 ## Core Invariant
 

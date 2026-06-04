@@ -9,6 +9,23 @@ Track meaningful repository-level changes here.
 - Why it changed
 - Any follow-up work or migration notes
 
+## 2026-06-03 — Phase B: Durable Capsule Layer
+
+Landed the Phase B capsule-schema foundation across commits `620a191`–`4a052b4` on branch `claude/phase-b-implementation`.
+
+**What changed:**
+
+- **B1 — Migration + ORM.** `app/db/migrations/versions/0005_semantic_capsules.py` adds 6 new tables: `semantic_capsules` (durable v0.7 semantic objects; `idempotency_key` UNIQUE; `core_type` / `lifecycle_state` / `escalation_state` CHECK constraints; 384-dim `embedding` column), `capsule_segments` (capsule × span join with `role`), `semantic_relations` (capsule × capsule edges), `theses`, `decision_artefacts`, and `domain_packs` (self-FK `parent_pack_id`). `app/db/models.py` adds ORM classes and backrefs: `Document.capsules`, `Span.capsule_segments`, `SemanticCapsule.segments`, `CapsuleSegment.capsule`, `CapsuleSegment.span`.
+- **B2 — Dual-write.** `store_claims` in `app/intelligence/extraction.py` now writes `SemanticCapsule` + `CapsuleSegment` rows in the same transaction as `Claim` + `ClaimEvidence`. Capsule text is embedded at write time via the `bge-small-en-v1.5` shared singleton from `app/intelligence/capsules.py`.
+- **B3 — Backfill.** New `app/intelligence/backfill.py` + `app/cli/capsules.py`. Exposes `nexus capsules backfill [--dry-run] [--batch-size N]`. Reads `Claim.entities_json["_v0_7"]` and constructs capsule rows. Idempotent via `idempotency_key`.
+- **B4 — v3 source-type classifier.** `_resolve_pack_and_source_type` in `extraction.py` runs a 4-pass classifier: URL hostname match (`SourceTypeProfile.url_domains`), title regex match (`SourceTypeProfile.title_regex`), pack fallback, safety net `"ai_news_article"`. `SourceTypeProfile` gained `url_domains` and `title_regex` (empty defaults; non-breaking). Title regex is precompiled on pack load; URL parsed once per call.
+- **B5 — Eval runner port + legacy schema retirement.** `app/evaluation/runner.py` now uses `response_model=SemanticExtractionOutput`. New `SemanticObjectJudge` replaces `ClaimExtractionJudge`. New gold set `evals/gold/semantic_objects/ai_tech_v3.yaml` (10 examples). `nexus eval run` and `nexus eval calibrate` accept `--pack-id` and `--source-type`. Deleted: `ExtractedClaim`, `ExtractionOutput`, `app/intelligence/prompts/extract_claims.py`, `app/evaluation/prompts/claim_extraction_judge.py`, `ClaimExtractionJudge`.
+- **Pre-PR refactor.** New `app/intelligence/capsules.py` consolidates `get_embedder()`, `build_capsule_idempotency_key`, `build_capsule_row`. Precompiled title regex on pack load; URL parsed once per classifier call.
+
+**Why:** Establishes the durable semantic-object storage layer needed for Phase C (capsule-based retrieval), Phase D (relations), and Phase E (lifecycle management and decision artefacts).
+
+**Migration / setup:** Run `alembic upgrade head` to apply migration 0005. Run `nexus capsules backfill` to populate capsule rows from Phase A extraction data. No breaking API changes — chat and claim endpoints are unchanged.
+
 ## 2026-05-17 — Phase 3: Claim Extraction
 
 Added the `app/intelligence/` module and claim extraction API.

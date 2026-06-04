@@ -15,6 +15,13 @@ Record repo-specific implementation patterns here as they emerge. The current de
 
 Domain packs are loaded at runtime by `app/domain_packs/loader.py` (Pydantic v2). The production pack (`personal_ai_tech.yaml`) is a v3 purpose-grammar pack; see [domain-packs spec](specs/domain-packs.md) for the field inventory and the [v3 contract spec](superpowers/specs/2026-05-29-ai-domain-pack-extraction-scheme-design.md) for the canonical schema. The extraction graph loads the `DomainPack` once per `run_with_context()` call and passes it through to the prompt builder and projection layer.
 
+As of Phase B, `SourceTypeProfile` gained two optional extension fields (empty defaults; non-breaking):
+
+- `url_domains: list[str]` — hostname prefixes used for URL-based source-type detection (e.g. `["arxiv.org"]`). Hostname matching prevents suffix-spoofing (e.g. `notarxiv.org` will not match `arxiv.org`).
+- `title_regex: list[str]` — title pattern strings. Precompiled on pack load with `IGNORECASE` by default; use `(?-i)` prefix for case-sensitive patterns.
+
+These fields drive the new `_resolve_pack_and_source_type` 4-pass classifier in `extraction.py`. See [docs/specs/domain-packs.md](specs/domain-packs.md) for full field documentation and the AI pack YAML for per-profile examples.
+
 ## Telos-Semantic Extraction Pattern (Phase A)
 
 The production extraction path (Phase A) replaces direct claim extraction with a two-stage pipeline:
@@ -32,14 +39,34 @@ domain pack (loaded once per run)
        splits facets -> entities_json / topics_json
        stashes full SemanticObject under entities_json["_v0_7"]
        sets entities_json["_function"] and entities_json["_domain_family"]
-  -> write Claim + ClaimEvidence rows (legacy DB schema, unchanged)
+  -> write Claim + ClaimEvidence rows (legacy DB schema)
+  -> write SemanticCapsule + CapsuleSegment rows (Phase B dual-write)
 ```
-
-The `_v0_7` stash in `entities_json` is a deliberate Phase-B bridge: it preserves the full v0.7 payload without requiring a schema migration, allowing Phase B to read back the original `SemanticObject` when native `semantic_capsules` storage is introduced.
 
 `SALIENCE_THRESHOLD = 0.3` in `projection.py` is the floor; objects below this are dropped before budget enforcement.
 
-The legacy `extract_claims.py` prompt and `ExtractionOutput` / `ExtractedClaim` schemas remain active exclusively for `app/evaluation/runner.py` until Phase B ports the eval runner to `SemanticExtractionOutput`.
+The `_v0_7` stash in `entities_json` is no longer only a forward-compat bridge — Phase B actively backfills it into `semantic_capsules` via `nexus capsules backfill`. The legacy `extract_claims.py` prompt and `ExtractionOutput` / `ExtractedClaim` schemas were retired in Phase B.
+
+## Capsule Assembly Pattern (Phase B)
+
+`app/intelligence/capsules.py` is the single source of truth for assembling a `SemanticObject` into durable `SemanticCapsule` + `CapsuleSegment` rows.
+
+```text
+SemanticObject + span_ids + document_id
+  -> build_capsule_idempotency_key(document_id, span_index, core_type, claim_text)
+       deterministic UNIQUE key; prevents duplicates from re-extraction or backfill
+  -> get_embedder()
+       shared singleton of bge-small-en-v1.5; never re-instantiated per call
+  -> build_capsule_row(obj, span_ids, document_id, created_by_tier)
+       returns (SemanticCapsule, [CapsuleSegment]) ready to bulk-insert
+```
+
+Both callers delegate exclusively to these helpers:
+
+- `store_claims` in `extraction.py` — B2 dual-write path; `created_by_tier="extraction"`
+- `capsule_from_claim` in `backfill.py` — B3 backfill path; `created_by_tier="backfill"`
+
+Embedding is batched: one `get_embedder().encode([...])` call per `store_claims` invocation covers all capsule texts in a span batch.
 
 ## Session Memory Pattern
 
