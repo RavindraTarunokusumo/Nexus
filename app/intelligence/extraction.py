@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from collections import defaultdict
 from typing import Any, TypedDict
 from urllib.parse import SplitResult, urlsplit
 
@@ -731,8 +732,6 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                 .scalars()
                 .all()
             )
-
-        from collections import defaultdict
 
         by_family: dict[str, list] = defaultdict(list)
         for cap in caps:
