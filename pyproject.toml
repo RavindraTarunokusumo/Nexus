@@ -50,6 +50,9 @@ packages = ["app"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+markers = [
+    "slow: marks tests requiring a running database (deselect with -m 'not slow')",
+]
 
 [tool.ruff]
 line-length = 100
