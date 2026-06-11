@@ -26,6 +26,8 @@ from app.db.models import (
     Claim,
     ClaimEvidence,
     Document,
+    SemanticCapsule,
+    SemanticRelation,
     Source,
     Span,
 )
@@ -55,6 +57,13 @@ from app.intelligence.prompts.extract_semantic_objects import (
 )
 from app.intelligence.prompts.extract_semantic_objects import (
     build_user_prompt as build_semantic_user_prompt,
+)
+from app.intelligence.prompts.judge_semantic_object import (
+    SYSTEM_PROMPT as JUDGE_SYSTEM_PROMPT,
+)
+from app.intelligence.prompts.judge_semantic_object import (
+    JudgeVerdict,
+    build_judge_prompt,
 )
 from app.observability.run_context import extraction_run, span_scope
 from app.observability.tracer import mark_document_timestamp, record_span_extraction
@@ -106,6 +115,53 @@ def _load_spans_failure(error_msg: str) -> dict:
         "source_type": None,
         "source_id": None,
     }
+
+
+def _resolve_t2_model(pack: DomainPack, fallback: str) -> str:
+    """Extract the T2 model string from pack.model_extra['models']['t2'].
+
+    Falls back to fallback when the pack has no top-level 'models' key
+    or the T2 entry is missing.  Handles both string values and dict values
+    (dict: use 'extractor' or 'model' sub-key).
+    """
+    extra = getattr(pack, "model_extra", {}) or {}
+    top_models = extra.get("models") or {}
+    if isinstance(top_models, dict):
+        t2 = top_models.get("t2") or top_models.get("T2")
+        if isinstance(t2, str):
+            return t2
+        if isinstance(t2, dict):
+            return t2.get("extractor") or t2.get("model") or fallback
+    return fallback
+
+
+def _capsule_to_obj_for_judge(capsule: SemanticCapsule) -> SemanticObject:
+    """Reconstruct a minimal SemanticObject from capsule columns for T2 judge input.
+
+    ``source_refs`` (min-length-1 validator) and ``mvp_claim_type`` are not
+    used by ``build_judge_prompt``; they receive safe placeholder values so
+    SemanticObject validates correctly without an extra DB query.
+    """
+    epistemic = dict(capsule.epistemic_state or {})
+    epistemic.setdefault("status", "asserted_by_source")
+    epistemic.setdefault("source_authority", "unknown")
+    epistemic.setdefault("confidence", float(capsule.confidence or 0.5))
+    epistemic.setdefault("evidence_quality", "unknown")
+    epistemic.setdefault("needs_escalation", capsule.escalation_state == "flagged")
+    return SemanticObject.model_validate(
+        {
+            "core_type": capsule.core_type,
+            "domain_family": capsule.object_family,
+            "domain_object_type": capsule.domain_object_type,
+            "function": capsule.function or "",
+            "text": capsule.text,
+            "facets": capsule.facets or {},
+            "salience": float(capsule.salience or 0.5),
+            "source_refs": ["00000000-0000-0000-0000-000000000000"],
+            "epistemic": epistemic,
+            "mvp_claim_type": "other",
+        }
+    )
 
 
 # Document status lifecycle constants (extends the ingestion statuses with the
@@ -544,6 +600,100 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
 
         return {"stored_claim_ids": stored_ids, "stored_capsule_ids": capsule_ids}
 
+    async def judge_capsules(state: ExtractionState) -> dict:
+        """Run the T2 evidence-sufficiency judge on flagged capsules (C1).
+
+        Gated by:
+        - state["stored_capsule_ids"] non-empty
+        - remaining T2 budget > 0
+        - capsule.escalation_state == "flagged"
+
+        Writes one SemanticRelation row per judged capsule (target_capsule_id=None;
+        unary quality annotation). Updates capsule.escalation_state to
+        "escalated" or "reviewed".
+        """
+        if state.get("error") or not state.get("stored_capsule_ids"):
+            return {}
+
+        pack: DomainPack = state["pack"]  # type: ignore[assignment]
+        t2_calls_used: int = state.get("t2_calls_used", 0)
+        remaining_budget = pack.budgets.max_t2_calls_per_source - t2_calls_used
+        if remaining_budget <= 0:
+            return {}
+
+        t2_model = _resolve_t2_model(pack, state["model"])
+        capsule_ids = state["stored_capsule_ids"]
+
+        async with session_factory() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(SemanticCapsule).where(SemanticCapsule.id.in_(capsule_ids))
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+        flagged = [c for c in rows if c.escalation_state == "flagged"]
+        to_judge = flagged[:remaining_budget]
+
+        judge_results: list[dict] = []
+        calls_made = 0
+
+        for capsule in to_judge:
+            obj = _capsule_to_obj_for_judge(capsule)
+            try:
+                verdict, _ = await client.complete_json(
+                    model=t2_model,
+                    system=JUDGE_SYSTEM_PROMPT,
+                    user=build_judge_prompt(obj, pack),
+                    response_model=JudgeVerdict,
+                    run_type="judge_capsule",
+                )
+            except LLMError as exc:
+                logger.warning("Judge failed for capsule %s: %s", capsule.id, exc)
+                continue
+
+            calls_made += 1
+            relation_id = uuid.uuid4()
+            relation_type = "judge_escalated" if verdict.escalate else "judge_cleared"
+            new_escalation = "escalated" if verdict.escalate else "reviewed"
+
+            async with session_factory() as session:
+                session.add(
+                    SemanticRelation(
+                        id=relation_id,
+                        source_capsule_id=capsule.id,
+                        target_capsule_id=None,
+                        target_thesis_id=None,
+                        relation_type=relation_type,
+                        domain_relation_type=None,
+                        polarity=None,
+                        strength=verdict.recommended_confidence,
+                        confidence=verdict.recommended_confidence,
+                        evidence_capsule_ids=[],
+                        rationale=verdict.rationale,
+                        epistemic_state=verdict.model_dump(),
+                        created_by_tier="t2",
+                        created_by_model=t2_model,
+                    )
+                )
+                cap_row = await session.get(SemanticCapsule, capsule.id)
+                if cap_row:
+                    cap_row.escalation_state = new_escalation
+                await session.commit()
+
+            judge_results.append(
+                {
+                    "capsule_id": str(capsule.id),
+                    "verdict": verdict.model_dump(),
+                    "relation_id": str(relation_id),
+                }
+            )
+
+        return {"judge_results": judge_results, "t2_calls_used": t2_calls_used + calls_made}
+
     async def update_status(state: ExtractionState) -> dict:
         if state.get("error"):
             new_status = STATUS_EXTRACTION_FAILED
@@ -581,6 +731,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
     builder.add_node("extract_spans", extract_spans)
     builder.add_node("validate_and_project", validate_and_project)
     builder.add_node("store_claims", store_claims)
+    builder.add_node("judge_capsules", judge_capsules)
     builder.add_node("update_status", update_status)
 
     builder.set_entry_point("load_spans")
@@ -591,7 +742,8 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         {"validate_and_project": "validate_and_project", "update_status": "update_status"},
     )
     builder.add_edge("validate_and_project", "store_claims")
-    builder.add_edge("store_claims", "update_status")
+    builder.add_edge("store_claims", "judge_capsules")
+    builder.add_edge("judge_capsules", "update_status")
     builder.add_edge("update_status", END)
 
     return builder.compile()
