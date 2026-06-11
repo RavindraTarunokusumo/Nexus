@@ -9,6 +9,25 @@ Track meaningful repository-level changes here.
 - Why it changed
 - Any follow-up work or migration notes
 
+## 2026-06-11 — Phase C: Reasoning Layer
+
+Landed the Phase C reasoning nodes across commits `af55ed0`–`ac769a2` on branch `claude/compassionate-varahamihira-1d61fa`.
+
+**What changed:**
+
+- **C1 — `judge_capsules` node.** New graph node wired after `store_claims`. Queries capsules with `escalation_state="flagged"`, reconstructs a minimal `SemanticObject` via `_capsule_to_obj_for_judge`, calls the T2 judge (`JudgeVerdict`), writes unary `SemanticRelation` rows (`target_capsule_id=NULL`), and updates capsule `escalation_state` to `"escalated"` or `"reviewed"`. Respects a per-run T2 budget via `t2_calls_used` on `ExtractionState`.
+- **C2 — `classify_relations` node.** New graph node wired after `judge_capsules`. Groups same-document capsule pairs by `object_family`, calls the T2 classifier (`RelationClassification` from `classify_relations.py`), skips `"none"` results, and writes binary `SemanticRelation` rows (`source_capsule_id` + `target_capsule_id` both set). Shares the `t2_calls_used` budget counter with `judge_capsules`.
+- **C3 — `classify_relations.py` prompt.** New `app/intelligence/prompts/classify_relations.py`: `RelationClassification` Pydantic schema, `build_relation_prompt()`, `SYSTEM_PROMPT` for the T2 relation classifier.
+- **C4 — `ExtractionState` extensions.** Four new fields: `stored_capsule_ids` (output of `store_claims`, input to `judge_capsules`), `judge_results`, `relation_ids`, `t2_calls_used`. `run_with_context` initial state now includes all four.
+- **C5 — Graph wiring helpers.** `_resolve_t2_model(pack, fallback)` reads `pack.model_extra["models"]["t2"]`. `_capsule_to_obj_for_judge(capsule)` reconstructs a minimal `SemanticObject` from a capsule row.
+- **C6 — Backfill error isolation.** `backfill._write_batch` wraps commit in try/except; `capsules_written` / `capsule_segments_written` counters increment only after successful commit; FK `IntegrityError` from orphaned span refs is caught and appended to `result.errors`.
+- **C7 — `slow` marker.** `pyproject.toml` registers the `slow` pytest marker. `tests/test_validation_harness.py` adds 5 integration tests (`@pytest.mark.slow`) for text ingest, RSS ingest, status, document inspection, and semantic search. Run with `-m "not slow"` to skip in fast-unit CI.
+- **New unit tests.** `test_capsules.py` (7 tests for `build_capsule_row`), `test_judge_wiring.py` (6 tests for `_resolve_t2_model` and `_capsule_to_obj_for_judge`), `test_relation_classification.py` (9 tests for `build_relation_prompt`, `RelationClassification`, and `classify_relations` short-circuit / "none"-skip).
+
+**Why:** Activates the knowledge-graph relation layer. `semantic_relations` is now populated at extraction time rather than being schema-only. Establishes the T2 budget-sharing pattern needed for any additional reasoning nodes in Phase D+.
+
+**Migration / setup:** No new schema migrations required (migration 0005 already includes `semantic_relations`). Existing deployments gain relation rows automatically on the next extraction run. Run `nexus capsules backfill` to populate capsule rows for Phase A/B data before re-extracting if needed.
+
 ## 2026-06-03 — Phase B: Durable Capsule Layer
 
 Landed the Phase B capsule-schema foundation across commits `620a191`–`4a052b4` on branch `claude/phase-b-implementation`.
