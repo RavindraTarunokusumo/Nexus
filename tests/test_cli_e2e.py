@@ -340,3 +340,9 @@ async def test_ingest_rss_command(monkeypatch, db_url):
     result = runner.invoke(app, ["ingest", "rss", str(source_id), "--db-url", db_url])
     assert result.exit_code == 0, result.stdout
     assert captured["source_id"] == source_id
+
+
+def test_capsules_backfill_help_works():
+    result = runner.invoke(app, ["capsules", "backfill", "--help"])
+    assert result.exit_code == 0
+    assert "--dry-run" in result.stdout
