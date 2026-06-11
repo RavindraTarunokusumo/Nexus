@@ -7,7 +7,11 @@ Read [docs/specs/operations.md](specs/operations.md) for phase-level validation 
 ## Running Tests
 
 ```sh
+# All tests (includes slow integration tests)
 python -m pytest tests/ -v
+
+# Fast unit tests only — skips @pytest.mark.slow tests
+python -m pytest tests/ -v -m "not slow"
 ```
 
 **Requirements:**
@@ -15,6 +19,7 @@ python -m pytest tests/ -v
 - Docker is preferred; when Docker is available, testcontainers starts `pgvector/pgvector:pg16` automatically.
 - If Docker is unavailable, the suite falls back to local Postgres at `postgresql+asyncpg://nexus:nexus@localhost:5432/nexus`.
 - A `.env` file must exist with `DATABASE_URL` and `APP_SECRET` set (the test harness overrides the DB URL at runtime when needed).
+- Tests marked `@pytest.mark.slow` require a live database and a running FastAPI server. They are excluded from fast-unit CI runs via `-m "not slow"`. The `slow` marker is registered in `pyproject.toml` under `[tool.pytest.ini_options]`.
 
 Run a single file:
 
@@ -78,6 +83,20 @@ Phase B adds three DB-bound tests (require Docker / Postgres via testcontainers)
 - `tests/intelligence/test_resolve_pack_and_source_type.py` — no-DB; 4-pass classifier: URL domain match, title regex match, pack fallback, and safety-net `"ai_news_article"`; spoof-resistance (suffix attacks); `(?-i)` case-sensitive override.
 
 The gold set for the Phase B eval runner is `evals/gold/semantic_objects/ai_tech_v3.yaml` (10 examples, 6 `mvp_claim_types`). The legacy gold set `evals/gold/claim_extraction/ai_tech_v2.yaml` is obsolete — the `SemanticObjectJudge` replaces `ClaimExtractionJudge`.
+
+### Phase C — reasoning node and validation harness tests
+
+Phase C adds four new test files.
+
+Pure unit tests (no DB, no LLM):
+
+- `tests/intelligence/test_capsules.py` — 7 unit tests for `build_capsule_row`: field mapping, idempotency key generation, segment count, embedding dimension, and `created_by_tier` values.
+- `tests/intelligence/test_judge_wiring.py` — 6 unit tests for `_resolve_t2_model` (pack override, fallback to `settings.t2_model`, missing key) and `_capsule_to_obj_for_judge` (field reconstruction from capsule row).
+- `tests/intelligence/test_relation_classification.py` — 9 tests for `build_relation_prompt` output structure, `RelationClassification` Pydantic schema validation, and `classify_relations` node short-circuit behavior when over budget and "none"-result skipping.
+
+Slow integration tests:
+
+- `tests/test_validation_harness.py` — 5 tests marked `@pytest.mark.slow`: text ingest, RSS ingest, status, document inspection, and semantic search. Run against a real database and live server. Excluded from fast-unit CI via `-m "not slow"`.
 
 ## Critical Invariants Tested
 
