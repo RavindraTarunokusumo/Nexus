@@ -1,4 +1,9 @@
-"""Unit tests for app.intelligence.capsules.build_capsule_row."""
+"""Unit tests for app.intelligence.capsules.build_capsule_row.
+
+Pure unit tests — no DB required. Run with --noconftest to skip the DB
+fixture chain:
+    pytest tests/intelligence/test_capsules.py -v --noconftest
+"""
 
 import uuid
 
@@ -162,6 +167,8 @@ def test_build_capsule_row_segment_roles_custom():
     )
     roles = {s.segment_id: s.role for s in segments}
     assert roles[span_uuid] == "grounds"
+    other_ids = [s.segment_id for s in segments if s.segment_id != span_uuid]
+    assert all(roles[sid] == "support" for sid in other_ids)
 
 
 def test_build_capsule_row_created_at_passthrough():
