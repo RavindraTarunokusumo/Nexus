@@ -137,6 +137,10 @@ class ExtractionState(TypedDict):
     # Allows store_claims to build SemanticCapsule rows without extending ProjectedClaim.
     semantic_objects: list[SemanticObject]
     stored_claim_ids: list[uuid.UUID]
+    stored_capsule_ids: list[uuid.UUID]  # C1: parallel to stored_claim_ids; set by store_claims
+    judge_results: list[dict]  # C1: [{capsule_id, verdict_dict, relation_id}]
+    relation_ids: list[uuid.UUID]  # C2: SemanticRelation PKs from classify_relations
+    t2_calls_used: int  # C1/C2: running T2 budget counter
     total_tokens: int
     error: str | None
 
@@ -464,7 +468,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         semantic_objects: list[SemanticObject] = state.get("semantic_objects", [])
 
         if not projected_claims:
-            return {"stored_claim_ids": []}
+            return {"stored_claim_ids": [], "stored_capsule_ids": []}
 
         # Embed all capsule texts in one batch call to avoid repeated model init overhead.
         embedder = get_embedder()
@@ -485,6 +489,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         async with session_factory() as session:
             all_rows: list[Any] = []
             stored_ids: list[uuid.UUID] = []
+            capsule_ids: list[uuid.UUID] = []
 
             for idx, (projected, obj) in enumerate(
                 zip(projected_claims, semantic_objects, strict=True)
@@ -532,11 +537,12 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                 all_rows.extend(segments)
 
                 stored_ids.append(claim_id)
+                capsule_ids.append(capsule_id)
 
             session.add_all(all_rows)
             await session.commit()
 
-        return {"stored_claim_ids": stored_ids}
+        return {"stored_claim_ids": stored_ids, "stored_capsule_ids": capsule_ids}
 
     async def update_status(state: ExtractionState) -> dict:
         if state.get("error"):
@@ -607,6 +613,10 @@ async def run_with_context(graph, document_id: uuid.UUID, model: str) -> dict:
                 "projected_claims": [],
                 "semantic_objects": [],
                 "stored_claim_ids": [],
+                "stored_capsule_ids": [],
+                "judge_results": [],
+                "relation_ids": [],
+                "t2_calls_used": 0,
                 "total_tokens": 0,
                 "error": None,
             }
