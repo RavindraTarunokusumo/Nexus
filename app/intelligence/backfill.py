@@ -119,11 +119,18 @@ async def _write_batch(
     dry_run: bool,
 ) -> None:
     """Embed text in one batch, call capsule_from_claim, session.add_all, then
-    commit or rollback per dry_run flag."""
+    commit or rollback per dry_run flag.
+
+    Counter increments happen AFTER a successful commit so failed batches
+    (e.g. IntegrityError from an orphaned CapsuleSegment.segment_id FK) do
+    not inflate BackfillResult counts.
+    """
     telos_cache: dict[str, str | None] = {}
 
     async with session_factory() as session:
         rows_to_add: list = []
+        batch_capsules = 0
+        batch_segments = 0
         for (claim, source_id, domain_pack), embedding in zip(
             new_claims_info, embeddings, strict=False
         ):
@@ -161,15 +168,21 @@ async def _write_batch(
 
             rows_to_add.append(capsule)
             rows_to_add.extend(segments)
-            result.capsules_written += 1
-            result.capsule_segments_written += len(segments)
+            batch_capsules += 1
+            batch_segments += len(segments)
 
         if rows_to_add:
             session.add_all(rows_to_add)
-            if dry_run:
+            try:
+                if dry_run:
+                    await session.rollback()
+                else:
+                    await session.commit()
+                result.capsules_written += batch_capsules
+                result.capsule_segments_written += batch_segments
+            except Exception as exc:
                 await session.rollback()
-            else:
-                await session.commit()
+                result.errors.append(f"batch commit failed: {exc}")
 
 
 async def backfill_capsules(
