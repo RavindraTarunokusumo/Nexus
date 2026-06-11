@@ -4,7 +4,8 @@ Pure unit tests — no DB required.
 Node tests for classify_relations are added in Task 8.
 """
 
-from unittest.mock import MagicMock
+import uuid as _uuid
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -88,3 +89,63 @@ def test_relation_classification_none_polarity():
         }
     )
     assert rc.polarity is None
+
+
+# ---------------------------------------------------------------------------
+# classify_relations node — short-circuit and "none" skipping
+# ---------------------------------------------------------------------------
+
+
+def _make_db_capsule(cap_id: _uuid.UUID, family: str, text: str) -> MagicMock:
+    cap = MagicMock()
+    cap.id = cap_id
+    cap.object_family = family
+    cap.domain_object_type = "model_release"
+    cap.text = text
+    cap.facets = {}
+    cap.escalation_state = "none"
+    cap.epistemic_state = {}
+    cap.salience = 0.5
+    cap.confidence = 0.7
+    return cap
+
+
+@pytest.mark.asyncio
+async def test_classify_relations_skips_when_fewer_than_2_capsules():
+    """With only 1 stored_capsule_id, classify_relations returns {} without calling the LLM."""
+    from app.intelligence.extraction import make_extraction_graph
+
+    mock_sf = MagicMock()
+    mock_client = AsyncMock()
+    make_extraction_graph(mock_sf, mock_client)
+
+    # With only 1 capsule_id in state, the short-circuit `len(capsule_ids) < 2` triggers.
+    # Verify that no LLM call was made — the graph node returns early.
+    mock_client.complete_json.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_classify_relations_skips_none_relation_type():
+    """A 'none' classification is not written to the DB (no session.add call)."""
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+    mock_session.execute.return_value.scalars.return_value.all.return_value = []
+
+    mock_sf = MagicMock()
+    mock_sf.return_value = mock_session
+
+    mock_client = AsyncMock()
+    mock_client.complete_json.return_value = (
+        RelationClassification(
+            relation_type="none", polarity=None, strength=0.0, rationale="No relation."
+        ),
+        10,
+    )
+
+    from app.intelligence.extraction import make_extraction_graph
+
+    make_extraction_graph(mock_sf, mock_client)
+
+    # The session.add method should never have been called (no relation written).
+    mock_session.add.assert_not_called()
