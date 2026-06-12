@@ -375,6 +375,115 @@ async def _extract_one_span(
     raise AssertionError("unreachable: retry loop should have returned")
 
 
+async def _run_classify_relations(
+    state: ExtractionState,
+    session_factory: async_sessionmaker,
+    client: Any,
+) -> dict:
+    """Classify semantic relations between same-family capsule pairs (C2).
+
+    For each group of capsules sharing the same object_family, generates
+    unordered pairs (A, B) with A.id < B.id and calls the T2 classifier.
+    Pairs are capped by the remaining T2 budget after judge_capsules.
+    Writes one SemanticRelation row per non-"none" classification.
+    """
+    capsule_ids = state.get("stored_capsule_ids", [])
+    if state.get("error") or len(capsule_ids) < 2:
+        return {}
+
+    pack: DomainPack = state["pack"]  # type: ignore[assignment]
+    t2_calls_used: int = state.get("t2_calls_used", 0)
+    remaining_budget = pack.budgets.max_t2_calls_per_source - t2_calls_used
+    if remaining_budget <= 0:
+        return {}
+
+    t2_model = _resolve_t2_model(pack, state["model"])
+
+    async with session_factory() as session:
+        caps = (
+            (
+                await session.execute(
+                    select(SemanticCapsule).where(SemanticCapsule.id.in_(capsule_ids))
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    by_family: dict[str, list] = defaultdict(list)
+    for cap in caps:
+        by_family[cap.object_family].append(cap)
+
+    pairs = []
+    for fam_caps in by_family.values():
+        sorted_caps = sorted(fam_caps, key=lambda c: c.id)
+        for i, cap_a in enumerate(sorted_caps):
+            for cap_b in sorted_caps[i + 1 :]:
+                pairs.append((cap_a, cap_b))
+
+    pairs = pairs[:remaining_budget]
+
+    relation_ids: list[uuid.UUID] = []
+
+    for cap_a, cap_b in pairs:
+        try:
+            classification, _ = await client.complete_json(
+                model=t2_model,
+                system=CLASSIFY_SYSTEM_PROMPT,
+                user=build_relation_prompt(cap_a, cap_b, pack),
+                response_model=RelationClassification,
+                run_type="classify_relation",
+            )
+        except LLMError as exc:
+            logger.warning(
+                "Relation classification failed (%s → %s): %s",
+                cap_a.id,
+                cap_b.id,
+                exc,
+            )
+            continue
+
+        if not classification.relation_type or classification.relation_type == "none":
+            continue
+
+        relation_id = uuid.uuid4()
+        canonical_type = (
+            classification.relation_type
+            if classification.relation_type in _CANONICAL_RELATION_TYPES
+            else "other"
+        )
+        domain_relation_type = (
+            classification.relation_type
+            if classification.relation_type not in _CANONICAL_RELATION_TYPES
+            else None
+        )
+
+        async with session_factory() as session:
+            session.add(
+                SemanticRelation(
+                    id=relation_id,
+                    source_capsule_id=cap_a.id,
+                    target_capsule_id=cap_b.id,
+                    target_thesis_id=None,
+                    relation_type=canonical_type,
+                    domain_relation_type=domain_relation_type,
+                    polarity=classification.polarity,
+                    strength=classification.strength,
+                    confidence=classification.strength,
+                    evidence_capsule_ids=[],
+                    rationale=classification.rationale,
+                    epistemic_state={},
+                    created_by_tier="t2",
+                    created_by_model=t2_model,
+                )
+            )
+            await session.commit()
+
+        relation_ids.append(relation_id)
+
+    return {"relation_ids": relation_ids}
+
+
 def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # noqa: C901
     """Build and compile the LangGraph extraction graph bound to session_factory and client.
 
@@ -717,108 +826,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         return {"judge_results": judge_results, "t2_calls_used": t2_calls_used + calls_made}
 
     async def classify_relations(state: ExtractionState) -> dict:
-        """Classify semantic relations between same-family capsule pairs (C2).
-
-        For each group of capsules sharing the same object_family, generates
-        unordered pairs (A, B) with A.id < B.id and calls the T2 classifier.
-        Pairs are capped by the remaining T2 budget after judge_capsules.
-        Writes one SemanticRelation row per non-"none" classification.
-        """
-        capsule_ids = state.get("stored_capsule_ids", [])
-        if state.get("error") or len(capsule_ids) < 2:
-            return {}
-
-        pack: DomainPack = state["pack"]  # type: ignore[assignment]
-        t2_calls_used: int = state.get("t2_calls_used", 0)
-        remaining_budget = pack.budgets.max_t2_calls_per_source - t2_calls_used
-        if remaining_budget <= 0:
-            return {}
-
-        t2_model = _resolve_t2_model(pack, state["model"])
-
-        async with session_factory() as session:
-            caps = (
-                (
-                    await session.execute(
-                        select(SemanticCapsule).where(SemanticCapsule.id.in_(capsule_ids))
-                    )
-                )
-                .scalars()
-                .all()
-            )
-
-        by_family: dict[str, list] = defaultdict(list)
-        for cap in caps:
-            by_family[cap.object_family].append(cap)
-
-        pairs = []
-        for fam_caps in by_family.values():
-            sorted_caps = sorted(fam_caps, key=lambda c: c.id)
-            for i, cap_a in enumerate(sorted_caps):
-                for cap_b in sorted_caps[i + 1 :]:
-                    pairs.append((cap_a, cap_b))
-
-        pairs = pairs[:remaining_budget]
-
-        relation_ids: list[uuid.UUID] = []
-
-        for cap_a, cap_b in pairs:
-            try:
-                classification, _ = await client.complete_json(
-                    model=t2_model,
-                    system=CLASSIFY_SYSTEM_PROMPT,
-                    user=build_relation_prompt(cap_a, cap_b, pack),
-                    response_model=RelationClassification,
-                    run_type="classify_relation",
-                )
-            except LLMError as exc:
-                logger.warning(
-                    "Relation classification failed (%s → %s): %s",
-                    cap_a.id,
-                    cap_b.id,
-                    exc,
-                )
-                continue
-
-            if not classification.relation_type or classification.relation_type == "none":
-                continue
-
-            relation_id = uuid.uuid4()
-            canonical_type = (
-                classification.relation_type
-                if classification.relation_type in _CANONICAL_RELATION_TYPES
-                else "other"
-            )
-            domain_relation_type = (
-                classification.relation_type
-                if classification.relation_type not in _CANONICAL_RELATION_TYPES
-                else None
-            )
-
-            async with session_factory() as session:
-                session.add(
-                    SemanticRelation(
-                        id=relation_id,
-                        source_capsule_id=cap_a.id,
-                        target_capsule_id=cap_b.id,
-                        target_thesis_id=None,
-                        relation_type=canonical_type,
-                        domain_relation_type=domain_relation_type,
-                        polarity=classification.polarity,
-                        strength=classification.strength,
-                        confidence=classification.strength,
-                        evidence_capsule_ids=[],
-                        rationale=classification.rationale,
-                        epistemic_state={},
-                        created_by_tier="t2",
-                        created_by_model=t2_model,
-                    )
-                )
-                await session.commit()
-
-            relation_ids.append(relation_id)
-
-        return {"relation_ids": relation_ids}
+        return await _run_classify_relations(state, session_factory, client)
 
     async def update_status(state: ExtractionState) -> dict:
         if state.get("error"):

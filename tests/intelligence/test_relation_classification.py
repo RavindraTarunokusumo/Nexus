@@ -112,25 +112,61 @@ def _make_db_capsule(cap_id: _uuid.UUID, family: str, text: str) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_classify_relations_skips_when_fewer_than_2_capsules():
-    """With only 1 stored_capsule_id, classify_relations returns {} without calling the LLM."""
-    from app.intelligence.extraction import make_extraction_graph
+    """_run_classify_relations returns {} without LLM call when < 2 capsule IDs in state."""
+
+    from app.intelligence.extraction import _run_classify_relations
 
     mock_sf = MagicMock()
     mock_client = AsyncMock()
-    make_extraction_graph(mock_sf, mock_client)
+    pack = _pack()
 
-    # With only 1 capsule_id in state, the short-circuit `len(capsule_ids) < 2` triggers.
-    # Verify that no LLM call was made — the graph node returns early.
+    state: dict = {
+        "document_id": _uuid.uuid4(),
+        "run_id": None,
+        "model": "test-model",
+        "pack": pack,
+        "source_type": "ai_news_article",
+        "source_id": _uuid.uuid4(),
+        "spans": [],
+        "results": [],
+        "projected_claims": [],
+        "semantic_objects": [],
+        "stored_claim_ids": [],
+        "stored_capsule_ids": [_uuid.uuid4()],  # only 1 — triggers < 2 short-circuit
+        "judge_results": [],
+        "relation_ids": [],
+        "t2_calls_used": 0,
+        "total_tokens": 0,
+        "error": None,
+    }
+
+    result = await _run_classify_relations(state, mock_sf, mock_client)
+
+    assert result == {}
     mock_client.complete_json.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_classify_relations_skips_none_relation_type():
-    """A 'none' classification is not written to the DB (no session.add call)."""
+    """_run_classify_relations: 'none' classification is not written to DB."""
+    from app.intelligence.extraction import _run_classify_relations
+
+    cap_id_a = _uuid.uuid4()
+    cap_id_b = _uuid.uuid4()
+    # Ensure deterministic A < B ordering
+    if cap_id_a > cap_id_b:
+        cap_id_a, cap_id_b = cap_id_b, cap_id_a
+
+    cap_a = _make_db_capsule(cap_id_a, "model_release_event", "Text A")
+    cap_b = _make_db_capsule(cap_id_b, "model_release_event", "Text B")
+
     mock_session = AsyncMock()
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock(return_value=False)
-    mock_session.execute.return_value.scalars.return_value.all.return_value = []
+    # execute is awaited; its result is a sync MagicMock so .scalars().all() is not a coroutine.
+    execute_result = MagicMock()
+    execute_result.scalars.return_value.all.return_value = [cap_a, cap_b]
+    mock_session.execute = AsyncMock(return_value=execute_result)
 
     mock_sf = MagicMock()
     mock_sf.return_value = mock_session
@@ -143,9 +179,29 @@ async def test_classify_relations_skips_none_relation_type():
         10,
     )
 
-    from app.intelligence.extraction import make_extraction_graph
+    pack = _pack()
 
-    make_extraction_graph(mock_sf, mock_client)
+    state: dict = {
+        "document_id": _uuid.uuid4(),
+        "run_id": None,
+        "model": "test-model",
+        "pack": pack,
+        "source_type": "ai_news_article",
+        "source_id": _uuid.uuid4(),
+        "spans": [],
+        "results": [],
+        "projected_claims": [],
+        "semantic_objects": [],
+        "stored_claim_ids": [],
+        "stored_capsule_ids": [cap_id_a, cap_id_b],
+        "judge_results": [],
+        "relation_ids": [],
+        "t2_calls_used": 0,
+        "total_tokens": 0,
+        "error": None,
+    }
 
-    # The session.add method should never have been called (no relation written).
+    result = await _run_classify_relations(state, mock_sf, mock_client)
+
+    assert result == {"relation_ids": []}
     mock_session.add.assert_not_called()
