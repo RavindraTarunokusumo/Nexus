@@ -10,6 +10,8 @@ in extraction.py imports and calls build_relation_prompt.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from app.db.models import SemanticCapsule
@@ -44,7 +46,7 @@ class RelationClassification(BaseModel):
     """Response schema for the T2 relation-classification prompt."""
 
     relation_type: str
-    polarity: str | None = None
+    polarity: Literal["positive", "negative", "neutral"] | None = None
     strength: float = Field(ge=0.0, le=1.0)
     rationale: str
 
