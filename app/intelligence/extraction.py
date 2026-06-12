@@ -80,6 +80,19 @@ logger = logging.getLogger(__name__)
 
 _MAX_RETRIES = 2
 
+_CANONICAL_RELATION_TYPES = frozenset(
+    {
+        "supports",
+        "contradicts",
+        "refines",
+        "exemplifies",
+        "qualifies",
+        "supersedes",
+        "depends_on",
+        "other",
+    }
+)
+
 
 def _url_matches_domain(parsed: SplitResult | None, hint: str) -> bool:
     """Return True if the pre-parsed URL matches *hint* without suffix spoofing.
@@ -747,7 +760,6 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
 
         pairs = pairs[:remaining_budget]
 
-        domain_relations_set = set(pack.relation_grammar.domain_relations)
         relation_ids: list[uuid.UUID] = []
 
         for cap_a, cap_b in pairs:
@@ -772,9 +784,14 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                 continue
 
             relation_id = uuid.uuid4()
+            canonical_type = (
+                classification.relation_type
+                if classification.relation_type in _CANONICAL_RELATION_TYPES
+                else "other"
+            )
             domain_relation_type = (
                 classification.relation_type
-                if classification.relation_type in domain_relations_set
+                if classification.relation_type not in _CANONICAL_RELATION_TYPES
                 else None
             )
 
@@ -785,7 +802,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                         source_capsule_id=cap_a.id,
                         target_capsule_id=cap_b.id,
                         target_thesis_id=None,
-                        relation_type=classification.relation_type,
+                        relation_type=canonical_type,
                         domain_relation_type=domain_relation_type,
                         polarity=classification.polarity,
                         strength=classification.strength,
