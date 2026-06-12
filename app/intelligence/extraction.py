@@ -665,18 +665,19 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
 
             calls_made += 1
             relation_id = uuid.uuid4()
-            relation_type = "judge_escalated" if verdict.escalate else "judge_cleared"
-            new_escalation = "escalated" if verdict.escalate else "reviewed"
+            domain_relation_type = "judge_escalated" if verdict.escalate else "judge_cleared"
+            relation_type = "other"
+            new_escalation = "escalated" if verdict.escalate else "resolved"
 
             async with session_factory() as session:
                 session.add(
                     SemanticRelation(
                         id=relation_id,
                         source_capsule_id=capsule.id,
-                        target_capsule_id=None,
+                        target_capsule_id=capsule.id,  # self-reference: satisfies XOR CHECK for unary annotation
                         target_thesis_id=None,
-                        relation_type=relation_type,
-                        domain_relation_type=None,
+                        relation_type=relation_type,  # "other" — canonical value
+                        domain_relation_type=domain_relation_type,  # "judge_escalated" or "judge_cleared"
                         polarity=None,
                         strength=verdict.recommended_confidence,
                         confidence=verdict.recommended_confidence,
