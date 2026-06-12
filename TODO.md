@@ -1,19 +1,12 @@
 # TODO
 
-## Active
-
-### Phase 2 validation harness
-
-- [ ] Create and run a destructive CLI validation script that resets local data and exercises text, RSS, status, document inspection, and semantic search paths.
-
 ## Future
 
-### Phase C — Reasoning Layer
+### Phase C — Reasoning Layer (remaining)
 
-- [ ] T2 judge wiring — connect the Phase A `judge_semantic_object.py` prompt to the extraction graph with `semantic_relations` as the destination; gated by `budgets.max_t2_calls_per_source`.
-- [ ] Relation classification (T2) — supports/contradicts/refines/qualifies/supersedes + per-domain relation_grammar entries.
-- [ ] Thesis layer — first `theses` writer; per-pack synthesis triggers.
-- [ ] Decision artefacts — first `decision_artefacts` writer.
+- [ ] Thesis layer — first `theses` writer; per-pack synthesis triggers. (C3)
+- [ ] Decision artefacts — first `decision_artefacts` writer. (C4)
+- [ ] DB-bound integration tests for `judge_capsules` and `classify_relations` node paths.
 
 ### Phase D — Retrieval & UI Over Meaning
 
@@ -78,10 +71,6 @@
 - [ ] Record durable workflow lessons in `docs/insights.md` as they appear.
 - [ ] `nexus document <id>` CLI command — show extracted claims inline (deferred from Phase 2.5)
 - [ ] `nexus extract <doc_id>` CLI command — trigger extraction from the CLI
-- [ ] **Phase B test-plan follow-ups (WARN verdict, PR #19)**
-  - [ ] P1 — `nexus capsules backfill --help` CLI smoke test in `test_cli_e2e.py`
-  - [ ] P2 — Direct unit test for `build_capsule_row` (`app/intelligence/capsules.py`)
-  - [ ] P2 — Orphaned-span backfill skip path
 - [ ] **Fix mypy pre-commit hook** — add `types-PyYAML` to `additional_dependencies` in `.pre-commit-config.yaml` so the hook's isolated env resolves the `yaml` stubs; eliminates the false failure on `app/evaluation/*.py` every session.
   Reference: `.pre-commit-config.yaml`, mypy hook, `language: system` → `language: python` or add `additional_dependencies: [types-PyYAML]`
 - [ ] **Session-start hook for PostgreSQL** — add a Claude Code `SessionStart` hook that runs `service postgresql start` so integration tests work immediately without manual intervention each session.
