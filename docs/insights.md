@@ -149,3 +149,33 @@ Without step 2, Python's `pathlib` does NOT collapse `..` segments — `Path("/s
 ### `gh pr create --body` heredoc works on Windows bash for long PR bodies
 
 Multi-paragraph PR bodies with markdown, checkboxes, and code blocks can be passed inline via `"$(cat <<'EOF' ... EOF)"`. Tested with a ~3500-character body. The persisted-output / file-reference path is only needed when the diff itself is being passed (e.g., to a security-review skill that wants the full diff inline) — for `gh pr create` content authored by the controller, heredoc is fine.
+
+## Session: phase-c-reasoning-layer (2026-06-11/12)
+
+### Opus subagent catches schema CHECK violations that unit tests (with mocks) miss
+
+Mocking the session in node tests means `session.add(...)` is recorded but the constructed ORM object is never validated against DB CHECK constraints. An Opus code-review pass caught 5 distinct CHECK violations (relation_type, escalation_state, polarity, target XOR) that had been invisible to green unit tests. **Lesson:** for nodes that write to tables with CHECK constraints, at least one test must hit a real DB (`@pytest.mark.slow`) to confirm the SQL lands. Mock-only tests verify call patterns, not schema compatibility.
+
+### Nested LangGraph node functions are untestable without extraction or real graph invocation
+
+Node functions defined inside `make_extraction_graph` close over `session_factory` and `client` but are not importable. Two approaches: (a) extract to module-level functions that take the closure vars as parameters — testable with direct `await`; (b) build the full graph and call `graph.ainvoke()` with a heavily mocked `session_factory`. Approach (a) is cleaner and was adopted for `_run_classify_relations`. **Lesson:** for any node that warrants unit testing, extract it to module level at write time — retrofitting is more expensive.
+
+### Vacuous tests are worse than no tests
+
+Two node tests called `make_extraction_graph(mock_sf, mock_client)` then immediately asserted `mock_client.complete_json.assert_not_called()`. Both always passed because nothing invoked the graph. They gave false CI confidence and were the reason the schema violations weren't caught earlier. **Lesson:** after writing a test, always ask "could this assertion pass trivially without the code under test running?" — if yes, the test is vacuous.
+
+### ruff enforces separate import blocks for aliased vs. non-aliased names from the same module
+
+Consolidating `from app.x import (A as B)` and `from app.x import (C, D)` into one block causes ruff to re-split them on the next pre-commit run. This is expected ruff behaviour — don't fight it; leave split imports as-is when ruff auto-reverts the consolidation.
+
+### Copilot Code Review requires manual setup per repo — Opus subagent is a reliable substitute
+
+`gh api .../requested_reviewers` with `reviewers[]=copilot-pull-request-reviewer` returns HTTP 422 if the GitHub Copilot integration isn't configured as a repo collaborator. Spawning an Opus subagent with the `requesting-code-review` skill template gives equivalent depth. **Lesson:** when Copilot review isn't available, use Opus directly rather than waiting indefinitely.
+
+### `ScheduleWakeup` + `gh api` polling is a reliable pattern for waiting on external CI events
+
+Polling `gh api repos/.../pulls/20/reviews` every ~270s (within the 5-min cache window) works without rate-limiting issues. When the event never fires (Copilot not configured), the fallback is to cancel the loop and switch strategy rather than extending the sleep. **Lesson:** always have a cancellation condition for polling loops, not just a timeout.
+
+### Session-limit errors from Opus subagents are transient — re-dispatch with the same prompt
+
+A session-limit error (`"You've hit your session limit"`) from an Opus subagent is a transient rate-limit, not a task failure. The fix is simply to re-dispatch the same agent with the same prompt after a short pause. No state is lost because subagents are stateless.

@@ -1,32 +1,12 @@
 # TODO
 
-## Active
-
-### Phase B — Capsule-Schema Foundation (follow-up to Phase A)
-
-Phase A landed the telos-aware extraction + projection bridge (see [archive](docs/iterations/archive/2026-05-30-phase-a-telos-semantic-bridge.md)). Phase B promotes the in-memory `SemanticObject` layer to durable tables, backfills from the Phase A `_v0_7` stash, and retires the legacy `ExtractedClaim` / `ExtractionOutput` dual-path.
-
-Plan: [`docs/superpowers/plans/2026-06-02-phase-b-capsule-schema.md`](docs/superpowers/plans/2026-06-02-phase-b-capsule-schema.md).
-Embedded ADR (Q1 naming + Q4 pack inheritance) is at §8 of the plan.
-
-- [ ] **B1** — Alembic migration 0005 + ORM models: `semantic_capsules`, `capsule_segments`, `semantic_relations`, `theses`, `decision_artefacts`, `domain_packs`. Column-level schema fixed in the plan §4. `tests/db/test_capsules_migration.py`.
-- [ ] **B2** — Dual-write from `projection.project()` + `extraction.store_claims`: write a `SemanticCapsule` row + N `CapsuleSegment` rows in the same transaction as the existing `Claim` + `ClaimEvidence` writes. Embed capsule `text` at write time via `bge-small-en-v1.5`. `tests/intelligence/test_capsules_dual_write.py`.
-- [ ] **B3** — Backfill from existing `Claim.entities_json["_v0_7"]` payloads via `nexus capsules backfill [--dry-run]`. Idempotent (UUID5 from `idempotency_key`). Re-embeds `text` at write time. `tests/intelligence/test_capsule_backfill.py`.
-- [ ] **B4** — Ingestion-side detection of v3 source-type profile: replace `pack.metadata.supported_source_types[0]` fallback in `_resolve_pack_and_source_type` with URL-domain heuristic + title regex from the pack. Closes the Phase A `_resolve_pack_and_source_type` unit-test gap. `tests/intelligence/test_resolve_pack_and_source_type.py`.
-- [ ] **B5** — Eval-runner port + legacy retirement: port `app/evaluation/runner.py` to `SemanticExtractionOutput`; create `evals/gold/semantic_objects/ai_tech_v3.yaml`; delete `ExtractedClaim`, `ExtractionOutput`, `app/intelligence/prompts/extract_claims.py`, and the `schema_name="required"` correction path in `_shared.py`. Update `tests/test_llm_client.py` mocks. First object-level eval run must produce `mvp_claim_type_projection_accuracy` + at least one capsule-only metric.
-
-### Phase 2 validation harness
-
-- [ ] Create and run a destructive CLI validation script that resets local data and exercises text, RSS, status, document inspection, and semantic search paths.
-
 ## Future
 
-### Phase C — Reasoning Layer
+### Phase C — Reasoning Layer (remaining)
 
-- [ ] T2 judge wiring — connect the Phase A `judge_semantic_object.py` prompt to the extraction graph with `semantic_relations` as the destination; gated by `budgets.max_t2_calls_per_source`.
-- [ ] Relation classification (T2) — supports/contradicts/refines/qualifies/supersedes + per-domain relation_grammar entries.
-- [ ] Thesis layer — first `theses` writer; per-pack synthesis triggers.
-- [ ] Decision artefacts — first `decision_artefacts` writer.
+- [ ] Thesis layer — first `theses` writer; per-pack synthesis triggers. (C3)
+- [ ] Decision artefacts — first `decision_artefacts` writer. (C4)
+- [ ] DB-bound integration tests for `judge_capsules` and `classify_relations` node paths.
 
 ### Phase D — Retrieval & UI Over Meaning
 

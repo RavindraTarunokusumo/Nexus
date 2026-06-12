@@ -1,6 +1,6 @@
 # Architecture
 
-> **Phase B Status: Durable capsule layer landed. Phase A (Telos-Semantic Extraction Bridge) established the in-memory `SemanticObject` layer projected to legacy claims. Phase B (`semantic_capsules` schema) makes that layer durable: extraction now dual-writes `SemanticCapsule` + `CapsuleSegment` rows alongside `Claim` + `ClaimEvidence` in the same transaction. The `_v0_7` stash from Phase A is actively backfilled via `nexus capsules backfill`. Legacy `ExtractedClaim` / `ExtractionOutput` schemas and the dual-path eval contract are retired; the eval runner now uses `SemanticExtractionOutput` and `SemanticObjectJudge`.**
+> **Phase C Status: Reasoning layer landed. Phase B established the durable capsule layer (`semantic_capsules` + `capsule_segments`). Phase C wires two new T2 reasoning nodes into the extraction graph: `judge_capsules` (quality escalation via `JudgeVerdict`) and `classify_relations` (binary relation inference via `RelationClassification`). Both nodes share a T2 budget counter (`t2_calls_used`) and write `SemanticRelation` rows — unary for judge verdicts, binary for classified pairs. `backfill._write_batch` now catches FK `IntegrityError` without inflating write counters.**
 
 Nexus Lite is a private FastAPI application backed by PostgreSQL + pgvector, Redis, and local embeddings. The Phase 1 foundation covers source registration, document ingestion, and the full persistence schema.
 
@@ -77,7 +77,8 @@ app/
                            #   uses tracer.record_agent_run; tracks prompt_tokens / completion_tokens;
                            #   supports run_type for claim extraction and chat answers
     extraction.py          # LangGraph StateGraph (load_spans → extract_spans → validate_and_project
-                           #   → store_claims → update_status); asyncio.gather concurrency (Semaphore 5);
+                           #   → store_claims → judge_capsules → classify_relations → update_status);
+                           #   asyncio.gather concurrency (Semaphore 5);
                            #   correction-prompt retry (max 2); status constants exported;
                            #   wraps graph in extraction_run context; span_scope per span;
                            #   writes span_extractions rows; marks extraction timestamps;
@@ -85,7 +86,14 @@ app/
                            #   _resolve_pack_and_source_type: 4-pass classifier (URL domain match →
                            #   title regex → pack fallback → safety net); source_type → v3 profile;
                            #   store_claims dual-writes SemanticCapsule+CapsuleSegment alongside
-                           #   Claim+ClaimEvidence in the same transaction (Phase B)
+                           #   Claim+ClaimEvidence in the same transaction (Phase B);
+                           #   judge_capsules: T2 quality judge → unary SemanticRelation rows,
+                           #   capsule escalation_state update (Phase C);
+                           #   classify_relations: T2 same-family pair classifier → binary
+                           #   SemanticRelation rows (Phase C);
+                           #   _resolve_t2_model(pack, fallback): extracts pack.model_extra["models"]["t2"];
+                           #   _capsule_to_obj_for_judge(capsule): reconstructs minimal SemanticObject
+                           #   from capsule row; ExtractionState.t2_calls_used: shared T2 budget counter
     capsules.py            # Shared capsule assembly: get_embedder() singleton (bge-small-en-v1.5),
                            #   build_capsule_idempotency_key, build_capsule_row —
                            #   single source of truth for SemanticObject → SemanticCapsule +
@@ -107,8 +115,11 @@ app/
                            #   semantic-object families, salience rules, facet keys, per-segment
                            #   budgets, and response schema from the domain pack
       judge_semantic_object.py     # SYSTEM_PROMPT, JudgeVerdict schema, build_judge_prompt — T2
-                           #   judge scaffold for semantic-object quality escalation; not yet wired
-                           #   into the graph
+                           #   judge for semantic-object quality escalation; wired into graph as
+                           #   judge_capsules node (Phase C)
+      classify_relations.py        # SYSTEM_PROMPT, RelationClassification schema,
+                           #   build_relation_prompt — T2 classifier for same-family capsule pairs;
+                           #   wired into graph as classify_relations node (Phase C)
   domain_packs/
     loader.py              # Pydantic v2 loader for v3 (telos-based purpose-grammar) domain packs
     personal_ai_tech.yaml  # Default domain pack — full v3 pack (telos, 10 source-type profiles,
@@ -171,6 +182,14 @@ tests/
                                       #   idempotency via build_capsule_idempotency_key
     test_resolve_pack_and_source_type.py  # No-DB: 4-pass URL/title classifier; spoof-resistance;
                                           #   fallback + safety-net coverage
+    test_capsules.py                  # 7 pure unit tests for build_capsule_row (Phase C)
+    test_judge_wiring.py              # 6 unit tests for _resolve_t2_model and _capsule_to_obj_for_judge
+                                      #   helpers (Phase C)
+    test_relation_classification.py   # 9 unit tests: build_relation_prompt, RelationClassification schema,
+                                      #   classify_relations node short-circuit / "none" skipping (Phase C)
+  test_validation_harness.py          # 5 integration tests @pytest.mark.slow (text ingest, RSS ingest,
+                                      #   status, document inspection, semantic search); run against real
+                                      #   DB; skipped in fast-unit CI via -m "not slow"
 evals/
   gold/
     semantic_objects/
@@ -203,6 +222,14 @@ external source
           SemanticCapsule +          (durable Phase B native storage; 384-dim
           CapsuleSegment              embedding written at ingest time via
                                       bge-small-en-v1.5 shared singleton)
+     -> judge_capsules (T2, Phase C):
+          queries flagged capsules → JudgeVerdict → unary SemanticRelation
+          (target_capsule_id=NULL) + capsule escalation_state update;
+          respects t2_calls_used budget counter
+     -> classify_relations (T2, Phase C):
+          groups same-family capsule pairs by object_family → RelationClassification;
+          skips "none" results; writes binary SemanticRelation rows
+          (target_capsule_id SET); respects remaining T2 budget
 -> query answering:
      single-turn  POST /chat/answer  (stateless, no session)
      multi-turn   POST /chat/sessions/{id}/messages
@@ -309,7 +336,7 @@ As of Phase B, the `claims` + `claim_evidence` tables remain the **read path** (
 | T3 | Brief synthesis (Phase 4); LLM judge for eval | `settings.t3_model` | `deepseek/deepseek-v4-pro` |
 | T4 | Integrity audits | — | Aspirational |
 
-The T2 prompt is the telos-aware semantic-object prompt (`app/intelligence/prompts/extract_semantic_objects.py`). The legacy `extract_claims.py` prompt was deleted in Phase B; `app/evaluation/runner.py` now uses `SemanticExtractionOutput` and `SemanticObjectJudge`. Capsule embeddings (384-dim) are computed at write time via the T1 `bge-small-en-v1.5` shared singleton in `app/intelligence/capsules.py`; one batched embed call per `store_claims` invocation. The T2 judge scaffold (`judge_semantic_object.py`) exists but is not yet wired into the extraction graph.
+The T2 prompt is the telos-aware semantic-object prompt (`app/intelligence/prompts/extract_semantic_objects.py`). The legacy `extract_claims.py` prompt was deleted in Phase B; `app/evaluation/runner.py` now uses `SemanticExtractionOutput` and `SemanticObjectJudge`. Capsule embeddings (384-dim) are computed at write time via the T1 `bge-small-en-v1.5` shared singleton in `app/intelligence/capsules.py`; one batched embed call per `store_claims` invocation. As of Phase C, T2 is also used by two reasoning nodes wired into the extraction graph: `judge_capsules` (calls `judge_semantic_object.py`) and `classify_relations` (calls `classify_relations.py`). Both nodes share a single `t2_calls_used` budget counter on `ExtractionState` to limit total T2 spend per run. The per-run T2 model is resolved by `_resolve_t2_model(pack, fallback)` which reads `pack.model_extra["models"]["t2"]` with fallback to `settings.t2_model`.
 
 Cost is tracked per call: `0.30 / 1_000_000 * total_tokens` stored in the `agent_runs.cost_estimate` column.
 
@@ -403,8 +430,8 @@ Source -> Document -> Span -> SemanticObject -> SemanticCapsule (durable, Phase 
                                               -> Brief (Phase 4+)
 ```
 
-As of Phase B, the v0.7 semantic-object layer is durable in `semantic_capsules` + `capsule_segments`. The `claims` + `claim_evidence` tables remain the active read path (chat retrieval, claim listing). The `semantic_capsules` tables are populated at extraction time and via the `nexus capsules backfill` command for Phase A data. Phase C/D will add capsule-based retrieval, relation ingestion (`semantic_relations`, `theses`), and lifecycle state management. Phase E and beyond cover `decision_artefacts` and active `domain_packs` registry use.
+As of Phase C, the extraction graph includes two T2 reasoning nodes that actively populate `semantic_relations`. The `claims` + `claim_evidence` tables remain the active read path (chat retrieval, claim listing). The `semantic_capsules` + `capsule_segments` tables are the durable native storage. `semantic_relations` is now populated at extraction time: unary rows (target_capsule_id=NULL) record judge verdicts; binary rows (target_capsule_id SET) record classified capsule-pair relations. `theses` and `decision_artefacts` remain schema-ready but unpopulated (Phase D/E). Phase D will add capsule-based retrieval; Phase E covers lifecycle management and active `domain_packs` registry use.
 
-Migrations: 0001 (8 core tables), 0002 (observability columns + `span_extractions`), 0003 (eval tables), 0004 (`chat_sessions` + `chat_messages`), 0005 (6 capsule-layer tables: `semantic_capsules`, `capsule_segments`, `semantic_relations`, `theses`, `decision_artefacts`, `domain_packs`). The `semantic_relations`, `theses`, `decision_artefacts`, and `domain_packs` tables exist in the schema but are not yet populated by the pipeline.
+Migrations: 0001 (8 core tables), 0002 (observability columns + `span_extractions`), 0003 (eval tables), 0004 (`chat_sessions` + `chat_messages`), 0005 (6 capsule-layer tables: `semantic_capsules`, `capsule_segments`, `semantic_relations`, `theses`, `decision_artefacts`, `domain_packs`). The `theses`, `decision_artefacts`, and `domain_packs` tables exist in the schema but are not yet populated by the pipeline.
 
 The broader PoC hierarchy adds entities, relations, signals, clusters, theses, and decision artefacts. Those remain future-facing until the core ingestion-to-synthesis loop is stable.

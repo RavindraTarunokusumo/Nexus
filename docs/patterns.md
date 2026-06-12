@@ -89,6 +89,26 @@ count_sq = (
 
 This keeps the list endpoint to a single round-trip regardless of page size.
 
+## T2 Reasoning Node Pattern (Phase C)
+
+Two T2 nodes are wired into the extraction graph after `store_claims`. Both share a single `t2_calls_used: int` counter on `ExtractionState` to enforce a per-run T2 budget.
+
+### T2 model resolution
+
+`_resolve_t2_model(pack, fallback)` extracts `pack.model_extra["models"]["t2"]` with fallback to `settings.t2_model`. This allows per-pack T2 model overrides without touching `Settings`.
+
+### `judge_capsules` node
+
+Queries capsules with `escalation_state="flagged"` for the current document, reconstructs a minimal `SemanticObject` via `_capsule_to_obj_for_judge(capsule)`, and calls the T2 judge (`JudgeVerdict` from `judge_semantic_object.py`). On success, writes a unary `SemanticRelation` row (`target_capsule_id=NULL`) and updates the capsule's `escalation_state` to `"escalated"` or `"reviewed"`. Increments `t2_calls_used` per call; stops when budget is exhausted.
+
+### `classify_relations` node
+
+Groups same-document capsule pairs by `object_family`. For each group, calls the T2 classifier (`RelationClassification` from `classify_relations.py`). Skips results where `relation_type="none"` — no row is written. For all other results, writes a binary `SemanticRelation` row with both `source_capsule_id` and `target_capsule_id` set. Respects the remaining T2 budget from `t2_calls_used`.
+
+### Backfill error isolation
+
+`backfill._write_batch` wraps each batch commit in try/except. `capsules_written` and `capsule_segments_written` counters increment only after a successful commit. Failed batches (e.g. FK `IntegrityError` from orphaned span references) are appended to `result.errors` without inflating counts — preventing misleading success metrics when spans are missing.
+
 ## Frontend API Client Patterns
 
 The `web/src/api/client.ts` typed fetch layer follows these conventions:

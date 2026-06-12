@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from collections import defaultdict
 from typing import Any, TypedDict
 from urllib.parse import SplitResult, urlsplit
 
@@ -26,6 +27,8 @@ from app.db.models import (
     Claim,
     ClaimEvidence,
     Document,
+    SemanticCapsule,
+    SemanticRelation,
     Source,
     Span,
 )
@@ -44,6 +47,13 @@ from app.intelligence.projection import (
     project,
     validate_object,
 )
+from app.intelligence.prompts.classify_relations import (
+    SYSTEM_PROMPT as CLASSIFY_SYSTEM_PROMPT,
+)
+from app.intelligence.prompts.classify_relations import (
+    RelationClassification,
+    build_relation_prompt,
+)
 from app.intelligence.prompts.extract_semantic_objects import (
     SYSTEM_PROMPT as SEMANTIC_SYSTEM_PROMPT,
 )
@@ -56,12 +66,32 @@ from app.intelligence.prompts.extract_semantic_objects import (
 from app.intelligence.prompts.extract_semantic_objects import (
     build_user_prompt as build_semantic_user_prompt,
 )
+from app.intelligence.prompts.judge_semantic_object import (
+    SYSTEM_PROMPT as JUDGE_SYSTEM_PROMPT,
+)
+from app.intelligence.prompts.judge_semantic_object import (
+    JudgeVerdict,
+    build_judge_prompt,
+)
 from app.observability.run_context import extraction_run, span_scope
 from app.observability.tracer import mark_document_timestamp, record_span_extraction
 
 logger = logging.getLogger(__name__)
 
 _MAX_RETRIES = 2
+
+_CANONICAL_RELATION_TYPES = frozenset(
+    {
+        "supports",
+        "contradicts",
+        "refines",
+        "exemplifies",
+        "qualifies",
+        "supersedes",
+        "depends_on",
+        "other",
+    }
+)
 
 
 def _url_matches_domain(parsed: SplitResult | None, hint: str) -> bool:
@@ -108,6 +138,53 @@ def _load_spans_failure(error_msg: str) -> dict:
     }
 
 
+def _resolve_t2_model(pack: DomainPack, fallback: str) -> str:
+    """Extract the T2 model string from pack.model_extra['models']['t2'].
+
+    Falls back to fallback when the pack has no top-level 'models' key
+    or the T2 entry is missing.  Handles both string values and dict values
+    (dict: use 'extractor' or 'model' sub-key).
+    """
+    extra = getattr(pack, "model_extra", {}) or {}
+    top_models = extra.get("models") or {}
+    if isinstance(top_models, dict):
+        t2 = top_models.get("t2") or top_models.get("T2")
+        if isinstance(t2, str):
+            return t2
+        if isinstance(t2, dict):
+            return t2.get("extractor") or t2.get("model") or fallback
+    return fallback
+
+
+def _capsule_to_obj_for_judge(capsule: SemanticCapsule) -> SemanticObject:
+    """Reconstruct a minimal SemanticObject from capsule columns for T2 judge input.
+
+    ``source_refs`` (min-length-1 validator) and ``mvp_claim_type`` are not
+    used by ``build_judge_prompt``; they receive safe placeholder values so
+    SemanticObject validates correctly without an extra DB query.
+    """
+    epistemic = dict(capsule.epistemic_state or {})
+    epistemic.setdefault("status", "asserted_by_source")
+    epistemic.setdefault("source_authority", "unknown")
+    epistemic.setdefault("confidence", float(capsule.confidence or 0.5))
+    epistemic.setdefault("evidence_quality", "unknown")
+    epistemic.setdefault("needs_escalation", capsule.escalation_state == "flagged")
+    return SemanticObject.model_validate(
+        {
+            "core_type": capsule.core_type,
+            "domain_family": capsule.object_family,
+            "domain_object_type": capsule.domain_object_type,
+            "function": capsule.function or "",
+            "text": capsule.text,
+            "facets": capsule.facets or {},
+            "salience": float(capsule.salience or 0.5),
+            "source_refs": ["00000000-0000-0000-0000-000000000000"],
+            "epistemic": epistemic,
+            "mvp_claim_type": "other",
+        }
+    )
+
+
 # Document status lifecycle constants (extends the ingestion statuses with the
 # extraction outcomes; centralised here so routes_claims and tests can import them).
 STATUS_EMBEDDED = "embedded"
@@ -137,6 +214,10 @@ class ExtractionState(TypedDict):
     # Allows store_claims to build SemanticCapsule rows without extending ProjectedClaim.
     semantic_objects: list[SemanticObject]
     stored_claim_ids: list[uuid.UUID]
+    stored_capsule_ids: list[uuid.UUID]  # C1: parallel to stored_claim_ids; set by store_claims
+    judge_results: list[dict]  # C1: [{capsule_id, verdict_dict, relation_id}]
+    relation_ids: list[uuid.UUID]  # C2: SemanticRelation PKs from classify_relations
+    t2_calls_used: int  # C1/C2: running T2 budget counter
     total_tokens: int
     error: str | None
 
@@ -292,6 +373,115 @@ async def _extract_one_span(
             )
             raise
     raise AssertionError("unreachable: retry loop should have returned")
+
+
+async def _run_classify_relations(
+    state: ExtractionState,
+    session_factory: async_sessionmaker,
+    client: Any,
+) -> dict:
+    """Classify semantic relations between same-family capsule pairs (C2).
+
+    For each group of capsules sharing the same object_family, generates
+    unordered pairs (A, B) with A.id < B.id and calls the T2 classifier.
+    Pairs are capped by the remaining T2 budget after judge_capsules.
+    Writes one SemanticRelation row per non-"none" classification.
+    """
+    capsule_ids = state.get("stored_capsule_ids", [])
+    if state.get("error") or len(capsule_ids) < 2:
+        return {}
+
+    pack: DomainPack = state["pack"]  # type: ignore[assignment]
+    t2_calls_used: int = state.get("t2_calls_used", 0)
+    remaining_budget = pack.budgets.max_t2_calls_per_source - t2_calls_used
+    if remaining_budget <= 0:
+        return {}
+
+    t2_model = _resolve_t2_model(pack, state["model"])
+
+    async with session_factory() as session:
+        caps = (
+            (
+                await session.execute(
+                    select(SemanticCapsule).where(SemanticCapsule.id.in_(capsule_ids))
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    by_family: dict[str, list] = defaultdict(list)
+    for cap in caps:
+        by_family[cap.object_family].append(cap)
+
+    pairs = []
+    for fam_caps in by_family.values():
+        sorted_caps = sorted(fam_caps, key=lambda c: c.id)
+        for i, cap_a in enumerate(sorted_caps):
+            for cap_b in sorted_caps[i + 1 :]:
+                pairs.append((cap_a, cap_b))
+
+    pairs = pairs[:remaining_budget]
+
+    relation_ids: list[uuid.UUID] = []
+
+    for cap_a, cap_b in pairs:
+        try:
+            classification, _ = await client.complete_json(
+                model=t2_model,
+                system=CLASSIFY_SYSTEM_PROMPT,
+                user=build_relation_prompt(cap_a, cap_b, pack),
+                response_model=RelationClassification,
+                run_type="classify_relation",
+            )
+        except LLMError as exc:
+            logger.warning(
+                "Relation classification failed (%s → %s): %s",
+                cap_a.id,
+                cap_b.id,
+                exc,
+            )
+            continue
+
+        if not classification.relation_type or classification.relation_type == "none":
+            continue
+
+        relation_id = uuid.uuid4()
+        canonical_type = (
+            classification.relation_type
+            if classification.relation_type in _CANONICAL_RELATION_TYPES
+            else "other"
+        )
+        domain_relation_type = (
+            classification.relation_type
+            if classification.relation_type not in _CANONICAL_RELATION_TYPES
+            else None
+        )
+
+        async with session_factory() as session:
+            session.add(
+                SemanticRelation(
+                    id=relation_id,
+                    source_capsule_id=cap_a.id,
+                    target_capsule_id=cap_b.id,
+                    target_thesis_id=None,
+                    relation_type=canonical_type,
+                    domain_relation_type=domain_relation_type,
+                    polarity=classification.polarity,
+                    strength=classification.strength,
+                    confidence=classification.strength,
+                    evidence_capsule_ids=[],
+                    rationale=classification.rationale,
+                    epistemic_state={},
+                    created_by_tier="t2",
+                    created_by_model=t2_model,
+                )
+            )
+            await session.commit()
+
+        relation_ids.append(relation_id)
+
+    return {"relation_ids": relation_ids}
 
 
 def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # noqa: C901
@@ -464,7 +654,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         semantic_objects: list[SemanticObject] = state.get("semantic_objects", [])
 
         if not projected_claims:
-            return {"stored_claim_ids": []}
+            return {"stored_claim_ids": [], "stored_capsule_ids": []}
 
         # Embed all capsule texts in one batch call to avoid repeated model init overhead.
         embedder = get_embedder()
@@ -485,6 +675,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         async with session_factory() as session:
             all_rows: list[Any] = []
             stored_ids: list[uuid.UUID] = []
+            capsule_ids: list[uuid.UUID] = []
 
             for idx, (projected, obj) in enumerate(
                 zip(projected_claims, semantic_objects, strict=True)
@@ -532,11 +723,110 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                 all_rows.extend(segments)
 
                 stored_ids.append(claim_id)
+                capsule_ids.append(capsule_id)
 
             session.add_all(all_rows)
             await session.commit()
 
-        return {"stored_claim_ids": stored_ids}
+        return {"stored_claim_ids": stored_ids, "stored_capsule_ids": capsule_ids}
+
+    async def judge_capsules(state: ExtractionState) -> dict:
+        """Run the T2 evidence-sufficiency judge on flagged capsules (C1).
+
+        Gated by:
+        - state["stored_capsule_ids"] non-empty
+        - remaining T2 budget > 0
+        - capsule.escalation_state == "flagged"
+
+        Writes one SemanticRelation row per judged capsule (target_capsule_id=None;
+        unary quality annotation). Updates capsule.escalation_state to
+        "escalated" or "reviewed".
+        """
+        if state.get("error") or not state.get("stored_capsule_ids"):
+            return {}
+
+        pack: DomainPack = state["pack"]  # type: ignore[assignment]
+        t2_calls_used: int = state.get("t2_calls_used", 0)
+        remaining_budget = pack.budgets.max_t2_calls_per_source - t2_calls_used
+        if remaining_budget <= 0:
+            return {}
+
+        t2_model = _resolve_t2_model(pack, state["model"])
+        capsule_ids = state["stored_capsule_ids"]
+
+        async with session_factory() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(SemanticCapsule).where(SemanticCapsule.id.in_(capsule_ids))
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+        flagged = [c for c in rows if c.escalation_state == "flagged"]
+        to_judge = flagged[:remaining_budget]
+
+        judge_results: list[dict] = []
+        calls_made = 0
+
+        for capsule in to_judge:
+            obj = _capsule_to_obj_for_judge(capsule)
+            try:
+                verdict, _ = await client.complete_json(
+                    model=t2_model,
+                    system=JUDGE_SYSTEM_PROMPT,
+                    user=build_judge_prompt(obj, pack),
+                    response_model=JudgeVerdict,
+                    run_type="judge_capsule",
+                )
+            except LLMError as exc:
+                logger.warning("Judge failed for capsule %s: %s", capsule.id, exc)
+                continue
+
+            calls_made += 1
+            relation_id = uuid.uuid4()
+            domain_relation_type = "judge_escalated" if verdict.escalate else "judge_cleared"
+            relation_type = "other"
+            new_escalation = "escalated" if verdict.escalate else "resolved"
+
+            async with session_factory() as session:
+                session.add(
+                    SemanticRelation(
+                        id=relation_id,
+                        source_capsule_id=capsule.id,
+                        target_capsule_id=capsule.id,  # self-reference: satisfies XOR CHECK for unary annotation
+                        target_thesis_id=None,
+                        relation_type=relation_type,  # "other" — canonical value
+                        domain_relation_type=domain_relation_type,  # "judge_escalated" or "judge_cleared"
+                        polarity=None,
+                        strength=verdict.recommended_confidence,
+                        confidence=verdict.recommended_confidence,
+                        evidence_capsule_ids=[],
+                        rationale=verdict.rationale,
+                        epistemic_state=verdict.model_dump(),
+                        created_by_tier="t2",
+                        created_by_model=t2_model,
+                    )
+                )
+                cap_row = await session.get(SemanticCapsule, capsule.id)
+                if cap_row:
+                    cap_row.escalation_state = new_escalation
+                await session.commit()
+
+            judge_results.append(
+                {
+                    "capsule_id": str(capsule.id),
+                    "verdict": verdict.model_dump(),
+                    "relation_id": str(relation_id),
+                }
+            )
+
+        return {"judge_results": judge_results, "t2_calls_used": t2_calls_used + calls_made}
+
+    async def classify_relations(state: ExtractionState) -> dict:
+        return await _run_classify_relations(state, session_factory, client)
 
     async def update_status(state: ExtractionState) -> dict:
         if state.get("error"):
@@ -575,6 +865,8 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
     builder.add_node("extract_spans", extract_spans)
     builder.add_node("validate_and_project", validate_and_project)
     builder.add_node("store_claims", store_claims)
+    builder.add_node("judge_capsules", judge_capsules)
+    builder.add_node("classify_relations", classify_relations)
     builder.add_node("update_status", update_status)
 
     builder.set_entry_point("load_spans")
@@ -585,7 +877,9 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
         {"validate_and_project": "validate_and_project", "update_status": "update_status"},
     )
     builder.add_edge("validate_and_project", "store_claims")
-    builder.add_edge("store_claims", "update_status")
+    builder.add_edge("store_claims", "judge_capsules")
+    builder.add_edge("judge_capsules", "classify_relations")
+    builder.add_edge("classify_relations", "update_status")
     builder.add_edge("update_status", END)
 
     return builder.compile()
@@ -607,6 +901,10 @@ async def run_with_context(graph, document_id: uuid.UUID, model: str) -> dict:
                 "projected_claims": [],
                 "semantic_objects": [],
                 "stored_claim_ids": [],
+                "stored_capsule_ids": [],
+                "judge_results": [],
+                "relation_ids": [],
+                "t2_calls_used": 0,
                 "total_tokens": 0,
                 "error": None,
             }

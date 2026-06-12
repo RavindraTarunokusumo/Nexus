@@ -1,6 +1,6 @@
 # Database / Persistence
 
-> **Phase B Status: Durable capsule layer landed** — migration 0005 adds 6 new tables (`semantic_capsules`, `capsule_segments`, `semantic_relations`, `theses`, `decision_artefacts`, `domain_packs`). `semantic_capsules` and `capsule_segments` are actively populated by `store_claims` (dual-write) and `nexus capsules backfill`. `semantic_relations`, `theses`, `decision_artefacts`, and `domain_packs` are schema-ready but not yet populated by the pipeline.
+> **Phase C Status: Reasoning layer landed** — `semantic_relations` is now actively populated by two new T2 nodes in the extraction graph. `judge_capsules` writes unary rows (judge verdicts; `target_capsule_id=NULL`) and updates capsule `escalation_state`. `classify_relations` writes binary rows (classified capsule pairs; `target_capsule_id` SET). `theses`, `decision_artefacts`, and `domain_packs` remain schema-ready but unpopulated.
 
 The persistence layer is PostgreSQL 16 with the `pgvector` extension. SQLAlchemy 2.x async ORM + asyncpg is used throughout. Alembic manages migrations.
 
@@ -304,7 +304,7 @@ Durable v0.7 semantic objects. One row per extracted `SemanticObject`, written b
 | facets_json | JSONB | Full SemanticObject facets dict |
 | embedding | vector(384) | bge-small-en-v1.5 embedding of claim_text; written at ingest time |
 | lifecycle_state | TEXT | 9-state CHECK: `active`, `superseded`, `retracted`, … |
-| escalation_state | TEXT | 4-state CHECK: `none`, `flagged`, `escalated`, `resolved` |
+| escalation_state | TEXT | 4-state CHECK: `none`, `flagged`, `escalated`, `resolved`; updated to `escalated` or `reviewed` by `judge_capsules` (Phase C) |
 | created_by_tier | TEXT | `extraction`, `backfill` |
 | created_at | TIMESTAMPTZ | Auto-set |
 
@@ -325,17 +325,20 @@ Index: `capsule_id`, `span_id`.
 
 ### `semantic_relations`
 
-Directed edges between two `SemanticCapsule` rows. Represents the knowledge-graph relation layer. Not yet populated by the pipeline (Phase C+).
+Directed edges between `SemanticCapsule` rows. Actively populated by the Phase C reasoning nodes in the extraction graph. Two write patterns are in use:
+
+- **Unary (judge verdict):** written by `judge_capsules`. `target_capsule_id=NULL`. Records the T2 judge outcome for a single capsule alongside the `JudgeVerdict` rationale. The source capsule's `escalation_state` is also updated to `"escalated"` or `"reviewed"`.
+- **Binary (relation pair):** written by `classify_relations`. Both `source_capsule_id` and `target_capsule_id` are set. Represents a typed directional relation between two capsules of the same `object_family`. `"none"` classification results are skipped (no row written).
 
 | Column | Type | Notes |
 |---|---|---|
 | id | UUID | Primary key |
 | source_capsule_id | UUID | FK → semantic_capsules |
-| target_capsule_id | UUID | FK → semantic_capsules |
+| target_capsule_id | UUID | FK → semantic_capsules; NULL for unary (judge verdict) rows |
 | target_thesis_id | UUID | FK → theses; nullable |
 | relation_type | TEXT | CHECK constraint on allowed relation types |
 | confidence | FLOAT | Nullable |
-| rationale | TEXT | Nullable |
+| rationale | TEXT | Nullable; populated with judge/classifier rationale |
 | created_at | TIMESTAMPTZ | Auto-set |
 
 ### `theses`

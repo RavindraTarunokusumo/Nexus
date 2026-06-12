@@ -440,3 +440,69 @@ async def test_backfill_multi_source_ref(session_factory: async_sessionmaker):
         assert len(segs) == 3
         seg_span_ids = {s.segment_id for s in segs}
         assert seg_span_ids == set(span_ids)
+
+
+@pytest.mark.asyncio
+async def test_backfill_skips_orphaned_span(session_factory: async_sessionmaker):
+    """A _v0_7 blob whose source_refs point to a non-existent Span should
+    produce an error entry in BackfillResult rather than crashing the process."""
+    from unittest.mock import patch
+
+    nonexistent_span_id = str(uuid.uuid4())
+
+    async with session_factory() as session:
+        src = Source(
+            name="Orphan Feed",
+            source_type="rss",
+            url=f"https://orphan-{uuid.uuid4()}.example/feed",
+            domain_pack="personal_ai_tech",
+        )
+        session.add(src)
+        await session.flush()
+        doc = Document(
+            source_id=src.id,
+            title="Orphan Doc",
+            clean_text="x",
+            content_hash=f"h-orphan-{uuid.uuid4()}",
+            status="claims_extracted",
+        )
+        session.add(doc)
+        await session.flush()
+        claim = Claim(
+            document_id=doc.id,
+            claim_text="Some claim.",
+            claim_type="other",
+            entities_json={
+                "_v0_7": {
+                    "core_type": "claim",
+                    "domain_family": "model_release_event",
+                    "domain_object_type": "model_release",
+                    "function": "announces",
+                    "text": "Orphaned claim text.",
+                    "facets": {},
+                    "salience": 0.5,
+                    "source_refs": [nonexistent_span_id],
+                    "epistemic": {
+                        "status": "asserted_by_source",
+                        "source_authority": "unknown",
+                        "confidence": 0.5,
+                        "evidence_quality": "unknown",
+                        "needs_escalation": False,
+                    },
+                    "mvp_claim_type": "other",
+                }
+            },
+            topics_json=[],
+            confidence=0.5,
+            status="active",
+        )
+        session.add(claim)
+        await session.commit()
+
+    with patch("app.intelligence.backfill.get_embedder") as mock_emb:
+        mock_emb.return_value.embed.return_value = [[0.0] * 384]
+        result = await backfill_capsules(session_factory, dry_run=False)
+
+    assert result.claims_scanned >= 1
+    assert result.capsules_written == 0
+    assert len(result.errors) >= 1
