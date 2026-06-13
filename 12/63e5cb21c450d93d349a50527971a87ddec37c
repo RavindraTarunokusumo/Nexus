@@ -1,0 +1,9 @@
+Summary: Remove 9 obsolete span-based graph integration tests superseded by the capsule rewrite; keep the graph-independent chat_run context-var test.
+
+Scope: tests/test_chat_graph.py (268 deletions).
+
+Tests: full chat suite now 21 pass / 1 pre-existing fail (routes_chat detail wording, unrelated).
+
+Risk: Low. Removes tests for deleted behavior; new unit suite covers capsule path.
+
+Docs: none.
