@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any, TypedDict
 
 from langgraph.graph import END, StateGraph
@@ -55,6 +56,52 @@ INSUFFICIENT_EVIDENCE_ANSWER = (
 
 def _normalize_citation_label(label: str) -> str:
     return label.strip().removeprefix("[").removesuffix("]").strip()
+
+
+_PRIORITY_SCORES = [1.0, 0.5, 0.25, 0.1]
+
+
+def compute_hybrid_score(
+    candidate: dict,
+    weights: dict[str, float],
+    retrieval_priorities: list[str],
+    recency_min: datetime,
+    recency_max: datetime,
+) -> float:
+    """Telos-aware hybrid score. relation_relevance and evidence_quality are stubbed at 0."""
+    # semantic_similarity
+    sem = candidate["semantic_sim"] * weights.get("semantic_similarity", 0.0)
+
+    # domain_object_type_match — boost by position in retrieval_priorities
+    if not retrieval_priorities:
+        dom_score = 0.5
+    else:
+        family = candidate["object_family"]
+        try:
+            rank = retrieval_priorities.index(family)
+            dom_score = _PRIORITY_SCORES[rank] if rank < len(_PRIORITY_SCORES) else 0.1
+        except ValueError:
+            dom_score = 0.0
+    dom = dom_score * weights.get("domain_object_type_match", 0.0)
+
+    # source_authority — stubbed uniformly at 0.5 (no authority field yet)
+    auth = 0.5 * weights.get("source_authority", 0.0)
+
+    # recency — min-max normalize created_at over candidate set
+    created_at = candidate["created_at"]
+    if recency_min == recency_max:
+        rec_score = 0.5
+    else:
+        span = (recency_max - recency_min).total_seconds()
+        rec_score = (created_at - recency_min).total_seconds() / span
+        rec_score = max(0.0, min(1.0, rec_score))
+    rec = rec_score * weights.get("recency", 0.0)
+
+    # salience — direct field
+    sal = candidate["salience"] * weights.get("salience", 0.0)
+
+    # relation_relevance (0.07) and evidence_quality (0.03) — stubbed at 0.0
+    return sem + dom + auth + rec + sal
 
 
 async def _run_classify_intent(state: dict, client: Any) -> dict:
