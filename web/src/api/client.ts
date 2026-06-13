@@ -17,11 +17,14 @@ export type ChatSessionSummary = {
 
 export type ChatCitation = {
   document_id: string
-  span_id: string
+  capsule_id: string
   document_title: string | null
   url: string | null
   score: number
-  claim_ids: string[]
+  object_type: string | null
+  object_family: string | null
+  lifecycle_state: string | null
+  summary: string
 }
 
 export type ChatMessage = {
