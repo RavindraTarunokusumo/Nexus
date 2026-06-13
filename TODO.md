@@ -8,15 +8,14 @@
 - [ ] Decision artefacts — first `decision_artefacts` writer. (C4)
 - [ ] DB-bound integration tests for `judge_capsules` and `classify_relations` node paths.
 
-### Phase D — Retrieval & UI Over Meaning
+### Phase D — Retrieval & UI Over Meaning (residual)
 
-- [ ] Capsule retrieval (pgvector HNSW on `semantic_capsules.embedding`).
-- [ ] Query-intent classification (drives `retrieval_policy.query_intents`).
-- [ ] Telos-aware hybrid scoring from `pack.retrieval_policy.hybrid_score_weights`.
-- [ ] Context assembly per `pack.context_assembly`.
-- [ ] Chat-over-capsules — `/chat/answer` cuts over from `claims` to `semantic_capsules`.
-- [ ] Web UI updates — capsule cards, evidence-path expansion, lifecycle indicators.
+> Core cutover landed in PR #21 (archived: `docs/iterations/archive/2026-06-12-phase-d-retrieval-ui.md`). Remaining:
+
+- [ ] Context assembly per `pack.context_assembly` — drive block selection / ordering / token budget from the pack policy (currently a hardcoded top-k slice).
+- [ ] Web UI evidence-path expansion — surface the capsule → supporting-span evidence chain in the citation panel (capsule cards + lifecycle indicators already landed).
 - [ ] Drop `claims` + `claim_evidence` tables (only after `/chat/answer` cutover is green for 1 week).
+- [ ] Un-stub hybrid scoring inputs — `source_authority` (uniform 0.5), `relation_relevance` (0.0), `evidence_quality` (0.0) once Phase E relation-graph / source-authority signals exist.
 
 ### Phase E — Living Knowledge
 
