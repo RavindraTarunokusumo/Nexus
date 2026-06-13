@@ -1,0 +1,9 @@
+Summary: Post-PR archival (Step 8). Created docs/iterations/archive/2026-06-12-phase-d-retrieval-ui.md tagging each completed Phase D subitem with its commit hash; trimmed TODO.md Phase D section to residual work (declarative context_assembly, UI evidence-path expansion, claims-table drop, un-stub scoring inputs). Merge ID left pending — PR #21 not yet merged.
+
+Scope: TODO.md, docs/iterations/archive/2026-06-12-phase-d-retrieval-ui.md (new).
+
+Tests: N/A (docs).
+
+Risk: None.
+
+Docs: This is the archival.
