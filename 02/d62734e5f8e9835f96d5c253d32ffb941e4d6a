@@ -1,0 +1,9 @@
+Summary: Pre-PR documentation update for Phase D capsule retrieval cutover.
+
+Scope: docs/architecture.md (status header, chat.py + classify_intent.py layout, chat flow, /chat/answer endpoint detail, model-tier table), docs/database.md (status header, migration 0006 row, semantic_capsules HNSW index), docs/index.md (classify_intent prompt row, Phase D Test Files section), docs/testing.md (chat graph + Phase D unit-test coverage), docs/changelog.md (Phase D entry).
+
+Tests: N/A (docs only).
+
+Risk: None — documentation only.
+
+Docs: This commit is the doc update (Pre-PR doc-updater step, completed manually after the subagent hit a session limit).
