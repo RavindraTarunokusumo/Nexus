@@ -1,0 +1,9 @@
+Summary: Add Alembic migration 0006 creating an HNSW index on semantic_capsules.embedding for cosine-distance capsule retrieval.
+
+Scope: app/db/migrations/versions/0006_hnsw_capsule_index.py (new). Index ix_semantic_capsules_embedding_hnsw USING hnsw (embedding vector_cosine_ops) WITH (m=16, ef_construction=64).
+
+Tests: None (pure DDL). Verified upgrade/downgrade are symmetric; CONCURRENTLY omitted because Alembic wraps migrations in a transaction.
+
+Risk: Low — additive index; downgrade drops it. No data or schema-column change.
+
+Docs: docs/database.md migrations table + semantic_capsules section updated in a later commit.
