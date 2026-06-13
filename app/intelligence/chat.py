@@ -162,6 +162,7 @@ async def _run_retrieve_capsules(
                 )
                 .join(Document, SemanticCapsule.document_id == Document.id)
                 .where(SemanticCapsule.embedding.isnot(None))
+                .where(SemanticCapsule.lifecycle_state == "active")
                 .order_by(distance)
                 .limit(fetch_k)
             )
@@ -327,7 +328,7 @@ async def run_chat_with_context(
                 "top_k": top_k,
                 "model": model,
                 "run_id": run_id,
-                "query_intent": "",
+                "query_intent": "general",
                 "pack": pack,
                 "context_blocks": [],
                 "answer": "",
