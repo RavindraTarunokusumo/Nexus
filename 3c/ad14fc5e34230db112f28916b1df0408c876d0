@@ -7,3 +7,7 @@ Tests: 24/24 frontend Vitest tests pass; CitationList tests updated for new fixt
 Risk: LOW — frontend-only change, no backend touched.
 
 Docs: None required.
+
+---
+Task 6 assessment (test_validation_harness.py):
+Summary: No change needed to test_semantic_search_path. nexus search calls http_search_spans → /search/spans (span-based endpoint), entirely separate from /chat/answer. Test mocks http_search_spans and only asserts data[0]["score"] — does not reference span_id, claim_ids, or any ChatCitation field. Case A: different code path, no update required.
