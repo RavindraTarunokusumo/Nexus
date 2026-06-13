@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.db.models import Document, SemanticCapsule
 from app.domain_packs.loader import load_pack
-from app.intelligence.llm_client import LLMNetworkError
+from app.intelligence.llm_client import LLMError, LLMNetworkError
 from app.intelligence.prompts.chat_answer import SYSTEM_PROMPT, build_user_prompt
 from app.intelligence.prompts.classify_intent import (
     SYSTEM_PROMPT as _INTENT_SYSTEM_PROMPT,
@@ -125,7 +125,7 @@ async def _run_classify_intent(state: dict, client: Any) -> dict:
             run_type="chat_classify_intent",
         )
         intent = result.intent if result.intent in intent_names else "general"
-    except LLMNetworkError:
+    except LLMError:
         intent = "general"
     return {"query_intent": intent}
 

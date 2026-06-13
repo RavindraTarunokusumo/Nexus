@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.intelligence.llm_client import LLMNetworkError
+from app.intelligence.llm_client import LLMNetworkError, LLMSchemaError
 
 
 def _make_pack(intent_keys: list[str]) -> MagicMock:
@@ -61,6 +61,20 @@ async def test_classify_intent_llm_error_falls_back_to_general() -> None:
 
     client = AsyncMock()
     client.complete_json.side_effect = LLMNetworkError("timeout")
+    pack = _make_pack(["technical_deep_dive"])
+    state = {"question": "...", "model": "deepseek/test", "pack": pack}
+
+    result = await _run_classify_intent(state, client)
+
+    assert result == {"query_intent": "general"}
+
+
+@pytest.mark.asyncio
+async def test_classify_intent_schema_error_falls_back_to_general() -> None:
+    from app.intelligence.chat import _run_classify_intent
+
+    client = AsyncMock()
+    client.complete_json.side_effect = LLMSchemaError("bad json")
     pack = _make_pack(["technical_deep_dive"])
     state = {"question": "...", "model": "deepseek/test", "pack": pack}
 
