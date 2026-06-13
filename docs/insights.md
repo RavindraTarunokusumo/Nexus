@@ -179,3 +179,21 @@ Polling `gh api repos/.../pulls/20/reviews` every ~270s (within the 5-min cache 
 ### Session-limit errors from Opus subagents are transient — re-dispatch with the same prompt
 
 A session-limit error (`"You've hit your session limit"`) from an Opus subagent is a transient rate-limit, not a task failure. The fix is simply to re-dispatch the same agent with the same prompt after a short pause. No state is lost because subagents are stateless.
+
+## Session: phase-d-retrieval-ui (2026-06-13)
+
+### A subagent that hits its session limit mid-run can leave the tree partially edited
+
+The `doc-updater` hit its session limit after making one partial edit (the `architecture.md` status header) but before committing. Unlike the "subagents are stateless, just re-dispatch" case, here state *was* written to disk — re-dispatching would have either duplicated or conflicted with the partial edit. **Lesson:** when a file-writing subagent dies mid-run, `git diff` the tree first to see what already landed, then finish manually (or re-dispatch with a prompt that accounts for the partial state) rather than blindly re-running. Don't assume "stateless" when the agent's job is to mutate files.
+
+### PowerShell has no inline env-var prefix — `SKIP=... git commit` is a parser error
+
+The bash idiom `SKIP=mypy,pytest-fast git commit -m "..."` fails in PowerShell with "Missing argument in parameter list" / "Unexpected token '='". PowerShell parses `SKIP=...` as an expression, not an env assignment. Use a separate statement first: `$env:SKIP = "mypy,pytest-fast"; git commit -m "..."`. The env var persists for the rest of that shell invocation, which is fine for a single commit. (Prior insights documented the SKIP *need* but in bash syntax — this is the Windows-shell translation.)
+
+### Docker Desktop stopping between sessions blocks even mock-only unit tests
+
+The session-scoped `autouse` `run_migrations` fixture runs `alembic upgrade head` against Postgres before *any* test in the session — so when Docker Desktop (which hosts Postgres + Redis) is stopped between sessions, even pure-unit tests with a fully mocked client/session error out at fixture setup, not at their own assertions. Recovery on local Windows: `Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"`, then poll `docker info` in a loop until exit 0 (engine takes ~60–120s to come up), then `docker compose up -d` and wait for the `(healthy)` status. Don't mistake the resulting fixture-setup `AssertionError: Alembic migration failed` (with a buried `connect() refused`) for a code regression — check `Test-NetConnection localhost -Port 5432` first.
+
+### git notes are local-only — fetch-merge-push them explicitly, they don't ride the branch push
+
+`git push origin <branch>` does **not** push `refs/notes/commits`; notes stay local unless pushed separately. The repo tracks notes on the remote, so the full ritual is: `git fetch origin "refs/notes/*:refs/notes/origin/*"` (to see/merge existing remote notes), add your notes, then `git push origin refs/notes/commits`. Easy to forget given the workflow attaches a note to every commit but never mentions pushing them.
