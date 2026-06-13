@@ -1,0 +1,9 @@
+Summary: Add classify_intent prompt module (IntentClassification schema, SYSTEM_PROMPT, build_classify_prompt) and _run_classify_intent async helper to chat.py for Phase D query-intent classification.
+
+Scope: app/intelligence/prompts/classify_intent.py (new), app/intelligence/chat.py (new imports + function), tests/intelligence/test_chat_intent.py (new, 4 tests).
+
+Tests: 4/4 passing — matched intent, unknown intent fallback, empty intents skips LLM, LLMNetworkError fallback.
+
+Risk: Low — new module-level function, no existing logic modified.
+
+Docs: None required — building block for Task 4 chat graph rewrite.
