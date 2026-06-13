@@ -1,0 +1,9 @@
+Summary: Two targeted code-review fixes to chat retrieval — filter out non-active capsules and seed query_intent with a well-defined default.
+
+Scope: app/intelligence/chat.py only (_run_retrieve_capsules WHERE clause, run_chat_with_context initial state).
+
+Tests: 15/15 passed (test_chat_intent.py, test_chat_scoring.py, test_chat_graph.py).
+
+Risk: Low — additive WHERE clause narrows result set to active capsules; string sentinel change has no runtime effect when classify_intent succeeds. mypy errors on ChatState/dict arg-type and main.py AsyncPostgresSaver are pre-existing and not introduced by this commit.
+
+Docs: No doc changes required.
