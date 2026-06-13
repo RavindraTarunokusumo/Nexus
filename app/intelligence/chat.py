@@ -205,10 +205,10 @@ async def _run_retrieve_capsules(
     ]
 
     scored = sorted(
-        (
+        [
             (c, compute_hybrid_score(c, weights, retrieval_priorities, recency_min, recency_max))
             for c in candidates
-        ),
+        ],
         key=lambda x: x[1],
         reverse=True,
     )
