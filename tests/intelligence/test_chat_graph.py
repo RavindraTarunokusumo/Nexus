@@ -54,6 +54,7 @@ def _make_pack(query_intents: dict | None = None) -> MagicMock:
         "relation_relevance": 0.07,
         "evidence_quality": 0.03,
     }
+    pack.context_assembly.max_tokens_by_tier = {}
     return pack
 
 

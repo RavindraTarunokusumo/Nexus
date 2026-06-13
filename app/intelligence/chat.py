@@ -242,7 +242,10 @@ async def _run_retrieve_capsules(
         key=lambda x: x[1],
         reverse=True,
     )
-    top = scored[: state["top_k"]]
+    token_budget: int | None = None
+    if pack is not None:
+        token_budget = pack.context_assembly.max_tokens_by_tier.get("T2")
+    top = _assemble_within_budget(scored, state["top_k"], token_budget)
 
     blocks = [
         {
