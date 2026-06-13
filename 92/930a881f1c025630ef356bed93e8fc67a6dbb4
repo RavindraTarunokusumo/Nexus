@@ -1,0 +1,9 @@
+Summary: Simplify-pass cleanup — use a list comprehension instead of a generator expression inside sorted() in _run_retrieve_capsules.
+
+Scope: app/intelligence/chat.py (scoring sort only). Note: the originally-paired import merge was reverted by ruff, which keeps aliased imports in a separate block; only the comprehension change landed.
+
+Tests: 15/15 intelligence unit tests pass (test_chat_intent, test_chat_scoring, test_chat_graph).
+
+Risk: Low — equivalent behavior; sorted() already materializes the iterable.
+
+Docs: None required.
