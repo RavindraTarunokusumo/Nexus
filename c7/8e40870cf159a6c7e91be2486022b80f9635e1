@@ -1,0 +1,9 @@
+Summary: Opus code-review fix — _run_classify_intent now catches the LLMError base class instead of only LLMNetworkError, so classifier schema errors (LLMSchemaError) and 4xx (LLMError) degrade to "general" intent rather than 503-ing the whole /chat/answer request.
+
+Scope: app/intelligence/chat.py (import + except clause), tests/intelligence/test_chat_intent.py (new test_classify_intent_schema_error_falls_back_to_general).
+
+Tests: 16/16 intelligence unit tests pass (was 15 + 1 new schema-error case).
+
+Risk: Low — widens an existing except clause defensively; impact analysis shows only the classify_intent graph node calls this helper (LOW).
+
+Docs: None required — behavior already documented as "fall back to general".
