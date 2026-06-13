@@ -28,6 +28,12 @@ class ChatAnswerOutput(BaseModel):
     citations: list[str]
 
 
+class CitationEvidence(BaseModel):
+    span_id: uuid.UUID
+    span_index: int
+    text: str
+
+
 class ChatCitation(BaseModel):
     document_id: uuid.UUID
     capsule_id: uuid.UUID
@@ -38,6 +44,7 @@ class ChatCitation(BaseModel):
     object_family: str | None
     lifecycle_state: str | None
     summary: str
+    evidence: list[CitationEvidence] = []
 
 
 class ChatState(TypedDict):
@@ -60,6 +67,8 @@ INSUFFICIENT_EVIDENCE_ANSWER = (
 )
 
 _PRIORITY_SCORES = [1.0, 0.5, 0.25, 0.1]
+_MAX_EVIDENCE_SPANS = 5
+_EVIDENCE_EXCERPT_CHARS = 280
 
 
 def estimate_tokens(text: str) -> int:
@@ -90,6 +99,26 @@ def _assemble_within_budget(
         selected.append((cand, score))
         running += est
     return selected
+
+
+def _build_evidence_map(
+    rows: list,
+    max_spans: int,
+    excerpt_chars: int,
+) -> dict[uuid.UUID, list[dict[str, Any]]]:
+    """Shape (capsule_id, span_id, span_index, text) rows into per-capsule excerpts.
+
+    Rows must arrive ordered by capsule_id then span_index. Keeps up to max_spans per
+    capsule and truncates each excerpt to excerpt_chars (trailing ellipsis when cut).
+    """
+    out: dict[uuid.UUID, list[dict[str, Any]]] = {}
+    for capsule_id, span_id, span_index, text in rows:
+        bucket = out.setdefault(capsule_id, [])
+        if len(bucket) >= max_spans:
+            continue
+        excerpt = text if len(text) <= excerpt_chars else text[: excerpt_chars - 1] + "…"
+        bucket.append({"span_id": span_id, "span_index": span_index, "text": excerpt})
+    return out
 
 
 def _normalize_citation_label(label: str) -> str:

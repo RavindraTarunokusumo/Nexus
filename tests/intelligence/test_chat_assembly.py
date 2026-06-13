@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from app.intelligence.chat import _assemble_within_budget, estimate_tokens
+import uuid
+
+from app.intelligence.chat import (
+    _EVIDENCE_EXCERPT_CHARS,
+    _MAX_EVIDENCE_SPANS,
+    _assemble_within_budget,
+    _build_evidence_map,
+    estimate_tokens,
+)
 
 
 def _c(text: str) -> dict:
@@ -35,3 +43,33 @@ def test_assemble_always_includes_first_even_if_over_budget() -> None:
     scored = [(_c("a" * 4000), 0.9), (_c("b" * 4), 0.8)]  # first ~1000 tokens
     out = _assemble_within_budget(scored, top_k=10, token_budget=10)
     assert [s for _, s in out] == [0.9]
+
+
+def test_build_evidence_map_groups_and_orders() -> None:
+    cap = uuid.uuid4()
+    s1, s2 = uuid.uuid4(), uuid.uuid4()
+    rows = [(cap, s1, 0, "first"), (cap, s2, 1, "second")]
+    out = _build_evidence_map(rows, _MAX_EVIDENCE_SPANS, _EVIDENCE_EXCERPT_CHARS)
+    assert [e["span_index"] for e in out[cap]] == [0, 1]
+    assert out[cap][0]["span_id"] == s1
+
+
+def test_build_evidence_map_caps_spans() -> None:
+    cap = uuid.uuid4()
+    rows = [(cap, uuid.uuid4(), i, f"s{i}") for i in range(_MAX_EVIDENCE_SPANS + 3)]
+    out = _build_evidence_map(rows, _MAX_EVIDENCE_SPANS, _EVIDENCE_EXCERPT_CHARS)
+    assert len(out[cap]) == _MAX_EVIDENCE_SPANS
+
+
+def test_build_evidence_map_truncates_text() -> None:
+    cap = uuid.uuid4()
+    long = "x" * (_EVIDENCE_EXCERPT_CHARS + 50)
+    out = _build_evidence_map(
+        [(cap, uuid.uuid4(), 0, long)], _MAX_EVIDENCE_SPANS, _EVIDENCE_EXCERPT_CHARS
+    )
+    assert len(out[cap][0]["text"]) == _EVIDENCE_EXCERPT_CHARS
+    assert out[cap][0]["text"].endswith("…")
+
+
+def test_build_evidence_map_empty() -> None:
+    assert _build_evidence_map([], _MAX_EVIDENCE_SPANS, _EVIDENCE_EXCERPT_CHARS) == {}
