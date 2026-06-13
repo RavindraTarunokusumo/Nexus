@@ -9,6 +9,25 @@ Track meaningful repository-level changes here.
 - Why it changed
 - Any follow-up work or migration notes
 
+## 2026-06-12 — Phase D: Retrieval & UI Over Meaning
+
+Cut `/chat/answer` over from span-based retrieval to semantic-capsule retrieval across commits `d3183bc`–`92930a8` on branch `claude/phase-d-retrieval-ui`.
+
+**What changed:**
+
+- **D1 — Migration 0006: HNSW index.** Adds `ix_semantic_capsules_embedding_hnsw` on `semantic_capsules.embedding` (`vector_cosine_ops`, `m=16`, `ef_construction=64`). `CONCURRENTLY` is omitted because Alembic wraps migrations in a transaction.
+- **D2 — `classify_intent.py` prompt.** New `app/intelligence/prompts/classify_intent.py`: `IntentClassification` schema, `SYSTEM_PROMPT`, `build_classify_prompt(question, intent_names)` for LLM query-intent classification against the active pack's `query_intents`.
+- **D3 — `compute_hybrid_score`.** Telos-aware re-ranking blend: five active components (semantic similarity, domain object-type match, source authority, recency, salience) and two stubbed at `0.0` (relation relevance, evidence quality). Object-type match uses rank-based decay `_PRIORITY_SCORES = [1.0, 0.5, 0.25, 0.1]` over the intent's `retrieval_priorities`; recency is min-max normalized over the candidate set.
+- **D4 — Chat graph rewrite.** `app/intelligence/chat.py` replaced its span graph with a four-node `StateGraph`: `classify_intent → retrieve_capsules → [conditional] → generate_answer → format_result`. `retrieve_capsules` runs HNSW cosine search (filtered to `lifecycle_state="active"`, `fetch_k = top_k * 3`) and applies `compute_hybrid_score`. `run_chat_with_context` loads a domain pack from `settings.default_pack_id` when no pack is passed, so existing callers work unchanged. `ChatCitation` now carries `capsule_id`, `document_title`, `url`, `score`, `object_type`, `object_family`, `lifecycle_state`, and `summary` (replacing `span_id`/`claim_ids`).
+- **D5 — `default_pack_id` config.** New `settings.default_pack_id = "personal_ai_tech"` in `app/config.py`.
+- **D6 — Capsule answer prompt.** `chat_answer.py`'s `build_user_prompt` now emits capsule blocks (`[C1]`, `Title:`, `URL:`, `Object type:`, `Score:`, `Capsule:`).
+- **D7 — CLI + web UI.** `app/cli/render.py` citations table renamed "Span"→"Capsule" (reads `capsule_id`). `web/src/api/client.ts` `ChatCitation` type updated; `web/src/components/CitationList.tsx` rewritten with enriched cards — lifecycle dot (green/amber/gray), uppercase object-type pill badge, inline truncated summary, expandable panel.
+- **New unit tests.** `test_chat_intent.py` (4), `test_chat_scoring.py` (5), `test_chat_graph.py` (6). Obsolete span-based integration tests removed from `tests/test_chat_graph.py` (1 observability test retained).
+
+**Why:** Retrieval now operates over durable v0.7 semantic capsules rather than raw spans, so answers are grounded in deduplicated, lifecycle-managed meaning and ranked by telos-aware relevance instead of cosine distance alone.
+
+**Migration / setup:** Run `alembic upgrade head` to create the HNSW index (migration 0006). `relation_relevance` and `evidence_quality` scoring weights remain stubbed at `0.0` pending Phase E relation-graph and evidence-quality signals; `source_authority` is stubbed at a uniform `0.5` until a source-authority field exists.
+
 ## 2026-06-11 — Phase C: Reasoning Layer
 
 Landed the Phase C reasoning nodes across commits `af55ed0`–`ac769a2` on branch `claude/compassionate-varahamihira-1d61fa`.

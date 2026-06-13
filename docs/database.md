@@ -1,6 +1,6 @@
 # Database / Persistence
 
-> **Phase C Status: Reasoning layer landed** — `semantic_relations` is now actively populated by two new T2 nodes in the extraction graph. `judge_capsules` writes unary rows (judge verdicts; `target_capsule_id=NULL`) and updates capsule `escalation_state`. `classify_relations` writes binary rows (classified capsule pairs; `target_capsule_id` SET). `theses`, `decision_artefacts`, and `domain_packs` remain schema-ready but unpopulated.
+> **Phase D Status: Capsule retrieval live** — `semantic_capsules.embedding` is now HNSW-indexed (migration 0006) and queried by `/chat/answer` via cosine search + telos-aware hybrid scoring. Phase C populates `semantic_relations` via two T2 extraction-graph nodes: `judge_capsules` writes unary rows (judge verdicts; `target_capsule_id=NULL`) and updates capsule `escalation_state`; `classify_relations` writes binary rows (classified capsule pairs; `target_capsule_id` SET). `theses`, `decision_artefacts`, and `domain_packs` remain schema-ready but unpopulated.
 
 The persistence layer is PostgreSQL 16 with the `pgvector` extension. SQLAlchemy 2.x async ORM + asyncpg is used throughout. Alembic manages migrations.
 
@@ -31,6 +31,7 @@ alembic upgrade head
 | 0003 | Evaluation: creates `eval_datasets`, `eval_runs`, `eval_results` tables |
 | 0004 | Chat session memory: creates `chat_sessions` and `chat_messages` tables |
 | 0005 | Capsule layer: creates `semantic_capsules`, `capsule_segments`, `semantic_relations`, `theses`, `decision_artefacts`, `domain_packs` tables |
+| 0006 | Capsule retrieval: adds HNSW index `ix_semantic_capsules_embedding_hnsw` on `semantic_capsules.embedding` (`vector_cosine_ops`, `m=16`, `ef_construction=64`) |
 
 ## Schema
 
@@ -302,13 +303,13 @@ Durable v0.7 semantic objects. One row per extracted `SemanticObject`, written b
 | salience | FLOAT | Salience score from extraction |
 | epistemic_state | TEXT | Epistemic qualifier |
 | facets_json | JSONB | Full SemanticObject facets dict |
-| embedding | vector(384) | bge-small-en-v1.5 embedding of claim_text; written at ingest time |
+| embedding | vector(384) | bge-small-en-v1.5 embedding of claim_text; written at ingest time; HNSW-indexed for cosine retrieval (migration 0006) |
 | lifecycle_state | TEXT | 9-state CHECK: `active`, `superseded`, `retracted`, … |
 | escalation_state | TEXT | 4-state CHECK: `none`, `flagged`, `escalated`, `resolved`; updated to `escalated` or `reviewed` by `judge_capsules` (Phase C) |
 | created_by_tier | TEXT | `extraction`, `backfill` |
 | created_at | TIMESTAMPTZ | Auto-set |
 
-Indexes: `document_id`, `idempotency_key` (unique), `core_type`, `lifecycle_state`.
+Indexes: `document_id`, `idempotency_key` (unique), `core_type`, `lifecycle_state`, `ix_semantic_capsules_embedding_hnsw` (HNSW, `vector_cosine_ops`).
 
 ### `capsule_segments`
 

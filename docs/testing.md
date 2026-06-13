@@ -54,7 +54,8 @@ Network calls (RSS fetches, URL fetches) are patched with `unittest.mock.AsyncMo
 - `tests/test_sources.py` covers source management CRUD and validation.
 - `tests/test_ingestion.py` covers text, URL, and RSS ingestion plus deduplication and provenance.
 - `tests/test_chat_api.py` covers `/chat/answer` validation, insufficient-evidence behavior, and `503` error translation.
-- `tests/test_chat_graph.py` covers hybrid span-plus-claim retrieval, active-claim filtering, deterministic citation ordering, citation-label normalization, and insufficient-evidence fallback.
+- `tests/test_chat_graph.py` retains the chat-graph observability assertion; capsule retrieval and scoring are covered by the focused unit tests below.
+- `tests/intelligence/test_chat_intent.py`, `tests/intelligence/test_chat_scoring.py`, and `tests/intelligence/test_chat_graph.py` cover the Phase D capsule path: LLM intent classification and its fallbacks, `compute_hybrid_score` weighting/priority/recency, and the `classify_intent`/`retrieve_capsules` nodes plus capsule citation formatting and insufficient-evidence fallback (DB and LLM mocked).
 
 ### Focused unit tests
 
