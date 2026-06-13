@@ -11,6 +11,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from app.db.models import Claim, ClaimEvidence, Document, Span
 from app.intelligence.llm_client import LLMNetworkError
 from app.intelligence.prompts.chat_answer import SYSTEM_PROMPT, build_user_prompt
+from app.intelligence.prompts.classify_intent import (
+    SYSTEM_PROMPT as _INTENT_SYSTEM_PROMPT,
+)
+from app.intelligence.prompts.classify_intent import (
+    IntentClassification,
+    build_classify_prompt,
+)
 from app.observability.run_context import chat_run
 
 
@@ -48,6 +55,27 @@ INSUFFICIENT_EVIDENCE_ANSWER = (
 
 def _normalize_citation_label(label: str) -> str:
     return label.strip().removeprefix("[").removesuffix("]").strip()
+
+
+async def _run_classify_intent(state: dict, client: Any) -> dict:
+    pack = state.get("pack")
+    if pack is None:
+        return {"query_intent": "general"}
+    intent_names = list(pack.retrieval_policy.query_intents.keys())
+    if not intent_names:
+        return {"query_intent": "general"}
+    try:
+        result, _ = await client.complete_json(
+            model=state["model"],
+            system=_INTENT_SYSTEM_PROMPT,
+            user=build_classify_prompt(state["question"], intent_names),
+            response_model=IntentClassification,
+            run_type="chat_classify_intent",
+        )
+        intent = result.intent if result.intent in intent_names else "general"
+    except LLMNetworkError:
+        intent = "general"
+    return {"query_intent": intent}
 
 
 def make_chat_graph(session_factory: async_sessionmaker, client: Any, embedder: Any):  # noqa: C901
