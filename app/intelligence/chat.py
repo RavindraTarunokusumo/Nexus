@@ -62,6 +62,36 @@ INSUFFICIENT_EVIDENCE_ANSWER = (
 _PRIORITY_SCORES = [1.0, 0.5, 0.25, 0.1]
 
 
+def estimate_tokens(text: str) -> int:
+    """Cheap char-based token estimate (~4 chars/token). Sufficient for a soft budget gate."""
+    return (len(text) + 3) // 4
+
+
+def _assemble_within_budget(
+    scored: list[tuple[dict, float]],
+    top_k: int,
+    token_budget: int | None,
+) -> list[tuple[dict, float]]:
+    """Pick score-ordered blocks under a token budget; top_k caps the count.
+
+    Always includes the highest-scored block even if it alone exceeds the budget.
+    token_budget=None falls back to the flat top_k slice.
+    """
+    if token_budget is None:
+        return scored[:top_k]
+    selected: list[tuple[dict, float]] = []
+    running = 0
+    for cand, score in scored:
+        if len(selected) >= top_k:
+            break
+        est = estimate_tokens(cand["text"])
+        if selected and running + est > token_budget:
+            break
+        selected.append((cand, score))
+        running += est
+    return selected
+
+
 def _normalize_citation_label(label: str) -> str:
     return label.strip().removeprefix("[").removesuffix("]").strip()
 
