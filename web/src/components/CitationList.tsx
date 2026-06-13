@@ -18,6 +18,12 @@ function urlHost(url: string | null): string {
   }
 }
 
+function lifecycleDotClass(state: string | null): string {
+  if (state === 'active' || state === 'confirmed') return 'bg-green-500'
+  if (state === 'candidate') return 'bg-amber-400'
+  return 'bg-gray-400'
+}
+
 export function CitationList({ citations }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null)
 
@@ -29,22 +35,30 @@ export function CitationList({ citations }: Props) {
         Citations
       </p>
       {citations.map((c) => (
-        <div key={c.span_id} className="border-b border-gray-100 last:border-0">
+        <div key={c.capsule_id} className="border-b border-gray-100 last:border-0">
           <button
-            onClick={() => setExpanded(expanded === c.span_id ? null : c.span_id)}
-            className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center gap-3"
+            onClick={() => setExpanded(expanded === c.capsule_id ? null : c.capsule_id)}
+            className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center gap-2"
           >
+            <span
+              className={`lifecycle-dot inline-block w-2 h-2 rounded-full flex-shrink-0 ${lifecycleDotClass(c.lifecycle_state)}`}
+            />
+            {c.object_type && (
+              <span className="bg-blue-100 text-blue-700 rounded px-1 py-0.5 uppercase tracking-wide text-[10px] flex-shrink-0">
+                {c.object_type.toUpperCase()}
+              </span>
+            )}
             <span className="font-medium text-gray-700 truncate flex-1">
               {c.document_title ?? shortId(c.document_id)}
             </span>
             <span className="text-gray-500 tabular-nums">{c.score.toFixed(2)}</span>
             <span className="text-gray-400 truncate max-w-32">{urlHost(c.url)}</span>
-            <span className="text-gray-300 font-mono">{shortId(c.span_id)}</span>
-            <span className="text-gray-400">{c.claim_ids.length} claims</span>
+            <span className="text-gray-500 truncate max-w-48 italic">{c.summary}</span>
           </button>
 
-          {expanded === c.span_id && (
+          {expanded === c.capsule_id && (
             <div className="px-3 py-2 bg-gray-50 text-gray-600 space-y-1">
+              <p className="line-clamp-3">{c.summary}</p>
               {c.url && (
                 <p>
                   URL:{' '}
@@ -53,7 +67,7 @@ export function CitationList({ citations }: Props) {
                   </a>
                 </p>
               )}
-              <p>Span: <span className="font-mono">{c.span_id}</span></p>
+              <p>Capsule: <span className="font-mono">{c.capsule_id}</span></p>
               <p>Document: <span className="font-mono">{c.document_id}</span></p>
             </div>
           )}

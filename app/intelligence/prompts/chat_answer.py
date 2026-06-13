@@ -12,20 +12,16 @@ Do not use outside knowledge or speculation."""
 def build_user_prompt(question: str, context_blocks: list[dict[str, Any]]) -> str:
     blocks = []
     for block in context_blocks:
-        claims = "\n".join(f"- {claim['claim_text']}" for claim in block.get("claims", []))
-        claims_text = claims if claims else "- No linked extracted claims."
         blocks.append(
             "\n".join(
                 [
                     f"[{block['label']}]",
                     f"Title: {block.get('document_title') or '(untitled)'}",
                     f"URL: {block.get('url') or '(none)'}",
-                    f"Span ID: {block['span_id']}",
+                    f"Object type: {block.get('object_type') or '(unknown)'}",
                     f"Score: {block['score']:.3f}",
-                    "Span text:",
+                    "Capsule:",
                     block["text"],
-                    "Linked claims:",
-                    claims_text,
                 ]
             )
         )

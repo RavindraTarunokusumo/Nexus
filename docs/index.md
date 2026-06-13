@@ -26,7 +26,8 @@ This repository is bootstrapped with an agent harness and supporting docs. Use t
 | `extract_semantic_objects.py` | T2 extraction prompt; `build_user_prompt`, `build_correction_prompt`, `SYSTEM_PROMPT` |
 | `judge_semantic_object.py` | T2 judge prompt; `JudgeVerdict` schema, `build_judge_prompt` — wired as `judge_capsules` node (Phase C) |
 | `classify_relations.py` | T2 relation classifier; `RelationClassification` schema, `build_relation_prompt`, `SYSTEM_PROMPT` — wired as `classify_relations` node (Phase C) |
-| `chat_answer.py` | Chat answer prompt; question/context builder for grounded single-turn and session answers |
+| `chat_answer.py` | Chat answer prompt; question/capsule-context builder for grounded single-turn and session answers |
+| `classify_intent.py` | Query-intent classifier; `IntentClassification` schema, `build_classify_prompt`, `SYSTEM_PROMPT` — wired as `classify_intent` node (Phase D) |
 
 ## Evaluation Framework
 
@@ -53,6 +54,14 @@ CLI entry point: `app/cli/eval.py` — `nexus eval` sub-app. See [Commands](comm
 | `tests/intelligence/test_judge_wiring.py` | Unit (no DB) | `_resolve_t2_model`, `_capsule_to_obj_for_judge` helpers |
 | `tests/intelligence/test_relation_classification.py` | Unit (no DB) | `build_relation_prompt`, `RelationClassification` schema, `classify_relations` short-circuit and "none"-skip |
 | `tests/test_validation_harness.py` | Integration (`@pytest.mark.slow`) | End-to-end: text/RSS ingest, status, document inspection, semantic search |
+
+## Phase D Test Files
+
+| File | Type | Coverage |
+|---|---|---|
+| `tests/intelligence/test_chat_intent.py` | Unit (no DB) | `_run_classify_intent` — LLM match, unknown fallback, empty-intents skip, network-error fallback |
+| `tests/intelligence/test_chat_scoring.py` | Unit (no DB) | `compute_hybrid_score` — semantic weighting, object-family priority boost, stubbed weights, recency normalization |
+| `tests/intelligence/test_chat_graph.py` | Unit (mocked DB/LLM) | `classify_intent`/`retrieve_capsules` nodes, capsule citation formatting, insufficient-evidence path, label normalization |
 
 ## Working Notes
 

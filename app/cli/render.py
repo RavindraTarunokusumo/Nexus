@@ -274,14 +274,14 @@ def render_chat_answer(result: dict[str, Any], *, json_output: bool) -> None:
     table = Table(title="Citations", show_header=True, header_style="bold")
     table.add_column("Score", justify="right")
     table.add_column("Title")
-    table.add_column("Span")
+    table.add_column("Capsule")
     table.add_column("URL")
     for c in citations:
         score = float(c.get("score") or 0.0)
         table.add_row(
             f"{score:.3f}",
             _short(c.get("document_title") or "", 40),
-            _short(c.get("span_id") or "", 8),
+            _short(c.get("capsule_id") or "", 8),
             _short(c.get("url") or "", 60),
         )
     console.print(table)

@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     t2_model: str = "deepseek/deepseek-v4-flash"
     t3_model: str = "deepseek/deepseek-v4-pro"
 
+    # Default domain pack loaded for /chat/answer and session turns.
+    default_pack_id: str = "personal_ai_tech"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 

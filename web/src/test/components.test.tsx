@@ -36,11 +36,14 @@ const ASSISTANT_MSG: ChatMessage = {
 
 const CITATION: ChatCitation = {
   document_id: 'doc-uuid-1234',
-  span_id: 'span-uuid-5678',
+  capsule_id: 'cap-uuid-5678',
   document_title: 'Release article',
   url: 'https://example.com/release',
   score: 0.91,
-  claim_ids: ['c1', 'c2'],
+  object_type: 'model_release',
+  object_family: 'technical_objects',
+  lifecycle_state: 'active',
+  summary: 'GPT-5 released with 128k context window.',
 }
 
 describe('SessionSidebar', () => {
@@ -102,13 +105,19 @@ describe('CitationList', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('renders citation title, score, host, span, and claim count', () => {
+  it('renders object-type badge, score, host, and truncated summary', () => {
     render(<CitationList citations={[CITATION]} />)
     expect(screen.getByText('Release article')).toBeInTheDocument()
     expect(screen.getByText('0.91')).toBeInTheDocument()
     expect(screen.getByText('example.com')).toBeInTheDocument()
-    expect(screen.getByText('span-uui')).toBeInTheDocument()
-    expect(screen.getByText('2 claims')).toBeInTheDocument()
+    expect(screen.getByText('MODEL_RELEASE')).toBeInTheDocument()
+    expect(screen.getByText(/GPT-5 released/)).toBeInTheDocument()
+  })
+
+  it('shows lifecycle dot color for active state', () => {
+    const { container } = render(<CitationList citations={[CITATION]} />)
+    const dot = container.querySelector('.lifecycle-dot')
+    expect(dot).toHaveClass('bg-green-500')
   })
 })
 

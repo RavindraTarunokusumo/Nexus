@@ -1,6 +1,6 @@
 # Architecture
 
-> **Phase C Status: Reasoning layer landed. Phase B established the durable capsule layer (`semantic_capsules` + `capsule_segments`). Phase C wires two new T2 reasoning nodes into the extraction graph: `judge_capsules` (quality escalation via `JudgeVerdict`) and `classify_relations` (binary relation inference via `RelationClassification`). Both nodes share a T2 budget counter (`t2_calls_used`) and write `SemanticRelation` rows — unary for judge verdicts, binary for classified pairs. `backfill._write_batch` now catches FK `IntegrityError` without inflating write counters.**
+> **Phase D Status: Capsule retrieval live. `/chat/answer` now retrieves from `semantic_capsules` via HNSW cosine search (migration 0006) with LLM query-intent classification and telos-aware hybrid scoring. Phase C established the reasoning layer — `judge_capsules` and `classify_relations` write `SemanticRelation` rows at extraction time. Phase B established the durable capsule layer (`semantic_capsules` + `capsule_segments`).**
 
 Nexus Lite is a private FastAPI application backed by PostgreSQL + pgvector, Redis, and local embeddings. The Phase 1 foundation covers source registration, document ingestion, and the full persistence schema.
 
@@ -60,14 +60,20 @@ app/
         0004_chat_sessions.py   # Adds chat_sessions and chat_messages tables
         0005_semantic_capsules.py  # Adds semantic_capsules, capsule_segments, semantic_relations,
                                    #   theses, decision_artefacts, domain_packs tables
+        0006_hnsw_capsule_index.py # Adds HNSW index on semantic_capsules.embedding
+                                   #   (vector_cosine_ops, m=16, ef_construction=64)
   ingestion/
     cleaner.py             # normalize_text, content_hash, normalize_url, extract_text
     rss.py                 # fetch_rss_entries (feedparser + async httpx)
     url_fetcher.py         # fetch_and_clean (httpx + trafilatura)
   intelligence/
-    chat.py                # LangGraph chat answer graph (retrieve_spans → load_claims
-                           #   → generate_answer → format_result); validates citation labels
-                           #   against retrieved context; wraps graph in chat_run context
+    chat.py                # LangGraph chat answer graph (classify_intent → retrieve_capsules
+                           #   → generate_answer → format_result); HNSW cosine search over
+                           #   semantic_capsules + telos-aware hybrid scoring (compute_hybrid_score);
+                           #   validates citation labels against retrieved context; wraps graph
+                           #   in chat_run context
+    prompts/classify_intent.py  # IntentClassification model + build_classify_prompt; LLM
+                           #   query-intent classification against pack query_intents
     llm_client.py          # LLMClient.complete_json — OpenRouter calls, Pydantic validation;
                            #   CoreType (15-entry Literal), EpistemicState, SemanticObject,
                            #   SemanticExtractionOutput — v0.7 extraction schemas (production path);
@@ -232,6 +238,9 @@ external source
           (target_capsule_id SET); respects remaining T2 budget
 -> query answering:
      single-turn  POST /chat/answer  (stateless, no session)
+                    -> classify_intent (LLM, against pack query_intents)
+                    -> retrieve_capsules (HNSW cosine over semantic_capsules,
+                         lifecycle_state='active') + telos-aware hybrid scoring
      multi-turn   POST /chat/sessions/{id}/messages
                     -> run_session_turn() (LangGraph + AsyncPostgresSaver checkpoint)
                     -> persists chat_messages rows (user + assistant) atomically
@@ -259,7 +268,7 @@ The `nexus` CLI uses a hybrid access strategy:
 | POST | /ingest/url | Fetch and ingest a single URL |
 | POST | /ingest/text | Ingest raw text directly |
 | POST | /search/spans | Semantic span search (query, top_k) |
-| POST | /chat/answer | Hybrid chatbot answer over embedded spans and active extracted claims (single-turn) |
+| POST | /chat/answer | Chatbot answer over semantic capsules via HNSW retrieval + telos-aware hybrid scoring (single-turn) |
 | POST | /chat/sessions | Create a new chat session |
 | GET | /chat/sessions | List sessions (`status`, `limit`, `offset` query params) |
 | GET | /chat/sessions/{id} | Session detail with full message transcript |
@@ -289,9 +298,11 @@ Request body:
 | 422 | Blank question or invalid `top_k` |
 | 503 | Embedder not initialised, OpenRouter unavailable, or chat graph failed |
 
-If retrieval finds no usable embedded context, the route returns `200` with the insufficient-evidence answer, empty citations, and zero token usage without making a model call.
+Retrieval runs HNSW cosine search over `semantic_capsules` (filtered to `lifecycle_state='active'`), then re-ranks candidates with `compute_hybrid_score` — a telos-aware blend of five active components (semantic similarity, domain object-type match, source authority, recency, salience) plus two stubbed at zero (relation relevance, evidence quality). Component weights come from the active domain pack's `retrieval_policy.hybrid_score_weights`; an LLM `classify_intent` step selects the pack query-intent that supplies retrieval priorities.
 
-Citation safety behavior: the model may reference only retrieved context labels such as `C1`. The API normalizes and validates those labels against retrieved spans, drops unknown labels, and falls back to the insufficient-evidence answer if no valid citations remain.
+Each citation carries `capsule_id`, `document_id`, `document_title`, `url`, `score`, `object_type`, `object_family`, `lifecycle_state`, and a `summary` (the capsule text). If retrieval finds no usable capsule embeddings, the route returns `200` with the insufficient-evidence answer, empty citations, and zero token usage without making a model call.
+
+Citation safety behavior: the model may reference only retrieved context labels such as `C1`. The API normalizes and validates those labels against retrieved capsules, drops unknown labels, and falls back to the insufficient-evidence answer if no valid citations remain.
 
 ### Claim extraction endpoint detail
 
@@ -332,7 +343,7 @@ As of Phase B, the `claims` + `claim_evidence` tables remain the **read path** (
 | Tier | Purpose | Config key | Default |
 |---|---|---|---|
 | T1 | Embedding (local) | `settings.t1_model` | `BAAI/bge-small-en-v1.5` |
-| T2 | Telos-aware semantic-object extraction (production path, `extract_semantic_objects.py`) + chat answer | `settings.t2_model` | `deepseek/deepseek-v4-flash` |
+| T2 | Telos-aware semantic-object extraction (production path, `extract_semantic_objects.py`) + chat answer + query-intent classification (`classify_intent.py`) | `settings.t2_model` | `deepseek/deepseek-v4-flash` |
 | T3 | Brief synthesis (Phase 4); LLM judge for eval | `settings.t3_model` | `deepseek/deepseek-v4-pro` |
 | T4 | Integrity audits | — | Aspirational |
 
