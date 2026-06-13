@@ -1,0 +1,9 @@
+Summary: Reflection step — record four phase-d workflow lessons in docs/insights.md (partial subagent edits on session limit, PowerShell SKIP env-var syntax, Docker-down blocking mock-only tests via autouse migration fixture, git notes needing explicit push).
+
+Scope: docs/insights.md only.
+
+Tests: N/A (docs).
+
+Risk: None.
+
+Docs: This is the docs change.
