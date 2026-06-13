@@ -1,0 +1,9 @@
+Summary: Update ChatCitation TypeScript type to match backend capsule schema; rewrite CitationList component with capsule metadata cards (lifecycle dot, object-type badge, score, host, truncated summary).
+
+Scope: web/src/api/client.ts, web/src/components/CitationList.tsx, web/src/test/components.test.tsx
+
+Tests: 24/24 frontend Vitest tests pass; CitationList tests updated for new fixture (capsule_id, object_type, lifecycle_state, summary).
+
+Risk: LOW — frontend-only change, no backend touched.
+
+Docs: None required.
