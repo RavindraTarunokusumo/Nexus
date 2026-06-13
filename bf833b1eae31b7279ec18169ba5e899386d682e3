@@ -1,0 +1,9 @@
+Summary: Add compute_hybrid_score helper with 5 active scoring components (semantic_similarity, domain_object_type_match, source_authority, recency, salience); relation_relevance and evidence_quality stubbed at 0.0 pending future implementation.
+
+Scope: app/intelligence/chat.py (added _PRIORITY_SCORES constant + compute_hybrid_score function + datetime import); tests/intelligence/test_chat_scoring.py (5 new unit tests).
+
+Tests: 5/5 passing — test_semantic_similarity_applied, test_object_family_boost_first_priority, test_object_family_no_match_scores_zero, test_stubbed_weights_contribute_zero, test_recency_newer_beats_older.
+
+Risk: Low — pure function with no side effects, no DB or network access, no changes to existing logic.
+
+Docs: Phase D spec (docs/specs/phase-d-retrieval-ui.md) describes the hybrid scoring design this implements.
