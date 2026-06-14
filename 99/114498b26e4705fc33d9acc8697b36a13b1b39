@@ -1,0 +1,5 @@
+Summary: Pure helpers estimate_tokens (~4 chars/token) and _assemble_within_budget (greedy by score, top_k caps count, always keep top block, None budget -> flat top_k).
+Scope: app/intelligence/chat.py, tests/intelligence/test_chat_assembly.py (new).
+Tests: 5 unit tests, all pass (no DB).
+Risk: Low — new pure functions, no callers yet.
+Docs: Covered in later docs commit.
