@@ -1,0 +1,5 @@
+Summary: Opus code-review fixes. (1) Fold the evidence query into the single retrieval session — pack/weights/token_budget computed before the session, scoring+assembly+evidence now inside one async-with (snapshot consistency, one fewer connection; matches the spec design note). (2) CitationList guards c.evidence (c.evidence && c.evidence.length) for legacy citations returned raw from citations_json where the key may be absent. (3) Precise _build_evidence_map truncation docstring.
+Scope: app/intelligence/chat.py (_run_retrieve_capsules restructure + docstring), web/src/components/CitationList.tsx.
+Tests: 26 intelligence + 20 Vitest component tests pass; test mocks unchanged (still two execute calls on one session).
+Risk: Low — behavior-preserving restructure; UI guard is defensive.
+Docs: No doc change needed (architecture already describes the behavior).
