@@ -69,6 +69,19 @@ export function CitationList({ citations }: Props) {
               )}
               <p>Capsule: <span className="font-mono">{c.capsule_id}</span></p>
               <p>Document: <span className="font-mono">{c.document_id}</span></p>
+              {c.evidence.length > 0 && (
+                <div className="pt-1 border-t border-gray-200">
+                  <p className="font-medium text-gray-500">Evidence</p>
+                  <ul className="space-y-0.5">
+                    {c.evidence.map((e) => (
+                      <li key={e.span_id} className="text-gray-600">
+                        <span className="text-gray-400 font-mono mr-1">#{e.span_index}</span>
+                        {e.text}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
         </div>
