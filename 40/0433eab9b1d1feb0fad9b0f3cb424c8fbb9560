@@ -1,0 +1,5 @@
+Summary: Design spec for Phase D residual (token-budget assembly + evidence-path UI); decisions made via recommended options under user delegation.
+Scope: docs/superpowers/specs/2026-06-14-phase-d-residual-design.md (new).
+Tests: N/A.
+Risk: None.
+Docs: This is the spec.
