@@ -109,7 +109,8 @@ def _build_evidence_map(
     """Shape (capsule_id, span_id, span_index, text) rows into per-capsule excerpts.
 
     Rows must arrive ordered by capsule_id then span_index. Keeps up to max_spans per
-    capsule and truncates each excerpt to excerpt_chars (trailing ellipsis when cut).
+    capsule and caps each excerpt at excerpt_chars total characters (when cut, a trailing
+    ellipsis replaces the final character, so the result is exactly excerpt_chars long).
     """
     out: dict[uuid.UUID, list[dict[str, Any]]] = {}
     for capsule_id, span_id, span_index, text in rows:
@@ -194,6 +195,19 @@ async def _run_retrieve_capsules(
     session_factory: async_sessionmaker,
     embedder: Any,
 ) -> dict:
+    pack = state.get("pack")
+    query_intent = state.get("query_intent", "general")
+    retrieval_priorities: list[str] = []
+    if pack is not None and query_intent != "general":
+        intent_cfg = pack.retrieval_policy.query_intents.get(query_intent, {})
+        retrieval_priorities = intent_cfg.get("retrieval_priorities", [])
+
+    weights: dict[str, float] = {}
+    token_budget: int | None = None
+    if pack is not None:
+        weights = dict(pack.retrieval_policy.hybrid_score_weights)
+        token_budget = pack.context_assembly.max_tokens_by_tier.get("T2")
+
     async with session_factory() as session:
         sentinel = await session.scalar(
             select(SemanticCapsule).where(SemanticCapsule.embedding.isnot(None)).limit(1)
@@ -227,59 +241,44 @@ async def _run_retrieve_capsules(
             )
         ).all()
 
-    pack = state.get("pack")
-    query_intent = state.get("query_intent", "general")
-    retrieval_priorities: list[str] = []
-    if pack is not None and query_intent != "general":
-        intent_cfg = pack.retrieval_policy.query_intents.get(query_intent, {})
-        retrieval_priorities = intent_cfg.get("retrieval_priorities", [])
+        if rows:
+            created_ats = [r.created_at for r in rows]
+            recency_min: datetime = min(created_ats)
+            recency_max: datetime = max(created_ats)
+        else:
+            now = datetime.now(timezone.utc)
+            recency_min = recency_max = now
 
-    weights: dict[str, float] = {}
-    if pack is not None:
-        weights = dict(pack.retrieval_policy.hybrid_score_weights)
+        candidates = [
+            {
+                "id": r.id,
+                "document_id": r.document_id,
+                "text": r.text,
+                "object_type": r.domain_object_type,
+                "object_family": r.object_family,
+                "lifecycle_state": r.lifecycle_state,
+                "salience": r.salience,
+                "created_at": r.created_at,
+                "semantic_sim": float(r.semantic_sim),
+                "title": r.title,
+                "url": r.url,
+            }
+            for r in rows
+        ]
 
-    if rows:
-        created_ats = [r.created_at for r in rows]
-        recency_min: datetime = min(created_ats)
-        recency_max: datetime = max(created_ats)
-    else:
-        now = datetime.now(timezone.utc)
-        recency_min = recency_max = now
+        scored = sorted(
+            [
+                (c, compute_hybrid_score(c, weights, retrieval_priorities, recency_min, recency_max))
+                for c in candidates
+            ],
+            key=lambda x: x[1],
+            reverse=True,
+        )
+        top = _assemble_within_budget(scored, state["top_k"], token_budget)
 
-    candidates = [
-        {
-            "id": r.id,
-            "document_id": r.document_id,
-            "text": r.text,
-            "object_type": r.domain_object_type,
-            "object_family": r.object_family,
-            "lifecycle_state": r.lifecycle_state,
-            "salience": r.salience,
-            "created_at": r.created_at,
-            "semantic_sim": float(r.semantic_sim),
-            "title": r.title,
-            "url": r.url,
-        }
-        for r in rows
-    ]
-
-    scored = sorted(
-        [
-            (c, compute_hybrid_score(c, weights, retrieval_priorities, recency_min, recency_max))
-            for c in candidates
-        ],
-        key=lambda x: x[1],
-        reverse=True,
-    )
-    token_budget: int | None = None
-    if pack is not None:
-        token_budget = pack.context_assembly.max_tokens_by_tier.get("T2")
-    top = _assemble_within_budget(scored, state["top_k"], token_budget)
-
-    capsule_ids = [c["id"] for c, _ in top]
-    evidence_map: dict[uuid.UUID, list[dict[str, Any]]] = {}
-    if capsule_ids:
-        async with session_factory() as session:
+        capsule_ids = [c["id"] for c, _ in top]
+        evidence_map: dict[uuid.UUID, list[dict[str, Any]]] = {}
+        if capsule_ids:
             evidence_rows = (
                 await session.execute(
                     select(
@@ -293,9 +292,9 @@ async def _run_retrieve_capsules(
                     .order_by(CapsuleSegment.capsule_id, Span.span_index)
                 )
             ).all()
-        evidence_map = _build_evidence_map(
-            evidence_rows, _MAX_EVIDENCE_SPANS, _EVIDENCE_EXCERPT_CHARS
-        )
+            evidence_map = _build_evidence_map(
+                evidence_rows, _MAX_EVIDENCE_SPANS, _EVIDENCE_EXCERPT_CHARS
+            )
 
     blocks = [
         {
