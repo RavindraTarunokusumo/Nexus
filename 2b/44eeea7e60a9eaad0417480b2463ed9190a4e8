@@ -1,0 +1,5 @@
+Summary: ChatCitation TS type gains evidence[]; CitationList renders an expandable "Evidence" subsection (span index + excerpt) in the citation panel, omitted when empty.
+Scope: web/src/api/client.ts, web/src/components/CitationList.tsx, web/src/test/components.test.tsx.
+Tests: 20 Vitest component tests pass (18 + 2 new).
+Risk: Low — frontend-only; backend unaffected.
+Docs: Covered in later docs commit.
