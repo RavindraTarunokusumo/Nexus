@@ -59,9 +59,10 @@ CLI entry point: `app/cli/eval.py` — `nexus eval` sub-app. See [Commands](comm
 
 | File | Type | Coverage |
 |---|---|---|
-| `tests/intelligence/test_chat_intent.py` | Unit (no DB) | `_run_classify_intent` — LLM match, unknown fallback, empty-intents skip, network-error fallback |
+| `tests/intelligence/test_chat_intent.py` | Unit (no DB) | `_run_classify_intent` — LLM match, unknown fallback, empty-intents skip, network/schema-error fallback |
 | `tests/intelligence/test_chat_scoring.py` | Unit (no DB) | `compute_hybrid_score` — semantic weighting, object-family priority boost, stubbed weights, recency normalization |
-| `tests/intelligence/test_chat_graph.py` | Unit (mocked DB/LLM) | `classify_intent`/`retrieve_capsules` nodes, capsule citation formatting, insufficient-evidence path, label normalization |
+| `tests/intelligence/test_chat_assembly.py` | Unit (no DB) | `estimate_tokens`, `_assemble_within_budget` (budget/`top_k`/first-block rules), `_build_evidence_map` (grouping, span cap, truncation) |
+| `tests/intelligence/test_chat_graph.py` | Unit (mocked DB/LLM) | `classify_intent`/`retrieve_capsules` nodes, capsule citation formatting, capsule→span evidence attachment, insufficient-evidence path, label normalization |
 
 ## Working Notes
 

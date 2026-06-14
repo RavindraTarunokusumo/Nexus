@@ -44,6 +44,7 @@ const CITATION: ChatCitation = {
   object_family: 'technical_objects',
   lifecycle_state: 'active',
   summary: 'GPT-5 released with 128k context window.',
+  evidence: [{ span_id: 's1', span_index: 0, text: 'supporting excerpt' }],
 }
 
 describe('SessionSidebar', () => {
@@ -118,6 +119,19 @@ describe('CitationList', () => {
     const { container } = render(<CitationList citations={[CITATION]} />)
     const dot = container.querySelector('.lifecycle-dot')
     expect(dot).toHaveClass('bg-green-500')
+  })
+
+  it('renders evidence excerpts in the expanded panel', async () => {
+    render(<CitationList citations={[CITATION]} />)
+    await userEvent.click(screen.getByRole('button'))
+    expect(screen.getByText('Evidence')).toBeInTheDocument()
+    expect(screen.getByText(/supporting excerpt/)).toBeInTheDocument()
+  })
+
+  it('omits the Evidence subsection when there is no evidence', async () => {
+    render(<CitationList citations={[{ ...CITATION, evidence: [] }]} />)
+    await userEvent.click(screen.getByRole('button'))
+    expect(screen.queryByText('Evidence')).not.toBeInTheDocument()
   })
 })
 

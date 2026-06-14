@@ -25,6 +25,7 @@ export type ChatCitation = {
   object_family: string | null
   lifecycle_state: string | null
   summary: string
+  evidence: { span_id: string; span_index: number; text: string }[]
 }
 
 export type ChatMessage = {

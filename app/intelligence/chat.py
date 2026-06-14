@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.db.models import Document, SemanticCapsule
+from app.db.models import CapsuleSegment, Document, SemanticCapsule, Span
 from app.domain_packs.loader import load_pack
 from app.intelligence.llm_client import LLMError, LLMNetworkError
 from app.intelligence.prompts.chat_answer import SYSTEM_PROMPT, build_user_prompt
@@ -28,6 +28,12 @@ class ChatAnswerOutput(BaseModel):
     citations: list[str]
 
 
+class CitationEvidence(BaseModel):
+    span_id: uuid.UUID
+    span_index: int
+    text: str
+
+
 class ChatCitation(BaseModel):
     document_id: uuid.UUID
     capsule_id: uuid.UUID
@@ -38,6 +44,7 @@ class ChatCitation(BaseModel):
     object_family: str | None
     lifecycle_state: str | None
     summary: str
+    evidence: list[CitationEvidence] = []
 
 
 class ChatState(TypedDict):
@@ -60,6 +67,59 @@ INSUFFICIENT_EVIDENCE_ANSWER = (
 )
 
 _PRIORITY_SCORES = [1.0, 0.5, 0.25, 0.1]
+_MAX_EVIDENCE_SPANS = 5
+_EVIDENCE_EXCERPT_CHARS = 280
+
+
+def estimate_tokens(text: str) -> int:
+    """Cheap char-based token estimate (~4 chars/token). Sufficient for a soft budget gate."""
+    return (len(text) + 3) // 4
+
+
+def _assemble_within_budget(
+    scored: list[tuple[dict, float]],
+    top_k: int,
+    token_budget: int | None,
+) -> list[tuple[dict, float]]:
+    """Pick score-ordered blocks under a token budget; top_k caps the count.
+
+    Always includes the highest-scored block even if it alone exceeds the budget.
+    token_budget=None falls back to the flat top_k slice.
+    """
+    if token_budget is None:
+        return scored[:top_k]
+    selected: list[tuple[dict, float]] = []
+    running = 0
+    for cand, score in scored:
+        if len(selected) >= top_k:
+            break
+        est = estimate_tokens(cand["text"])
+        if selected and running + est > token_budget:
+            break
+        selected.append((cand, score))
+        running += est
+    return selected
+
+
+def _build_evidence_map(
+    rows: list,
+    max_spans: int,
+    excerpt_chars: int,
+) -> dict[uuid.UUID, list[dict[str, Any]]]:
+    """Shape (capsule_id, span_id, span_index, text) rows into per-capsule excerpts.
+
+    Rows must arrive ordered by capsule_id then span_index. Keeps up to max_spans per
+    capsule and caps each excerpt at excerpt_chars total characters (when cut, a trailing
+    ellipsis replaces the final character, so the result is exactly excerpt_chars long).
+    """
+    out: dict[uuid.UUID, list[dict[str, Any]]] = {}
+    for capsule_id, span_id, span_index, text in rows:
+        bucket = out.setdefault(capsule_id, [])
+        if len(bucket) >= max_spans:
+            continue
+        excerpt = text if len(text) <= excerpt_chars else text[: excerpt_chars - 1] + "…"
+        bucket.append({"span_id": span_id, "span_index": span_index, "text": excerpt})
+    return out
 
 
 def _normalize_citation_label(label: str) -> str:
@@ -135,6 +195,19 @@ async def _run_retrieve_capsules(
     session_factory: async_sessionmaker,
     embedder: Any,
 ) -> dict:
+    pack = state.get("pack")
+    query_intent = state.get("query_intent", "general")
+    retrieval_priorities: list[str] = []
+    if pack is not None and query_intent != "general":
+        intent_cfg = pack.retrieval_policy.query_intents.get(query_intent, {})
+        retrieval_priorities = intent_cfg.get("retrieval_priorities", [])
+
+    weights: dict[str, float] = {}
+    token_budget: int | None = None
+    if pack is not None:
+        weights = dict(pack.retrieval_policy.hybrid_score_weights)
+        token_budget = pack.context_assembly.max_tokens_by_tier.get("T2")
+
     async with session_factory() as session:
         sentinel = await session.scalar(
             select(SemanticCapsule).where(SemanticCapsule.embedding.isnot(None)).limit(1)
@@ -168,51 +241,60 @@ async def _run_retrieve_capsules(
             )
         ).all()
 
-    pack = state.get("pack")
-    query_intent = state.get("query_intent", "general")
-    retrieval_priorities: list[str] = []
-    if pack is not None and query_intent != "general":
-        intent_cfg = pack.retrieval_policy.query_intents.get(query_intent, {})
-        retrieval_priorities = intent_cfg.get("retrieval_priorities", [])
+        if rows:
+            created_ats = [r.created_at for r in rows]
+            recency_min: datetime = min(created_ats)
+            recency_max: datetime = max(created_ats)
+        else:
+            now = datetime.now(timezone.utc)
+            recency_min = recency_max = now
 
-    weights: dict[str, float] = {}
-    if pack is not None:
-        weights = dict(pack.retrieval_policy.hybrid_score_weights)
+        candidates = [
+            {
+                "id": r.id,
+                "document_id": r.document_id,
+                "text": r.text,
+                "object_type": r.domain_object_type,
+                "object_family": r.object_family,
+                "lifecycle_state": r.lifecycle_state,
+                "salience": r.salience,
+                "created_at": r.created_at,
+                "semantic_sim": float(r.semantic_sim),
+                "title": r.title,
+                "url": r.url,
+            }
+            for r in rows
+        ]
 
-    if rows:
-        created_ats = [r.created_at for r in rows]
-        recency_min: datetime = min(created_ats)
-        recency_max: datetime = max(created_ats)
-    else:
-        now = datetime.now(timezone.utc)
-        recency_min = recency_max = now
+        scored = sorted(
+            [
+                (c, compute_hybrid_score(c, weights, retrieval_priorities, recency_min, recency_max))
+                for c in candidates
+            ],
+            key=lambda x: x[1],
+            reverse=True,
+        )
+        top = _assemble_within_budget(scored, state["top_k"], token_budget)
 
-    candidates = [
-        {
-            "id": r.id,
-            "document_id": r.document_id,
-            "text": r.text,
-            "object_type": r.domain_object_type,
-            "object_family": r.object_family,
-            "lifecycle_state": r.lifecycle_state,
-            "salience": r.salience,
-            "created_at": r.created_at,
-            "semantic_sim": float(r.semantic_sim),
-            "title": r.title,
-            "url": r.url,
-        }
-        for r in rows
-    ]
-
-    scored = sorted(
-        [
-            (c, compute_hybrid_score(c, weights, retrieval_priorities, recency_min, recency_max))
-            for c in candidates
-        ],
-        key=lambda x: x[1],
-        reverse=True,
-    )
-    top = scored[: state["top_k"]]
+        capsule_ids = [c["id"] for c, _ in top]
+        evidence_map: dict[uuid.UUID, list[dict[str, Any]]] = {}
+        if capsule_ids:
+            evidence_rows = (
+                await session.execute(
+                    select(
+                        CapsuleSegment.capsule_id,
+                        Span.id,
+                        Span.span_index,
+                        Span.text,
+                    )
+                    .join(Span, CapsuleSegment.segment_id == Span.id)
+                    .where(CapsuleSegment.capsule_id.in_(capsule_ids))
+                    .order_by(CapsuleSegment.capsule_id, Span.span_index)
+                )
+            ).all()
+            evidence_map = _build_evidence_map(
+                evidence_rows, _MAX_EVIDENCE_SPANS, _EVIDENCE_EXCERPT_CHARS
+            )
 
     blocks = [
         {
@@ -226,6 +308,7 @@ async def _run_retrieve_capsules(
             "object_type": c["object_type"],
             "object_family": c["object_family"],
             "lifecycle_state": c["lifecycle_state"],
+            "evidence": evidence_map.get(c["id"], []),
         }
         for i, (c, score) in enumerate(top, start=1)
     ]
@@ -278,6 +361,7 @@ def make_chat_graph(session_factory: async_sessionmaker, client: Any, embedder: 
                     object_family=block.get("object_family"),
                     lifecycle_state=block.get("lifecycle_state"),
                     summary=block["text"],
+                    evidence=block.get("evidence", []),
                 ).model_dump()
             )
         if state.get("context_blocks") and not citations:

@@ -9,6 +9,19 @@ Track meaningful repository-level changes here.
 - Why it changed
 - Any follow-up work or migration notes
 
+## 2026-06-14 — Phase D Residual: Token-Budget Assembly + Evidence-Path UI
+
+Closed the two buildable-now residual items from Phase D on branch `claude/phase-d-residual`.
+
+**What changed:**
+
+- **Token-budget context assembly.** `_run_retrieve_capsules` now assembles score-ranked capsules under the active pack's `context_assembly.max_tokens_by_tier["T2"]` budget instead of a flat `top_k` slice. Two pure helpers: `estimate_tokens(text)` (~4 chars/token heuristic) and `_assemble_within_budget(scored, top_k, token_budget)` (greedy by score; `top_k` caps the count; always keeps the top block; `None` budget → flat `top_k`).
+- **Evidence-path UI.** New `CitationEvidence` model and `ChatCitation.evidence` field. After assembly, `_run_retrieve_capsules` runs one `capsule_segments ⨝ spans` query for the selected capsules and shapes it via `_build_evidence_map` (≤ `_MAX_EVIDENCE_SPANS=5` per capsule, each excerpt truncated to `_EVIDENCE_EXCERPT_CHARS=280`). `format_result` carries `evidence` into each citation. The web `CitationList` renders an expandable "Evidence" subsection (span index + excerpt) in the citation panel, omitted when empty.
+
+**Why:** Retrieval now honors the pack's declared context budget rather than an arbitrary count, and answers expose the underlying span evidence for each cited capsule — improving grounding transparency.
+
+**Migration / setup:** None. No schema change; `context_assembly` was already parsed on the pack. `max_tokens_by_tier["T3"]`/`["T4"]` remain unused (chat answers run on T2). The richer `context_assembly.include` categories and `ordering: evidence_strength` stay deferred to Phase E (they need the relation graph / lifecycle / evidence-quality signals).
+
 ## 2026-06-12 — Phase D: Retrieval & UI Over Meaning
 
 Cut `/chat/answer` over from span-based retrieval to semantic-capsule retrieval across commits `d3183bc`–`92930a8` on branch `claude/phase-d-retrieval-ui`.
