@@ -1,0 +1,5 @@
+Summary: Pre-PR docs — /chat/answer detail (token budget + evidence in citations), Phase D Residual changelog entry, index Phase D Test Files (test_chat_assembly.py + evidence coverage).
+Scope: docs/architecture.md, docs/changelog.md, docs/index.md.
+Tests: N/A (docs).
+Risk: None.
+Docs: This is the docs update (doc-updater step done inline; subagent unreliable across worktrees).
