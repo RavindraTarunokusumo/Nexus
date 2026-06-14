@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.db.models import Document, SemanticCapsule
+from app.db.models import CapsuleSegment, Document, SemanticCapsule, Span
 from app.domain_packs.loader import load_pack
 from app.intelligence.llm_client import LLMError, LLMNetworkError
 from app.intelligence.prompts.chat_answer import SYSTEM_PROMPT, build_user_prompt
@@ -276,6 +276,27 @@ async def _run_retrieve_capsules(
         token_budget = pack.context_assembly.max_tokens_by_tier.get("T2")
     top = _assemble_within_budget(scored, state["top_k"], token_budget)
 
+    capsule_ids = [c["id"] for c, _ in top]
+    evidence_map: dict[uuid.UUID, list[dict[str, Any]]] = {}
+    if capsule_ids:
+        async with session_factory() as session:
+            evidence_rows = (
+                await session.execute(
+                    select(
+                        CapsuleSegment.capsule_id,
+                        Span.id,
+                        Span.span_index,
+                        Span.text,
+                    )
+                    .join(Span, CapsuleSegment.segment_id == Span.id)
+                    .where(CapsuleSegment.capsule_id.in_(capsule_ids))
+                    .order_by(CapsuleSegment.capsule_id, Span.span_index)
+                )
+            ).all()
+        evidence_map = _build_evidence_map(
+            evidence_rows, _MAX_EVIDENCE_SPANS, _EVIDENCE_EXCERPT_CHARS
+        )
+
     blocks = [
         {
             "label": f"C{i}",
@@ -288,6 +309,7 @@ async def _run_retrieve_capsules(
             "object_type": c["object_type"],
             "object_family": c["object_family"],
             "lifecycle_state": c["lifecycle_state"],
+            "evidence": evidence_map.get(c["id"], []),
         }
         for i, (c, score) in enumerate(top, start=1)
     ]
@@ -340,6 +362,7 @@ def make_chat_graph(session_factory: async_sessionmaker, client: Any, embedder: 
                     object_family=block.get("object_family"),
                     lifecycle_state=block.get("lifecycle_state"),
                     summary=block["text"],
+                    evidence=block.get("evidence", []),
                 ).model_dump()
             )
         if state.get("context_blocks") and not citations:

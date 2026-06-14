@@ -7,15 +7,22 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 
-def _make_session_factory(rows: list | None = None, has_sentinel: bool = True) -> MagicMock:
+def _make_session_factory(
+    rows: list | None = None,
+    has_sentinel: bool = True,
+    evidence_rows: list | None = None,
+) -> MagicMock:
     mock_session = AsyncMock()
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock(return_value=False)
     mock_session.scalar = AsyncMock(return_value=MagicMock() if has_sentinel else None)
 
-    exec_result = MagicMock()
-    exec_result.all.return_value = rows or []
-    mock_session.execute = AsyncMock(return_value=exec_result)
+    # _run_retrieve_capsules calls execute twice: candidate query, then evidence query.
+    candidate_result = MagicMock()
+    candidate_result.all.return_value = rows or []
+    evidence_result = MagicMock()
+    evidence_result.all.return_value = evidence_rows or []
+    mock_session.execute = AsyncMock(side_effect=[candidate_result, evidence_result])
 
     sf = MagicMock()
     sf.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -112,6 +119,25 @@ async def test_retrieve_capsules_returns_labelled_blocks() -> None:
     assert blocks[0]["document_id"] == doc_id
     assert blocks[0]["text"] == "GPT-5 released with 128k context."
     assert blocks[0]["object_type"] == "model_release"
+
+
+@pytest.mark.asyncio
+async def test_retrieve_capsules_attaches_evidence() -> None:
+    from app.intelligence.chat import _run_retrieve_capsules
+
+    cap_id, doc_id, span_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    sf = _make_session_factory(
+        rows=[_capsule_row(cap_id, doc_id)],
+        evidence_rows=[(cap_id, span_id, 0, "supporting span text")],
+    )
+    state = {"question": "q", "top_k": 5, "query_intent": "general", "pack": _make_pack()}
+
+    result = await _run_retrieve_capsules(state, sf, _make_embedder())
+
+    evidence = result["context_blocks"][0]["evidence"]
+    assert evidence[0]["text"] == "supporting span text"
+    assert evidence[0]["span_id"] == span_id
+    assert evidence[0]["span_index"] == 0
 
 
 @pytest.mark.asyncio
