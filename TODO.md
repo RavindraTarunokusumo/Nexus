@@ -10,10 +10,9 @@
 
 ### Phase D — Retrieval & UI Over Meaning (residual)
 
-> Core cutover landed in PR #21 (archived: `docs/iterations/archive/2026-06-12-phase-d-retrieval-ui.md`). Remaining:
+> Core cutover landed in PR #21; token-budget context assembly + evidence-path UI landed in PR #22 (archived: `docs/iterations/archive/2026-06-12-phase-d-retrieval-ui.md`). Remaining (Phase-E-gated):
 
-- [ ] Context assembly per `pack.context_assembly` — drive block selection / ordering / token budget from the pack policy (currently a hardcoded top-k slice).
-- [ ] Web UI evidence-path expansion — surface the capsule → supporting-span evidence chain in the citation panel (capsule cards + lifecycle indicators already landed).
+- [ ] Context assembly `include` categories + `ordering: evidence_strength` — drive block *selection/ordering* from `pack.context_assembly` (token budget already enforced via `max_tokens_by_tier`; the `include` categories — counter-evidence, superseding/superseded, epistemic notes — and evidence-strength ordering need the relation graph / lifecycle / evidence-quality signals).
 - [ ] Drop `claims` + `claim_evidence` tables (only after `/chat/answer` cutover is green for 1 week).
 - [ ] Un-stub hybrid scoring inputs — `source_authority` (uniform 0.5), `relation_relevance` (0.0), `evidence_quality` (0.0) once Phase E relation-graph / source-authority signals exist.
 

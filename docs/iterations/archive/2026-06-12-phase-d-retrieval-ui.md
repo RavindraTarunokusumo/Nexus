@@ -68,3 +68,22 @@ Spec: [`docs/superpowers/specs/2026-06-12-phase-d-retrieval-ui-design.md`](../..
 - **Drop `claims` + `claim_evidence` tables** — held until `/chat/answer` cutover is green in production for 1 week (per original TODO).
 - **Stubbed scoring inputs** — `source_authority` (uniform 0.5), `relation_relevance` (0.0), `evidence_quality` (0.0) await Phase E relation-graph and source-authority signals.
 - **Declarative `lifecycle_state` filter and intent selection in pack YAML** — currently hardcoded; deferred to Phase E.
+
+## Residual Follow-up (PR #22)
+
+**PR:** [#22](https://github.com/RavindraTarunokusumo/Nexus/pull/22)
+**Merge commit:** `7341e45`
+**Merged at:** 2026-06-14T11:43:42Z
+**Merged by:** RavindraTarunokusumo
+**Branch:** `claude/phase-d-residual`
+Spec: [`docs/superpowers/specs/2026-06-14-phase-d-residual-design.md`](../../superpowers/specs/2026-06-14-phase-d-residual-design.md) ·
+Plan: [`docs/superpowers/plans/2026-06-14-phase-d-residual.md`](../../superpowers/plans/2026-06-14-phase-d-residual.md)
+
+Closed the two buildable-now residual items:
+
+- [x] **Token-budget context assembly** — `_run_retrieve_capsules` assembles score-ranked capsules under `pack.context_assembly.max_tokens_by_tier["T2"]` via `estimate_tokens` + `_assemble_within_budget` (flat `top_k` fallback). (commits `9911449`, `955c85d`)
+- [x] **Evidence-path UI** — `CitationEvidence` model + `ChatCitation.evidence`; `_build_evidence_map` + `capsule_segments ⨝ spans` query (folded into the retrieval session); `CitationList` expandable evidence subsection. (commits `0da4831`, `87a94b4`, `2b44eee`, review fix `95bd860`)
+
+Tests: 26 intelligence unit tests + 20 Vitest component tests pass. Opus review found 1 Important (UI `evidence` undefined guard) + 2 Minor (single-session fold, docstring) — all fixed in `95bd860`.
+
+Still deferred (Phase-E-gated): richer `context_assembly.include` categories + `ordering: evidence_strength`; un-stub `source_authority`/`relation_relevance`/`evidence_quality`; drop `claims`/`claim_evidence` tables.
