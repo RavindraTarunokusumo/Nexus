@@ -20,6 +20,9 @@ See [docs/commands.md](commands.md) for full flag reference and examples for eve
 | `capsules` | `backfill` | Direct Postgres |
 | `theses` | `synthesize` | Direct Postgres |
 | `artefacts` | `create` | Direct Postgres |
+| `lifecycle` | `run` | Direct Postgres |
+| `consolidation` | `run` | Direct Postgres |
+| `eval memory` | `run`, `report` | Direct Postgres + Qwen Cloud |
 
 ## `capsules` Subcommand Group
 
@@ -62,12 +65,50 @@ nexus artefacts create --domain personal_ai_tech --question "..." --answer "..."
 
 Manually creates a `memo`-type `decision_artefacts` row linking the given capsules and/or theses. `--capsule-id` and `--thesis-id` are repeatable. No batch/backfill mode — artefacts are created one at a time via this command until Phase E wires automatic creation.
 
+## `lifecycle` Subcommand Group
+
+The `lifecycle` group provides the Phase E living-knowledge worker. Reads and writes Postgres directly — no server required.
+
+### `nexus lifecycle run`
+
+```sh
+nexus lifecycle run --domain personal_ai_tech
+nexus lifecycle run --domain personal_ai_tech --dry-run
+nexus lifecycle run --domain personal_ai_tech --json
+```
+
+Applies deterministic lifecycle transitions to `candidate`/`active` capsules in the given domain, in precedence order: `superseded` (incoming `supersedes` relation, or the same-actor/same-type/newer-date heuristic — restricted to `core_type="state_change"` so historical events/claims are never wrongly retired) → `contradicted` (higher-authority `contradicts` relation) → `qualified` (incoming `qualifies` relation) → `confirmed` (≥2 supporting relations) → `stale` (pack `retention_policy.stale_conditions`) → `archived` (`archive_after_days`). `--dry-run` reports transitions without committing. `--pack` overrides the domain pack id (defaults to `settings.default_pack_id`).
+
+## `consolidation` Subcommand Group
+
+The `consolidation` group provides the Phase E consolidation worker — a thin CLI wrapper over the Phase C thesis writer (`nexus theses synthesize` shares the same underlying clustering).
+
+### `nexus consolidation run`
+
+```sh
+nexus consolidation run --domain personal_ai_tech
+nexus consolidation run --domain personal_ai_tech --min-strength 0.7 --min-cluster-size 3
+nexus consolidation run --domain personal_ai_tech --dry-run
+```
+
+Clusters strongly-related capsules (`--min-strength`, default 0.6) into `theses` rows for `--domain` (required). `--min-cluster-size` (default 2) sets the minimum connected-component size. `--dry-run` reports clusters without writing.
+
 ## `eval` Subcommand Group (updated flags)
 
 `nexus eval run` and `nexus eval calibrate` now accept two additional options:
 
 - `--pack-id <id>` — override the domain pack used to drive the SUT and judge.
 - `--source-type <type>` — restrict evaluation to examples matching a specific source-type profile.
+
+### `nexus eval memory run` / `nexus eval memory report`
+
+```sh
+nexus eval memory run --benchmark nexus_synthetic --k 5
+nexus eval memory run --benchmark nexus_synthetic --k 5 --skip-ingest
+nexus eval memory report --run-id <timestamp>
+```
+
+Runs the Phase F memory benchmark end to end: ingest fixture corpus (`evals/memory/<benchmark>/`) → extract → classify relations → `nexus lifecycle run` → `nexus consolidation run` → answer each fixture question via the chat graph → score (answer correctness, evidence recall@k, citation precision/faithfulness, temporal/supersession correctness, abstention accuracy, latency, token cost) → write `report.md` / `results.jsonl` / `run_meta.json` under `--out` (default `docs/benchmarks/runs/<UTC timestamp>/`). `--skip-ingest` assumes the corpus is already ingested. `eval memory report` prints a previously written run's `report.md`. See [docs/benchmarks/memory-benchmark-plan.md](benchmarks/memory-benchmark-plan.md) and the [README demo guide](../README.md#demo-guide).
 
 ## `runs` Subcommand Group
 

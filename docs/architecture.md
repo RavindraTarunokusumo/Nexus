@@ -69,12 +69,30 @@ app/
   intelligence/
     chat.py                # LangGraph chat answer graph (classify_intent → retrieve_capsules
                            #   → generate_answer → format_result); HNSW cosine search over
-                           #   semantic_capsules + telos-aware hybrid scoring (compute_hybrid_score);
+                           #   semantic_capsules + telos-aware hybrid scoring (compute_hybrid_score
+                           #   — real source_authority/evidence_quality/relation_relevance inputs
+                           #   as of Phase D, no longer stubbed); retrieval lifecycle filter is
+                           #   active/confirmed/qualified (was active-only); context assembly
+                           #   honors pack.context_assembly.include categories (primary /
+                           #   counter_evidence / supersession auxiliary blocks, capped 2 each,
+                           #   epistemic_note per block) and evidence_strength ordering;
                            #   validates citation labels against retrieved context; wraps graph
                            #   in chat_run context
+    lifecycle.py           # Phase E living-knowledge worker: apply_lifecycle_transitions(session,
+                           #   domain, pack, dry_run) — deterministic precedence superseded >
+                           #   contradicted > qualified > confirmed > stale > archived over
+                           #   candidate/active capsules; supersession heuristic restricted to
+                           #   core_type="state_change" (events/claims/results stay permanent);
+                           #   LifecycleReport(transitions, counts)
+    consolidation.py       # Phase E consolidation worker: consolidate_domain(session, domain,
+                           #   pack, min_strength, min_cluster_size, dry_run) — thin wrapper over
+                           #   theses.synthesize_theses_from_relations; ConsolidationReport
+                           #   (theses_created, thesis_ids)
     prompts/classify_intent.py  # IntentClassification model + build_classify_prompt; LLM
                            #   query-intent classification against pack query_intents
-    llm_client.py          # LLMClient.complete_json — OpenRouter calls, Pydantic validation;
+    llm_client.py          # LLMClient.complete_json — OpenAI-compatible calls (Qwen Cloud by
+                           #   default via settings.llm_base_url/llm_api_key, OpenRouter-compatible),
+                           #   Pydantic validation;
                            #   CoreType (15-entry Literal), EpistemicState, SemanticObject,
                            #   SemanticExtractionOutput — v0.7 extraction schemas (production path);
                            #   ExtractedClaim / ExtractionOutput — DELETED in Phase B (legacy eval
@@ -155,12 +173,38 @@ app/
     render.py              # Rich+JSON formatters; includes search/chat/extract and run renderers
     eval.py                # Typer sub-app — nexus eval commands:
                            #   register-dataset, list-datasets, run (--pack-id, --source-type),
-                           #   show, diff, calibrate (--pack-id, --source-type)
+                           #   show, diff, calibrate (--pack-id, --source-type);
+                           #   memory run/report (Phase F) — lazy-imports
+                           #   scripts.benchmarks.run_memory_benchmark.run_benchmark
     capsules.py            # Typer sub-app — nexus capsules commands:
                            #   backfill [--dry-run] [--batch-size N]
+    lifecycle.py           # Typer sub-app — nexus lifecycle run [--domain] [--pack] [--dry-run]
+                           #   [--json]; calls app.intelligence.lifecycle.apply_lifecycle_transitions
+    consolidation.py       # Typer sub-app — nexus consolidation run --domain [--pack]
+                           #   [--min-strength] [--min-cluster-size] [--dry-run] [--json];
+                           #   calls app.intelligence.consolidation.consolidate_domain
     main.py                # Typer app — nexus console-script entry point;
                            #   registers `runs` sub-app with `list` and `show` commands;
-                           #   registers `eval` sub-app; registers `capsules` sub-app
+                           #   registers `eval`, `capsules`, `theses`, `artefacts`, `lifecycle`,
+                           #   `consolidation` sub-apps
+scripts/
+  benchmarks/
+    scoring.py              # Pure F5 metric functions: score_answer (per-question), aggregate
+                           #   (per-category + overall means, None-excluded, latency p50/p95,
+                           #   total tokens) — no I/O
+    run_memory_benchmark.py  # async run_benchmark(fixtures, k, out, skip_ingest, domain) — ingest
+                           #   corpus.jsonl (idempotent by URL) → extract → classify_relations →
+                           #   apply_lifecycle_transitions → consolidate_domain → answer every
+                           #   questions.jsonl question via make_chat_graph → score → write
+                           #   results.jsonl / report.md / run_meta.json
+    demo_answer.py           # Ad-hoc driver: prints live chat answers + citations (role,
+                           #   epistemic_note) for a list of questions against a populated DB
+evals/
+  memory/
+    nexus_synthetic/         # Phase F synthetic memory benchmark fixtures: corpus.jsonl
+                           #   (14 fictional AI-tech docs), questions.jsonl (22 questions across
+                           #   6 categories: timeline, multi_doc, superseded, authority_conflict,
+                           #   thesis, abstention), README.md (schema)
 tests/
   conftest.py              # testcontainers fixtures, Alembic migration, per-test DB clean
   test_sources.py          # Source CRUD integration tests (8 tests)
@@ -340,14 +384,16 @@ As of Phase B, the `claims` + `claim_evidence` tables remain the **read path** (
 
 ## LLM Tier Model
 
+As of Phase D/G, T2+ default to **Qwen Cloud** (DashScope, OpenAI-compatible). `LLMClient` takes a `base_url` (default `settings.llm_base_url`); `settings.llm_api_key` resolves to `qwen_cloud_api_key` if set, else `openrouter_api_key` — so a non-Qwen OpenAI-compatible provider still works by leaving `QWEN_CLOUD_API_KEY` unset and pointing `LLM_BASE_URL` elsewhere.
+
 | Tier | Purpose | Config key | Default |
 |---|---|---|---|
-| T1 | Embedding (local) | `settings.t1_model` | `BAAI/bge-small-en-v1.5` |
-| T2 | Telos-aware semantic-object extraction (production path, `extract_semantic_objects.py`) + chat answer + query-intent classification (`classify_intent.py`) | `settings.t2_model` | `deepseek/deepseek-v4-flash` |
-| T3 | Brief synthesis (Phase 4); LLM judge for eval | `settings.t3_model` | `deepseek/deepseek-v4-pro` |
+| T1 | Embedding (local; not yet Qwen-routed — `EMBEDDING_MODEL` is reserved, unused) | `settings.t1_model` | `BAAI/bge-small-en-v1.5` |
+| T2 | Telos-aware semantic-object extraction (`extract_semantic_objects.py`) + relation classification (`classify_relations.py`) + chat answer + query-intent classification (`classify_intent.py`) | `settings.t2_model` | `qwen3.6-flash` |
+| T3 | Brief synthesis (Phase 4); consolidation (`nexus consolidation run`, default `created_by_tier`); LLM judge for eval | `settings.t3_model` | `qwen3.7-max` |
 | T4 | Integrity audits | — | Aspirational |
 
-The T2 prompt is the telos-aware semantic-object prompt (`app/intelligence/prompts/extract_semantic_objects.py`). The legacy `extract_claims.py` prompt was deleted in Phase B; `app/evaluation/runner.py` now uses `SemanticExtractionOutput` and `SemanticObjectJudge`. Capsule embeddings (384-dim) are computed at write time via the T1 `bge-small-en-v1.5` shared singleton in `app/intelligence/capsules.py`; one batched embed call per `store_claims` invocation. As of Phase C, T2 is also used by two reasoning nodes wired into the extraction graph: `judge_capsules` (calls `judge_semantic_object.py`) and `classify_relations` (calls `classify_relations.py`). Both nodes share a single `t2_calls_used` budget counter on `ExtractionState` to limit total T2 spend per run. The per-run T2 model is resolved by `_resolve_t2_model(pack, fallback)` which reads `pack.model_extra["models"]["t2"]` with fallback to `settings.t2_model`.
+The T2 prompt is the telos-aware semantic-object prompt (`app/intelligence/prompts/extract_semantic_objects.py`). The legacy `extract_claims.py` prompt was deleted in Phase B; `app/evaluation/runner.py` now uses `SemanticExtractionOutput` and `SemanticObjectJudge`. Capsule embeddings (384-dim) are computed at write time via the T1 `bge-small-en-v1.5` shared singleton in `app/intelligence/capsules.py`; one batched embed call per `store_claims` invocation. As of Phase C, T2 is also used by two reasoning nodes wired into the extraction graph: `judge_capsules` (calls `judge_semantic_object.py`) and `classify_relations` (calls `classify_relations.py`). Both nodes share a single `t2_calls_used` budget counter on `ExtractionState` to limit total T2 spend per run. The per-run T2/T3 model is resolved by `_resolve_t2_model(pack, fallback)` which reads `pack.model_extra["models"]["t2"]` (and `["t3"]`) with fallback to `settings.t2_model`/`t3_model` — **the domain pack's top-level `models:` block, not just `settings`, controls the effective model**; a stale model id there silently overrides the env-configured default (this caused relation classification to 404 against a hardcoded `deepseek/deepseek-v4-flash` in the pack until Phase G fixed it).
 
 Cost is tracked per call: `0.30 / 1_000_000 * total_tokens` stored in the `agent_runs.cost_estimate` column.
 
@@ -441,8 +487,10 @@ Source -> Document -> Span -> SemanticObject -> SemanticCapsule (durable, Phase 
                                               -> Brief (Phase 4+)
 ```
 
-As of Phase C, the extraction graph includes two T2 reasoning nodes that actively populate `semantic_relations`. The `claims` + `claim_evidence` tables remain the active read path (chat retrieval, claim listing). The `semantic_capsules` + `capsule_segments` tables are the durable native storage. `semantic_relations` is now populated at extraction time: unary rows (target_capsule_id=NULL) record judge verdicts; binary rows (target_capsule_id SET) record classified capsule-pair relations. `theses` and `decision_artefacts` remain schema-ready but unpopulated (Phase D/E). Phase D will add capsule-based retrieval; Phase E covers lifecycle management and active `domain_packs` registry use.
+As of Phase C, the extraction graph includes two T2 reasoning nodes that actively populate `semantic_relations`. The `claims` + `claim_evidence` tables remain the active read path (chat retrieval, claim listing) pending the deferred cutover. The `semantic_capsules` + `capsule_segments` tables are the durable native storage — capsule retrieval (`/chat/answer`, `nexus chat`) reads exclusively from capsules, not `claims`. `semantic_relations` is populated at extraction time: unary rows (target_capsule_id=NULL) record judge verdicts; binary rows (target_capsule_id SET) record classified capsule-pair relations.
 
-Migrations: 0001 (8 core tables), 0002 (observability columns + `span_extractions`), 0003 (eval tables), 0004 (`chat_sessions` + `chat_messages`), 0005 (6 capsule-layer tables: `semantic_capsules`, `capsule_segments`, `semantic_relations`, `theses`, `decision_artefacts`, `domain_packs`). The `theses`, `decision_artefacts`, and `domain_packs` tables exist in the schema but are not yet populated by the pipeline.
+As of Phase D/E (`main` @ `b57d21c`, PR #25), the pipeline is fully wired end to end: **retrieval** (`app/intelligence/chat.py`) assembles context by `pack.context_assembly.include` categories (primary/counter-evidence/supersession blocks + epistemic notes) with real hybrid-score inputs; **lifecycle** (`nexus lifecycle run`) transitions capsules through `active → confirmed/qualified/superseded/stale/archived`; **consolidation** (`nexus consolidation run`) clusters relations into `theses` rows. `theses` and `decision_artefacts` are populated by these workers (no automatic trigger yet — both are explicit CLI invocations, not wired into the extraction graph). See [Phase F benchmark baseline](benchmarks/baseline-2026-07-02.md) for measured behavior on a synthetic corpus (22/22 relations classified, 7–9 theses formed per run).
+
+Migrations: 0001 (8 core tables), 0002 (observability columns + `span_extractions`), 0003 (eval tables), 0004 (`chat_sessions` + `chat_messages`), 0005 (6 capsule-layer tables: `semantic_capsules`, `capsule_segments`, `semantic_relations`, `theses`, `decision_artefacts`, `domain_packs`). All 6 Phase B tables are actively populated as of Phase D/E; `domain_packs` (the registry table, distinct from the YAML pack loader) remains unused.
 
 The broader PoC hierarchy adds entities, relations, signals, clusters, theses, and decision artefacts. Those remain future-facing until the core ingestion-to-synthesis loop is stable.

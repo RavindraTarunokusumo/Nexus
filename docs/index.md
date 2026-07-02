@@ -5,6 +5,7 @@ This repository is bootstrapped with an agent harness and supporting docs. Use t
 ## Core Docs
 
 - [AGENTS.md](../AGENTS.md)
+- [README (demo guide)](../README.md)
 - [Agent Harness](agent-harness.md)
 - [Project Specs](specs/README.md)
 - [Architecture](architecture.md)
@@ -13,6 +14,7 @@ This repository is bootstrapped with an agent harness and supporting docs. Use t
 - [Testing](testing.md)
 - [Commands](commands.md)
 - [Nexus CLI](cli.md)
+- [Memory Benchmark Plan](benchmarks/memory-benchmark-plan.md)
 - [Changelog](changelog.md)
 - [Insights](insights.md)
 - [CI docs](ci/README.md)
@@ -67,6 +69,19 @@ CLI entry point: `app/cli/eval.py` — `nexus eval` sub-app. See [Commands](comm
 | `tests/intelligence/test_chat_scoring.py` | Unit (no DB) | `compute_hybrid_score` — semantic weighting, object-family priority boost, stubbed weights, recency normalization |
 | `tests/intelligence/test_chat_assembly.py` | Unit (no DB) | `estimate_tokens`, `_assemble_within_budget` (budget/`top_k`/first-block rules), `_build_evidence_map` (grouping, span cap, truncation) |
 | `tests/intelligence/test_chat_graph.py` | Unit (mocked DB/LLM) | `classify_intent`/`retrieve_capsules` nodes, capsule citation formatting, capsule→span evidence attachment, insufficient-evidence path, label normalization |
+
+## Phase D/E/F Test Files (hackathon: retrieval, lifecycle, consolidation, benchmark)
+
+| File | Type | Coverage |
+|---|---|---|
+| `tests/test_chat_context_assembly.py` | Unit (no DB) | `compute_hybrid_score` authority/evidence/relation inputs, `evidence_strength` ordering, `include`-category block assembly |
+| `tests/test_llm_client_config.py` | Unit (no DB) | `settings.llm_api_key` fallback, `LLMClient` custom `base_url` |
+| `tests/intelligence/test_lifecycle.py` | Integration (`@pytest.mark.slow`) | `apply_lifecycle_transitions` — all 6 rule precedences, dry-run rollback, terminal-state protection, historical-event exclusion from the supersession heuristic |
+| `tests/intelligence/test_consolidation.py` | Integration (`@pytest.mark.slow`) | `consolidate_domain` — thesis creation, dry-run, dedup on re-run |
+| `tests/test_eval_memory_cli.py` | Unit (no DB) | `nexus eval memory run`/`report` — lazy runner import, missing-fixtures/report errors |
+| `tests/benchmarks/test_scoring.py` | Unit (no I/O) | `score_answer`/`aggregate` — recall/precision math, abstention/forbidden edge cases, None-exclusion |
+
+Benchmark fixtures: [`evals/memory/nexus_synthetic/`](../evals/memory/nexus_synthetic/README.md). First live baseline: [`docs/benchmarks/baseline-2026-07-02.md`](benchmarks/baseline-2026-07-02.md).
 
 ## Working Notes
 
