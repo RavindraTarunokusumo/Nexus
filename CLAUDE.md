@@ -51,24 +51,31 @@ Rules:
    - Use the `subagent-driven-development` skill where applicable.
    - Keep edits focused.
 
-5. **Commit**
+5. **Commit and Submit PR**
    - Run pre-commit checks before each commit.
    - Each meaningful TODO sub-item should land as its own commit.
    - Use specific staging; never use `git add -A`.
    - Attach a git note using `.github/git_notes_template.md`.
    - Mark completed TODO sub-items with the commit hash.
-
-6. **Pre-PR**
    - Run the `simplify` skill if available.
    - Run the `doc-updater` skill or subagent if available.
    - Invoke `test-plan-writer` if behavior, state, API, tests, or architecture changed.
    - Invoke `security-review` if the change touches auth, secrets, network calls, privileged operations, user input, money movement, broker/payment logic, or security-sensitive architecture.
    - Run full validation.
-
-7. **Submit PR**
    - Use `.github/pull_request_template.md`.
    - Fill out summary, scope, test plan, risk, rollback, docs, backlog, and targeted UI checks.
    - Address automated review with the `receiving-code-review` skill if available.
+
+6. **Post-PR**
+   - Ensure `TODO.md` contains active or future work only.
+   - Archive completed TODO sessions into `docs/iterations/archive/`.
+   - Tag completed sub-items with commit hashes.
+   - Record the merge ID where applicable.
+   - Add session lessons to `docs/insights.md`.
+
+7. **Reflection**
+   - After every completed session, record useful lessons in `docs/insights.md`.
+   - Include tools used, scripts created, workflow improvements, recurring failure modes, and skills worth adding or improving.
    - Notify the user when all steps are complete.
 
 ## Workflow Rules
@@ -103,27 +110,6 @@ cd web && npm run lint && npm test
 ```
 
 If a tool is missing or unavailable, report it clearly at the end of the session.
-
-## Pre-PR
-
-Before submitting a PR:
-
-- run simplification review
-- update docs
-- run relevant tests
-- run full tests when shared state, architecture, or cross-module behavior changed
-- run security review where applicable
-- ensure `TODO.md` is current
-
-## Reflection
-
-After every completed session, record useful lessons in `docs/insights.md`:
-
-- tools used
-- scripts created
-- workflow improvements
-- recurring failure modes
-- skills worth adding or improving
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
