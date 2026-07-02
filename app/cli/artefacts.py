@@ -32,6 +32,20 @@ def create(
     json_output: bool = typer.Option(False, "--json", help="Output JSON instead of a table."),
 ) -> None:
     """Manually create a `memo`-type DecisionArtefact linking capsules/theses."""
+    linked_thesis_ids: list[uuid.UUID] = []
+    for t in thesis_id:
+        try:
+            linked_thesis_ids.append(uuid.UUID(t))
+        except ValueError:
+            raise typer.BadParameter(f"Invalid UUID for --thesis-id: {t!r}") from None
+
+    linked_capsule_ids: list[uuid.UUID] = []
+    for c in capsule_id:
+        try:
+            linked_capsule_ids.append(uuid.UUID(c))
+        except ValueError:
+            raise typer.BadParameter(f"Invalid UUID for --capsule-id: {c!r}") from None
+
     cfg = CLISettings(**{"database_url": db_url} if db_url else {})
     database_url = _require_db_url(cfg)
     engine = make_engine(database_url)
@@ -44,8 +58,8 @@ def create(
         domain=domain,
         question=question,
         answer=answer,
-        linked_thesis_ids=[uuid.UUID(t) for t in thesis_id],
-        linked_capsule_ids=[uuid.UUID(c) for c in capsule_id],
+        linked_thesis_ids=linked_thesis_ids,
+        linked_capsule_ids=linked_capsule_ids,
         source_refs=[],
         created_by_tier="t2",
     )

@@ -9,9 +9,9 @@ import uuid
 from unittest.mock import AsyncMock
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
-from app.db.models import Document, SemanticCapsule, SemanticRelation, Source
+from app.db.models import Document, SemanticCapsule, SemanticRelation, Source, Thesis
 from app.domain_packs.loader import load_pack
 from app.intelligence.extraction import _run_classify_relations
 from app.intelligence.prompts.classify_relations import RelationClassification
@@ -216,3 +216,50 @@ async def test_classify_relations_to_thesis_round_trip(session_factory):
 
     assert len(theses) == 1
     assert set(theses[0].supporting_capsule_ids) == {cap_a.id, cap_b.id}
+
+
+@pytest.mark.asyncio
+async def test_synthesize_theses_from_relations_dry_run_does_not_persist(session_factory):
+    """dry_run=True clusters in-memory but leaves theses table empty (RL-6)."""
+    async with session_factory() as session:
+        source, document = await _seed_source_document(session)
+        cap_a = await _seed_capsule(
+            session,
+            source_id=source.id,
+            document_id=document.id,
+            text="GPT-5 scored 90% on MMLU.",
+        )
+        cap_b = await _seed_capsule(
+            session,
+            source_id=source.id,
+            document_id=document.id,
+            text="GPT-4 scored 86% on MMLU.",
+        )
+        session.add(
+            SemanticRelation(
+                source_capsule_id=cap_a.id,
+                target_capsule_id=cap_b.id,
+                relation_type="supports",
+                polarity="positive",
+                strength=0.8,
+                confidence=0.8,
+                created_by_tier="t2",
+            )
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        theses = await synthesize_theses_from_relations(
+            session, domain="personal_ai_tech", min_strength=0.6, dry_run=True
+        )
+
+    assert len(theses) == 1
+    assert set(theses[0].supporting_capsule_ids) == {cap_a.id, cap_b.id}
+
+    async with session_factory() as session:
+        count = (
+            await session.execute(
+                select(func.count()).select_from(Thesis).where(Thesis.domain == "personal_ai_tech")
+            )
+        ).scalar_one()
+        assert count == 0
