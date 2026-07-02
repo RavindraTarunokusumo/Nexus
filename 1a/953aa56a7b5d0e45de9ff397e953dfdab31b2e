@@ -1,0 +1,9 @@
+Summary: F6 baseline — template + baseline-2026-07-02 summary + generated run artifacts (report/results/meta). First live Qwen end-to-end scores; documents cross-doc-relations gap.
+
+Scope: docs/benchmarks/ (template, summary, runs/baseline-2026-07-02/), TODO.md.
+
+Tests: n/a (docs + generated data).
+
+Risk: NONE.
+
+Docs: is the deliverable.
