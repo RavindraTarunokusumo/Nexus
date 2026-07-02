@@ -1,0 +1,9 @@
+Summary: eval memory sub-app — run (invokes run_benchmark entry, event-loop-safe, no subprocess) + report (prints run report.md + summary).
+
+Scope: app/cli/eval.py, tests/test_eval_memory_cli.py (7 CliRunner tests, runner stubbed via sys.modules).
+
+Tests: 7 new CLI tests; full suite green vs baseline.
+
+Risk: LOW — additive command group; lazy runner import.
+
+Docs: pending. Implemented by Sonnet 5 subagent.
