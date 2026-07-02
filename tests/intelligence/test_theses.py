@@ -94,13 +94,11 @@ def test_synthesize_theses_from_relations_clusters_connected_capsules(monkeypatc
     relations = [_relation(cap_a, cap_b)]  # cap_c stays isolated — below min_cluster_size
 
     session = AsyncMock()
-    domain_ids_result = MagicMock()
-    domain_ids_result.scalars.return_value.all.return_value = list(caps.keys())
+    domain_capsules_result = MagicMock()
+    domain_capsules_result.scalars.return_value.all.return_value = list(caps.values())
     rel_result = MagicMock()
     rel_result.scalars.return_value.all.return_value = relations
-    cap_result = MagicMock()
-    cap_result.scalars.return_value.all.return_value = list(caps.values())
-    session.execute = AsyncMock(side_effect=[domain_ids_result, rel_result, cap_result])
+    session.execute = AsyncMock(side_effect=[domain_capsules_result, rel_result])
     session.add_all = MagicMock()
     session.commit = AsyncMock()
 

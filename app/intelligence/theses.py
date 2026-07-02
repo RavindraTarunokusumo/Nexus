@@ -16,10 +16,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import SemanticCapsule, SemanticRelation, Thesis
+from app.intelligence.tiers import validate_writer_tier
 
 __all__ = ["build_thesis_row", "synthesize_theses_from_relations"]
-
-_VALID_TIERS = ("t2", "t3", "t4")
 
 
 def build_thesis_row(
@@ -34,8 +33,7 @@ def build_thesis_row(
     created_by_tier: str,
     title: str | None = None,
 ) -> Thesis:
-    if created_by_tier not in _VALID_TIERS:
-        raise ValueError(f"created_by_tier must be one of {_VALID_TIERS}, got {created_by_tier!r}")
+    validate_writer_tier(created_by_tier)
     if not 0.0 <= confidence <= 1.0:
         raise ValueError(f"confidence must be in [0, 1], got {confidence!r}")
     return Thesis(
@@ -86,10 +84,6 @@ def _cluster_capsule_ids(relations: list[SemanticRelation]) -> dict[uuid.UUID, s
             continue
         parent.setdefault(r.source_capsule_id, r.source_capsule_id)
         parent.setdefault(target_id, target_id)
-    for r in relations:
-        target_id = r.target_capsule_id
-        if target_id is None:
-            continue
         _union(parent, r.source_capsule_id, target_id)
 
     components: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
@@ -148,6 +142,7 @@ async def synthesize_theses_from_relations(
     min_strength: float = 0.6,
     min_cluster_size: int = 2,
     created_by_tier: str = "t2",
+    dry_run: bool = False,
 ) -> list[Thesis]:
     """Cluster same-family capsules connected by strong binary relations into Thesis rows.
 
@@ -157,15 +152,17 @@ async def synthesize_theses_from_relations(
     same-family capsules), so thesis_type = the shared family is a
     restatement of an existing invariant, not new clustering logic.
     """
-    capsule_ids_result = await session.execute(
-        select(SemanticCapsule.id).where(SemanticCapsule.domain == domain)
+    domain_capsules_result = await session.execute(
+        select(SemanticCapsule).where(SemanticCapsule.domain == domain)
     )
-    domain_capsule_ids = set(capsule_ids_result.scalars().all())
+    domain_capsule_by_id = {c.id: c for c in domain_capsules_result.scalars().all()}
+    domain_capsule_ids = set(domain_capsule_by_id.keys())
 
     relations_result = await session.execute(
         select(SemanticRelation).where(
             SemanticRelation.target_capsule_id.is_not(None),
             SemanticRelation.strength >= min_strength,
+            SemanticRelation.source_capsule_id.in_(domain_capsule_ids),
         )
     )
     relations = _filter_domain_binary_relations(
@@ -177,11 +174,9 @@ async def synthesize_theses_from_relations(
 
     components = _cluster_capsule_ids(relations)
     cluster_capsule_ids = {cid for members in components.values() for cid in members}
-
-    caps_result = await session.execute(
-        select(SemanticCapsule).where(SemanticCapsule.id.in_(cluster_capsule_ids))
-    )
-    caps_by_id = {c.id: c for c in caps_result.scalars().all()}
+    caps_by_id = {
+        cid: domain_capsule_by_id[cid] for cid in cluster_capsule_ids if cid in domain_capsule_by_id
+    }
 
     theses: list[Thesis] = []
     for member_ids in components.values():
@@ -198,5 +193,8 @@ async def synthesize_theses_from_relations(
 
     if theses:
         session.add_all(theses)
-        await session.commit()
+        if dry_run:
+            await session.rollback()
+        else:
+            await session.commit()
     return theses

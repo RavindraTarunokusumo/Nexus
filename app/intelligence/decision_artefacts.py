@@ -10,10 +10,9 @@ from __future__ import annotations
 import uuid
 
 from app.db.models import DecisionArtefact
+from app.intelligence.tiers import validate_writer_tier
 
 __all__ = ["build_decision_artefact_row"]
-
-_VALID_TIERS = ("t2", "t3", "t4")
 
 
 def build_decision_artefact_row(
@@ -28,8 +27,7 @@ def build_decision_artefact_row(
     source_refs: list,
     created_by_tier: str,
 ) -> DecisionArtefact:
-    if created_by_tier not in _VALID_TIERS:
-        raise ValueError(f"created_by_tier must be one of {_VALID_TIERS}, got {created_by_tier!r}")
+    validate_writer_tier(created_by_tier)
     return DecisionArtefact(
         id=artefact_id,
         artefact_type=artefact_type,

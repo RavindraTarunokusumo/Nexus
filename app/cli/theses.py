@@ -43,15 +43,8 @@ def synthesize(
 
     async def _run() -> list:
         async with sf() as session:
-            if dry_run:
-                # Dry-run: build clusters but roll back instead of commit.
-                theses = await synthesize_theses_from_relations(
-                    session, domain=domain, min_strength=min_strength
-                )
-                await session.rollback()
-                return theses
             return await synthesize_theses_from_relations(
-                session, domain=domain, min_strength=min_strength
+                session, domain=domain, min_strength=min_strength, dry_run=dry_run
             )
 
     theses = asyncio.run(_run())
