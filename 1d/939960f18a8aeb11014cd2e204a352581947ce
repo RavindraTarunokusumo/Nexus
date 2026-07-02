@@ -1,0 +1,9 @@
+Summary: scoring.py (score_answer/aggregate — correctness, evidence recall@k, citation precision/faithfulness, temporal/supersession correctness, abstention accuracy, latency p50/p95, token cost) + run_memory_benchmark.py async pipeline (ingest→extract→lifecycle→consolidate→answer→score→results.jsonl/report.md/run_meta.json).
+
+Scope: scripts/benchmarks/{__init__,scoring,run_memory_benchmark}.py, tests/benchmarks/ (12 scoring tests).
+
+Tests: 12 new scoring tests; full suite 496 passed, 14 failures identical to baseline.
+
+Risk: LOW — new scripts, no import into app runtime; live pipeline exercised in Wave 3.
+
+Docs: F1 plan doc covers metrics. Implemented by Sonnet 5 subagent.
