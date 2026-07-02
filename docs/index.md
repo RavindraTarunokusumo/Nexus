@@ -53,6 +53,10 @@ CLI entry point: `app/cli/eval.py` — `nexus eval` sub-app. See [Commands](comm
 | `tests/intelligence/test_capsules.py` | Unit (no DB) | `build_capsule_row` field mapping, idempotency key, embedding dim |
 | `tests/intelligence/test_judge_wiring.py` | Unit (no DB) | `_resolve_t2_model`, `_capsule_to_obj_for_judge` helpers |
 | `tests/intelligence/test_relation_classification.py` | Unit (no DB) | `build_relation_prompt`, `RelationClassification` schema, `classify_relations` short-circuit and "none"-skip |
+| `tests/intelligence/test_theses.py` | Unit (no DB) | `build_thesis_row` field mapping, tier/confidence validation, `synthesize_theses_from_relations` union-find clustering (mocked session) |
+| `tests/intelligence/test_decision_artefacts.py` | Unit (no DB) | `build_decision_artefact_row` field mapping, tier validation |
+| `tests/intelligence/test_tiers.py` | Unit (no DB) | `validate_writer_tier` accepts/rejects `WRITER_TIERS` (`t2`/`t3`/`t4`) |
+| `tests/intelligence/test_reasoning_layer_db.py` | Integration (`@pytest.mark.slow`) | DB-bound: `judge_capsules` unary relation row, `classify_relations` binary relation row, C1→C2→C3 thesis round-trip (real Postgres, mocked LLM) |
 | `tests/test_validation_harness.py` | Integration (`@pytest.mark.slow`) | End-to-end: text/RSS ingest, status, document inspection, semantic search |
 
 ## Phase D Test Files

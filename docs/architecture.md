@@ -1,6 +1,6 @@
 # Architecture
 
-> **Phase D Status: Capsule retrieval live. `/chat/answer` now retrieves from `semantic_capsules` via HNSW cosine search (migration 0006) with LLM query-intent classification and telos-aware hybrid scoring. Phase C established the reasoning layer — `judge_capsules` and `classify_relations` write `SemanticRelation` rows at extraction time. Phase B established the durable capsule layer (`semantic_capsules` + `capsule_segments`).**
+> **Phase D Status: Capsule retrieval live. `/chat/answer` now retrieves from `semantic_capsules` via HNSW cosine search (migration 0006) with LLM query-intent classification and telos-aware hybrid scoring. Phase C established the reasoning layer — `judge_capsules` and `classify_relations` write `SemanticRelation` rows at extraction time. Phase B established the durable capsule layer (`semantic_capsules` + `capsule_segments`). The Phase C remainder adds manual thesis-clustering (`nexus theses synthesize`) and decision-artefact (`nexus artefacts create`) writers — still with no automatic trigger; Phase E owns lifecycle-driven creation.**
 
 Nexus Lite is a private FastAPI application backed by PostgreSQL + pgvector, Redis, and local embeddings. The Phase 1 foundation covers source registration, document ingestion, and the full persistence schema.
 

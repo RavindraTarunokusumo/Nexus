@@ -1,6 +1,7 @@
 """End-to-end CLI tests via typer.testing.CliRunner."""
 
 import json
+import re
 import uuid
 
 import pytest
@@ -10,6 +11,12 @@ from app.cli.main import app
 from app.db.models import Document, Source
 
 runner = CliRunner()
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_RE.sub("", text)
 
 
 async def _seed_two_docs(session_factory):
@@ -345,4 +352,35 @@ async def test_ingest_rss_command(monkeypatch, db_url):
 def test_capsules_backfill_help_works():
     result = runner.invoke(app, ["capsules", "backfill", "--help"])
     assert result.exit_code == 0
-    assert "--dry-run" in result.stdout
+    assert "--dry-run" in _strip_ansi(result.stdout)
+
+
+def test_theses_synthesize_help_works():
+    result = runner.invoke(app, ["theses", "synthesize", "--help"])
+    assert result.exit_code == 0
+    assert "--domain" in _strip_ansi(result.stdout)
+
+
+def test_artefacts_create_help_works():
+    result = runner.invoke(app, ["artefacts", "create", "--help"])
+    assert result.exit_code == 0
+    assert "--question" in _strip_ansi(result.stdout)
+
+
+def test_artefacts_create_rejects_bad_capsule_id():
+    result = runner.invoke(
+        app,
+        [
+            "artefacts",
+            "create",
+            "--domain",
+            "x",
+            "--question",
+            "q",
+            "--answer",
+            "a",
+            "--capsule-id",
+            "not-a-uuid",
+        ],
+    )
+    assert result.exit_code != 0

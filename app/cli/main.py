@@ -65,11 +65,15 @@ app.add_typer(ingest_app, name="ingest")
 runs_app = typer.Typer(help="Query extraction run traces.")
 app.add_typer(runs_app, name="runs")
 
+from app.cli.artefacts import artefacts_app  # noqa: E402
 from app.cli.capsules import capsules_app  # noqa: E402
 from app.cli.eval import eval_app  # noqa: E402
+from app.cli.theses import theses_app  # noqa: E402
 
 app.add_typer(eval_app, name="eval")
 app.add_typer(capsules_app, name="capsules")
+app.add_typer(theses_app, name="theses")
+app.add_typer(artefacts_app, name="artefacts")
 
 
 def _run(coro):

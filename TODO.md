@@ -4,9 +4,13 @@
 
 ### Phase C — Reasoning Layer (remaining)
 
-- [ ] Thesis layer — first `theses` writer; per-pack synthesis triggers. (C3)
-- [ ] Decision artefacts — first `decision_artefacts` writer. (C4)
-- [ ] DB-bound integration tests for `judge_capsules` and `classify_relations` node paths.
+> Spec: `docs/superpowers/specs/2026-07-02-phase-c-remainder-design.md`. Plan: `docs/superpowers/plans/2026-07-02-phase-c-remainder.md`. Migration `0005_semantic_capsules.py` records `theses`/`decision_artefacts` as "written first by Phase E" — both writers below ship as standalone functions + CLI commands this PR, with no automatic trigger; Phase E owns triggering.
+
+- [x] C3a — `app/intelligence/theses.py`: `build_thesis_row` + `synthesize_theses_from_relations` (union-find clustering over `semantic_relations`) + unit tests. (`c51ddea`)
+- [x] C3b — `app/cli/theses.py`: `nexus theses synthesize` command + CLI smoke test. (`a0ffafe`)
+- [x] C4a — `app/intelligence/decision_artefacts.py`: `build_decision_artefact_row` + unit tests. (`a4ff9e4`)
+- [x] C4b — `app/cli/artefacts.py`: `nexus artefacts create` command + CLI smoke test. (`a0ffafe`)
+- [x] C5 — DB-bound integration tests (`tests/intelligence/test_reasoning_layer_db.py`, `@pytest.mark.slow`, real Postgres) for `judge_capsules`, `classify_relations`, and the C3a→C5 round-trip. (`5199516`)
 
 ### Phase D — Retrieval & UI Over Meaning (residual)
 
@@ -22,7 +26,50 @@
 - [ ] Consolidation worker — many capsules → thesis / narrative arc / research model / company risk model.
 - [ ] Stale / superseded detection — `pack.retention_policy.stale_conditions` + `supersession_rules`.
 
-### Phase F — Integrity & Multi-Domain
+### Phase F — Benchmarking Agentic Memory
+
+> Nexus is an agentic memory system; Phase F should establish benchmark harnesses and repeatable evaluation scripts before expanding integrity/multi-domain work.
+
+- [ ] Benchmark survey note — document selected external memory/RAG benchmarks and mapping to Nexus capabilities:
+  - LoCoMo / LOCOMO — long-term conversational memory; single-hop, multi-hop, temporal, adversarial QA, event summarization, multimodal dialogue.
+  - LongMemEval — long-term chat-assistant memory; information extraction, temporal reasoning, multi-session reasoning, abstention/unanswerable behavior.
+  - BEAM — long-scale conversational memory stress tests across 128K/500K/1M+ token histories; useful as stretch benchmark after local harness exists.
+  - Memora — personalized-agent long-term memory over weeks/months; preference/user-memory and forgetting/supersession behavior.
+  - RAG/multi-hop baselines — HotpotQA, MuSiQue, 2WikiMultiHopQA-style retrieval/grounded-answer tests adapted to capsule evidence chains.
+- [ ] Add benchmark dataset layout under `evals/memory/`:
+  - `evals/memory/locomo/` for downloaded/converted LoCoMo conversations and QA.
+  - `evals/memory/longmemeval/` for LongMemEval-style sessions/questions.
+  - `evals/memory/nexus_synthetic/` for Nexus-native domain-pack memory probes.
+  - `evals/memory/README.md` documenting licensing/source URLs, conversion steps, and dataset checksums.
+- [ ] Add benchmark runner scripts under `scripts/benchmarks/`:
+  - `download_memory_benchmarks.py` — fetch or verify external benchmark files without committing large raw datasets.
+  - `convert_locomo.py` — convert LoCoMo conversations/questions into Nexus source/doc/span ingestion fixtures.
+  - `convert_longmemeval.py` — convert LongMemEval sessions/questions into Nexus benchmark fixtures.
+  - `run_memory_benchmark.py` — ingest fixture corpus, run Nexus retrieval/chat answers, score outputs, and emit JSONL/Markdown reports.
+- [ ] Add benchmark CLI surface, e.g. `nexus eval memory ...`, reusing the existing evaluation framework where practical:
+  - `nexus eval memory prepare --benchmark locomo|longmemeval|nexus_synthetic`
+  - `nexus eval memory run --benchmark <name> --split <split> --k <n>`
+  - `nexus eval memory report --run-id <id>`
+- [ ] Define scoring metrics for agentic memory:
+  - answer exact/semantic correctness via judge + deterministic aliases where available.
+  - evidence recall@k / precision@k over cited spans/capsules.
+  - multi-hop support coverage: all required supporting memories retrieved and cited.
+  - temporal ordering accuracy for time-sensitive questions.
+  - abstention accuracy for unanswerable/adversarial questions.
+  - freshness/supersession correctness once Phase E lifecycle states exist.
+  - latency, token cost, and DB/query cost per benchmark example.
+- [ ] Add Nexus-native benchmark fixtures for the actual product domain:
+  - AI release timeline memory questions.
+  - multi-document benchmark/result comparison questions.
+  - superseded/stale claim questions.
+  - source-authority conflict questions.
+  - thesis/consolidation questions once Phase C/E writers exist.
+- [ ] Add baseline report artifacts under `docs/benchmarks/`:
+  - `docs/benchmarks/memory-benchmark-plan.md`
+  - `docs/benchmarks/baseline-template.md`
+  - first baseline run report after harness lands.
+
+### Phase G — Integrity & Multi-Domain
 
 - [ ] T4 audit pass — integrity checks; contradiction-as-mystery-thread for narrative packs.
 - [ ] Four standing reports (per v0.7) — coverage, contradiction, freshness, cost.
@@ -33,7 +80,7 @@
 - [ ] Cross-domain capsule linking — capsules from different domains referenced by the same thesis.
 - [ ] Optional `spans` → `segments` table rename (Phase B deferred this).
 
-### Phase G — Cost & Multimodal
+### Phase H — Cost & Multimodal
 
 - [ ] T1 local stack — GLiNER2 + bge-small + DeBERTa-v3-xsmall + Qwen2.5-0.5B per v0.7 §11.2.
 - [ ] T1 candidate-capsule prompt + route-to-T2 gating.
@@ -41,7 +88,7 @@
 - [ ] Multimodal at T1 — image / table / chart segments.
 - [ ] Numeric chart extraction guard — Phase A guarded against this implicitly; codify as a T0 rule.
 
-### Phase H — Eval & Observability Hardening
+### Phase I — Eval & Observability Hardening
 
 - [ ] Per-pack evaluation gold sets — extend `evals/gold/semantic_objects/` with one fixture per pack (matches `ai_tech_v3.yaml` shape).
 - [ ] 20-source test sets per domain pack.
@@ -57,6 +104,15 @@
 
 ### Ongoing
 
+- [ ] **CLI `asyncio.run()` event-loop footgun** (from PR #24 review) — `app/cli/capsules.py::backfill`, `app/cli/theses.py::synthesize`, and `app/cli/artefacts.py::create` all use bare `asyncio.run()` instead of `app/cli/main.py::_run()` (which exists specifically because `asyncio.run()` raises `RuntimeError` when a framework like pytest-asyncio already owns the event loop). Any future `@pytest.mark.asyncio` e2e test invoking one of these commands against a real DB will fail. Fix all three uniformly (extract `_run()` to a shared helper if `app/cli/main.py` importing from the subcommand modules creates a circular import) — not scoped to the two Phase C remainder commands alone, since `capsules.py` has the identical pattern already.
+  Reference: `app/cli/capsules.py:62`, `app/cli/theses.py:50`, `app/cli/artefacts.py:72`, `app/cli/main.py::_run`.
+- [ ] **Phase C remainder P2 test gaps** (from `docs/test-plan-phase-c-remainder.md`, deferred non-blocking):
+  - GAP-5 — 3-capsule real-DB round-trip for `synthesize_theses_from_relations` (only the 2-capsule minimum is covered in `tests/intelligence/test_reasoning_layer_db.py`; the 3-capsule chain is covered by a mocked-session test only).
+  - GAP-7 — `nexus artefacts create` has no DB integration test (only the pure `build_decision_artefact_row` unit tests and a CLI `--help`/bad-UUID smoke test).
+  - GAP-8 — `classify_relations` "none"-classification-writes-no-row has unit coverage (`test_relation_classification.py`) but no real-DB integration test.
+  - `--min-strength` on `nexus theses synthesize` and `--capsule-id`/`--thesis-id` count limits on `nexus artefacts create` have no range/sanity validation (e.g. `--min-strength 1.5` is silently accepted, just matches nothing).
+- [ ] **Fix `capsule_segments.role="support"` CHECK violation** — `build_capsule_row` (`app/intelligence/capsules.py`) writes `role="support"`, but migration `0005_semantic_capsules.py`'s `ck_capsule_segments_role` CHECK only allows `"supports"` (plural) among `("grounds", "supports", "contradicts", "qualifies", "refines", "exemplifies", "other")`. Breaks `nexus capsules backfill` and the extraction dual-write path against a real Postgres (confirmed on clean `main` @ `91b16c1`, unrelated to the Phase C remainder PR — discovered while running the full test suite against a real DB for that PR's Task 5). 6 tests fail: `tests/intelligence/test_capsule_backfill.py::test_backfill_idempotent`, `::test_backfill_multi_source_ref`, `tests/intelligence/test_capsules_dual_write.py::test_happy_path_single_object`, `::test_multi_source_refs`, `::test_transaction_atomicity`, `::test_embedding_present`. All 4 are unit tests with a mocked DB session, so they never caught this — only a real-DB run surfaces it.
+  Reference: `app/intelligence/capsules.py::build_capsule_row`, `app/db/migrations/versions/0005_semantic_capsules.py::_SEGMENT_ROLES`.
 - [ ] HTTP Basic Auth / API key middleware (security gap, open since Phase 1)
 - [ ] Chat security F1 — multi-turn prompt injection: wrap user messages with untrusted-input marker in agent prompt; plan Llama Guard guardrail pass post-auth (see `docs/security-review-chat-sessions.md`)
 - [ ] Chat security F4 — rate limiting + session/message caps + move `checkpointer.setup()` to lifespan (`slowapi`, `MAX_SESSIONS`, `MAX_MESSAGES_PER_SESSION`)

@@ -1,6 +1,6 @@
 # Database / Persistence
 
-> **Phase D Status: Capsule retrieval live** — `semantic_capsules.embedding` is now HNSW-indexed (migration 0006) and queried by `/chat/answer` via cosine search + telos-aware hybrid scoring. Phase C populates `semantic_relations` via two T2 extraction-graph nodes: `judge_capsules` writes unary rows (judge verdicts; `target_capsule_id=NULL`) and updates capsule `escalation_state`; `classify_relations` writes binary rows (classified capsule pairs; `target_capsule_id` SET). `theses`, `decision_artefacts`, and `domain_packs` remain schema-ready but unpopulated.
+> **Phase D Status: Capsule retrieval live** — `semantic_capsules.embedding` is now HNSW-indexed (migration 0006) and queried by `/chat/answer` via cosine search + telos-aware hybrid scoring. Phase C populates `semantic_relations` via two T2 extraction-graph nodes: `judge_capsules` writes unary rows (judge verdicts; `target_capsule_id=NULL`) and updates capsule `escalation_state`; `classify_relations` writes binary rows (classified capsule pairs; `target_capsule_id` SET). The Phase C remainder adds manual CLI writer paths for `theses` (`nexus theses synthesize`) and `decision_artefacts` (`nexus artefacts create`) — still no automatic pipeline trigger; Phase E owns lifecycle-driven population. `domain_packs` remains schema-ready but unpopulated (packs loaded from YAML at runtime).
 
 The persistence layer is PostgreSQL 16 with the `pgvector` extension. SQLAlchemy 2.x async ORM + asyncpg is used throughout. Alembic manages migrations.
 
@@ -344,7 +344,7 @@ Directed edges between `SemanticCapsule` rows. Actively populated by the Phase C
 
 ### `theses`
 
-Higher-order interpretations built from sets of capsules. Not yet populated by the pipeline (Phase C+).
+Higher-order interpretations built from sets of capsules. No automatic extraction-graph writer — migration 0005 comments the table as "written first by Phase E"; Phase E's consolidation worker owns deciding when theses are created automatically. A manual CLI path exists: `nexus theses synthesize` clusters binary `semantic_relations` within a domain into candidate thesis rows via `synthesize_theses_from_relations` / `build_thesis_row`.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -357,7 +357,7 @@ Higher-order interpretations built from sets of capsules. Not yet populated by t
 
 ### `decision_artefacts`
 
-Memos, alerts, and trade-ideas synthesized from theses and capsules. Not yet populated by the pipeline (Phase E+).
+Memos, alerts, and trade-ideas synthesized from theses and capsules. No automatic trigger — Phase E owns deciding when artefacts are created automatically. A manual CLI path exists: `nexus artefacts create` writes one `memo`-type row via `build_decision_artefact_row`.
 
 | Column | Type | Notes |
 |---|---|---|
