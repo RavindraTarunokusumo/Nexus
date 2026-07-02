@@ -1,0 +1,7 @@
+Summary: applied 4 MEDIUM + 2 LOW review findings from the Sonnet 5 PR #25 review. Fixed: lifecycle archived/stale precedence dead-branch; removed fake skipped_existing metric; removed dead openrouter_api_key param + call site; removed unused embedding_model config + annotated .env.example; trailing newline. Deferred (LOW): double aux-block discovery walk → TODO.
+
+Scope: lifecycle.py, consolidation.py, cli/consolidation.py, session_memory.py, routes_chat.py, config.py, .env.example, 2 test files, TODO.md.
+
+Tests: full suite 504 passed, 6 pre-existing failures unchanged; targeted lifecycle/consolidation/config/chat_sessions 39 passed. ruff/mypy identical to baseline.
+
+Risk: LOW. Retrieval/security/scoring verified clean by review.
