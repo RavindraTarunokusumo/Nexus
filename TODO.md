@@ -6,11 +6,11 @@
 
 > Spec: `docs/superpowers/specs/2026-07-02-phase-c-remainder-design.md`. Plan: `docs/superpowers/plans/2026-07-02-phase-c-remainder.md`. Migration `0005_semantic_capsules.py` records `theses`/`decision_artefacts` as "written first by Phase E" — both writers below ship as standalone functions + CLI commands this PR, with no automatic trigger; Phase E owns triggering.
 
-- [ ] C3a — `app/intelligence/theses.py`: `build_thesis_row` + `synthesize_theses_from_relations` (union-find clustering over `semantic_relations`) + unit tests.
-- [ ] C3b — `app/cli/theses.py`: `nexus theses synthesize` command + CLI smoke test.
-- [ ] C4a — `app/intelligence/decision_artefacts.py`: `build_decision_artefact_row` + unit tests.
-- [ ] C4b — `app/cli/artefacts.py`: `nexus artefacts create` command + CLI smoke test.
-- [ ] C5 — DB-bound integration tests (`tests/intelligence/test_reasoning_layer_db.py`, `@pytest.mark.slow`, real Postgres) for `judge_capsules`, `classify_relations`, and the C3a→C5 round-trip.
+- [x] C3a — `app/intelligence/theses.py`: `build_thesis_row` + `synthesize_theses_from_relations` (union-find clustering over `semantic_relations`) + unit tests. (`c51ddea`)
+- [x] C3b — `app/cli/theses.py`: `nexus theses synthesize` command + CLI smoke test. (`a0ffafe`)
+- [x] C4a — `app/intelligence/decision_artefacts.py`: `build_decision_artefact_row` + unit tests. (`a4ff9e4`)
+- [x] C4b — `app/cli/artefacts.py`: `nexus artefacts create` command + CLI smoke test. (`a0ffafe`)
+- [x] C5 — DB-bound integration tests (`tests/intelligence/test_reasoning_layer_db.py`, `@pytest.mark.slow`, real Postgres) for `judge_capsules`, `classify_relations`, and the C3a→C5 round-trip. (`5199516`)
 
 ### Phase D — Retrieval & UI Over Meaning (residual)
 
@@ -104,6 +104,8 @@
 
 ### Ongoing
 
+- [ ] **Fix `capsule_segments.role="support"` CHECK violation** — `build_capsule_row` (`app/intelligence/capsules.py`) writes `role="support"`, but migration `0005_semantic_capsules.py`'s `ck_capsule_segments_role` CHECK only allows `"supports"` (plural) among `("grounds", "supports", "contradicts", "qualifies", "refines", "exemplifies", "other")`. Breaks `nexus capsules backfill` and the extraction dual-write path against a real Postgres (confirmed on clean `main` @ `91b16c1`, unrelated to the Phase C remainder PR — discovered while running the full test suite against a real DB for that PR's Task 5). 6 tests fail: `tests/intelligence/test_capsule_backfill.py::test_backfill_idempotent`, `::test_backfill_multi_source_ref`, `tests/intelligence/test_capsules_dual_write.py::test_happy_path_single_object`, `::test_multi_source_refs`, `::test_transaction_atomicity`, `::test_embedding_present`. All 4 are unit tests with a mocked DB session, so they never caught this — only a real-DB run surfaces it.
+  Reference: `app/intelligence/capsules.py::build_capsule_row`, `app/db/migrations/versions/0005_semantic_capsules.py::_SEGMENT_ROLES`.
 - [ ] HTTP Basic Auth / API key middleware (security gap, open since Phase 1)
 - [ ] Chat security F1 — multi-turn prompt injection: wrap user messages with untrusted-input marker in agent prompt; plan Llama Guard guardrail pass post-auth (see `docs/security-review-chat-sessions.md`)
 - [ ] Chat security F4 — rate limiting + session/message caps + move `checkpointer.setup()` to lifespan (`slowapi`, `MAX_SESSIONS`, `MAX_MESSAGES_PER_SESSION`)
