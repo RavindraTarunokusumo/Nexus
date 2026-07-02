@@ -60,15 +60,13 @@ Before moving from Implementing to Submit PR. **All subagent delegations in this
 
 - Confirm the implementation still matches the accepted spec.
 - Run `/simplify` (skill) — delegate each of its review angles as a separate Grok handoff (parallel where the angles are independent) instead of Claude subagents; apply the fixes yourself as senior dev.
-- Run `doc-updater` (subagent) if docs need updating for the behavior change — via Grok handoff.
-- Invoke `test-plan-writer` (subagent) if behavior, state, API, tests, or architecture changed — via Grok handoff. This has surfaced real bugs that per-task review missed (see `docs/insights.md`); run it on every multi-commit feature, not just security/architectural changes.
 - Invoke `security-review` (skill) if the change touches auth, secrets, network calls, privileged operations, user input, money movement, broker/payment logic, or security-sensitive architecture — via Grok handoff. Always cite the justification for invoking (or skipping) it.
 - Run full validation (`ruff check`, `ruff format --check`, `mypy app/`, `pytest`; `npm run lint` + `npm test` from `web/` for frontend changes).
 - Ensure `TODO.md` is current.
 
 ### Grok Build Implementation/Review Handoff
 
-The canonical contract for delegating any unit of work — implementation tasks (Step 4), Pre-PR gates (`/simplify`, `doc-updater`, `test-plan-writer`, `security-review`), or PR reviews ([Submit PR](#submit-pr)) — to an ephemeral Grok subagent. All flows share this mechanism; only the prompt and the post-processing differ. Grok is the default delegate for every subagent-shaped task in this repo; fall back to Claude's native `Agent` tool only when Grok is unavailable/blocked, and record the fallback reason in `TODO.md`.
+The canonical contract for delegating any unit of work — implementation tasks (Step 4), Pre-PR gates (`/simplify`, `security-review`), or PR reviews ([Submit PR](#submit-pr)) — to an ephemeral Grok subagent. All flows share this mechanism; only the prompt and the post-processing differ. Grok is the default delegate for every subagent-shaped task in this repo; fall back to Claude's native `Agent` tool only when Grok is unavailable/blocked, and record the fallback reason in `TODO.md`.
 
 **Invoke** (headless, single-turn, no TUI):
 
