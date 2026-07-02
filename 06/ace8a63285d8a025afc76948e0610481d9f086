@@ -1,0 +1,7 @@
+Summary: root README demo walkthrough (setup -> benchmark -> interactive demo_answer -> per-stage pipeline). Verified all referenced CLI paths + demo modules resolve.
+
+Scope: README.md, TODO.md.
+
+Tests: n/a (docs); CLI --help + import smoke checks pass.
+
+Risk: NONE.
