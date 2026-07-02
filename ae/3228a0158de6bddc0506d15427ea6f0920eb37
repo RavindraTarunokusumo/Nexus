@@ -1,0 +1,9 @@
+Summary: external benchmark -> Nexus capability mapping with implemented-now vs stretch verdicts + native benchmark and F5 metric definitions.
+
+Scope: docs/benchmarks/memory-benchmark-plan.md.
+
+Tests: n/a (doc).
+
+Risk: NONE.
+
+Docs: is the doc. Implemented by Grok subagent (session 019f2396-c110-7f10-a3ed-01dfd186fd29).
