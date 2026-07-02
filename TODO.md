@@ -5,9 +5,9 @@
 > Submission target: Devpost Qwen Cloud Hackathon, Track 1 MemoryAgent. For the hackathon branch, optimize for a working Qwen-powered memory demo, benchmark report, and submission package. Defer broad roadmap items that do not strengthen the MemoryAgent story within one week.
 
 - [ ] H0 — Register/verify Qwen Cloud access, API key, voucher credits, and model availability from the deployment environment.
-- [ ] H1 — Route **T2 and above** through Qwen Cloud / Model Studio models; keep model names configurable by environment and domain pack.
-- [ ] H2 — Produce a MemoryAgent demo script: ingest AI-tech memory stream → extract capsules → relate/consolidate → supersede stale memory → answer with citations → show benchmark report.
-- [ ] H3 — Add submission docs/assets: ~~README demo walkthrough~~ (done, `d5bd0ea`), architecture diagram, benchmark screenshot/report, demo video outline, Devpost project narrative.
+- [x] H1 — Route **T2 and above** through Qwen Cloud / Model Studio models; keep model names configurable by environment and domain pack. (PR #25 D3/G4)
+- [x] H2 — Produce a MemoryAgent demo script: ingest AI-tech memory stream → extract capsules → relate/consolidate → supersede stale memory → answer with citations → show benchmark report. (PR #25; `scripts/benchmarks/demo_answer.py` + `nexus eval memory run`)
+- [ ] H3 — Add submission docs/assets: ~~README demo walkthrough~~ (done, PR #25), architecture diagram, benchmark screenshot/report, demo video outline, Devpost project narrative.
 - [ ] H4 — Treat MCP integrations and repo skills as final-version improvements: document tool contracts now; implement only a thin MCP server/tool wrapper if it does not endanger the core demo.
 
 ### Phase C — Reasoning Layer
@@ -15,51 +15,22 @@
 Complete. Thesis writer, decision artefact writer, and DB integration tests shipped in
 PR #24 (merge `f660b8d`). Archived: `docs/iterations/archive/2026-07-02-phase-c-remainder.md`.
 
-> **Session 2026-07-02 (branch `claude/def-hackathon`)** — Phases D/E/F in flight per
-> `docs/superpowers/plans/2026-07-02-def-hackathon.md`. Wave 1 (parallel Grok): T-D12 (D1+D2),
-> T-D3 (D3), T-E12 (E1+E2), T-E3 (E3), T-F2 (F2), T-F1 (F1). Wave 1.5 (orchestrator): CLI
-> registration in `app/cli/main.py`. Wave 2 (parallel Grok): T-F35 (F3+F5), T-F4 (F4).
-> Wave 3 (orchestrator): F6 baseline run + report. Deviation note: interactive spec-acceptance
-> step skipped on explicit user instruction (deadline); implementer self-checks run against
-> per-task databases `nexus_t1..t6` to avoid shared-DB contention during parallel runs.
-> Delegation change mid-session: user directed Wave 2+ (and reviews) to **Sonnet 5 native
-> subagents** instead of Grok; Wave 1 landed via Grok before the instruction.
+### Phases D/E/F — Retrieval, Living Knowledge, Memory Benchmark
 
-### Phase D — Retrieval & Qwen Context Assembly (hackathon required)
+Complete. Context-assembly + un-stubbed hybrid scoring (D), lifecycle + consolidation
+workers (E), and the Nexus-native memory benchmark (F) shipped in PR #25
+(merge `b57d21c`), along with three bring-up fixes found during live Qwen validation
+(capsule-role CHECK violation, supersession heuristic over-firing on historical events,
+relation classifier routed to a dead model) and the README demo guide. First live
+baseline: `docs/benchmarks/baseline-2026-07-02.md`. Archived:
+`docs/iterations/archive/2026-07-02-def-hackathon.md`.
 
-> Keep only retrieval improvements that visibly improve MemoryAgent quality. Defer schema cutovers and cleanup until after Devpost submission.
+### Phase F — Benchmarking Agentic Memory — open follow-ups
 
-- [x] D1 — (`f809b8c`) Context assembly `include` categories + `ordering: evidence_strength` for supporting evidence, counter-evidence, superseding/superseded memories, and epistemic notes.
-- [x] D2 — (`f809b8c`) Un-stub hackathon-critical hybrid scoring inputs: `source_authority`, `relation_relevance`, and `evidence_quality`; acceptable first version may use deterministic relation/source/lifecycle heuristics.
-- [x] D3 — (`5b464ea`) Ensure chat/synthesis answer generation uses a Qwen T2+ model and reports citations/evidence chain in the demo path.
-- [ ] Deferred after hackathon — Drop `claims` + `claim_evidence` tables only after `/chat/answer` cutover is green for 1 week.
-
-### Phase E — Living Knowledge (hackathon MVP)
-
-- [x] E1 — (`d9a881b`) Minimal lifecycle worker: active → confirmed/qualified/superseded/stale/archived based on relation/lifecycle heuristics sufficient for demo and benchmarks.
-- [x] E2 — (`d9a881b`) Stale/superseded detection for benchmark/demo fixtures using `pack.retention_policy.stale_conditions` + `supersession_rules` where available.
-- [x] E3 — (`ca9b44d`) Consolidation worker minimal path: many capsules → thesis / narrative arc / research model using the Phase C thesis writer.
-
-### Phase F — Benchmarking Agentic Memory (hackathon required)
-
-> Build a small but repeatable benchmark first. External benchmark adapters are stretch; Nexus-native synthetic memory probes are required for the one-week submission.
-
-- [x] F1 — (`ae3228a`) Benchmark survey note mapping LoCoMo, LongMemEval, BEAM, Memora, and RAG/multi-hop baselines to Nexus capabilities; explicitly cite what is implemented now vs stretch.
-- [x] F2 — (`2f9d089`) Add `evals/memory/nexus_synthetic/` fixtures for the demo domain:
-  - AI release timeline memory questions.
-  - multi-document benchmark/result comparison questions.
-  - superseded/stale claim questions.
-  - source-authority conflict questions.
-  - thesis/consolidation questions.
-  - abstention/unanswerable questions.
-- [x] F3 — (`1df68cc`) Add benchmark runner script `scripts/benchmarks/run_memory_benchmark.py` to ingest fixture corpus, run Nexus retrieval/chat answers, score outputs, and emit JSONL/Markdown reports.
-- [x] F4 — (`1df68cc`) Add benchmark CLI surface only if fast to wire: `nexus eval memory run --benchmark nexus_synthetic --k <n>` and `nexus eval memory report --run-id <id>`.
-- [x] F5 — (`1df68cc`) Define and report hackathon metrics: answer correctness, evidence recall@k, citation faithfulness, temporal correctness, supersession correctness, abstention accuracy, latency, token cost.
-- [x] F6 — (`1a953aa`) Baseline artifacts under `docs/benchmarks/`: plan (F1), `baseline-template.md`, `baseline-2026-07-02.md` summary + `runs/baseline-2026-07-02/` (report/results/meta). First live Qwen baseline: answer_correctness 0.568, citation_faithfulness 1.000, abstention 0.773.
-- [ ] **Chat retrieval: collapse double aux-block discovery** (PR #25 review, LOW) — `_discover_counter_evidence_ids`/`_discover_supersession_links` run once in `_run_retrieve_capsules` (for the DB fetch) and again in `_assemble_context_blocks`; deterministic, so a perf nit not a bug. Compute once and pass through. Deferred to avoid refactoring the retrieval hot path pre-submission. Ref `app/intelligence/chat.py`.
-- [x] **Supersession heuristic over-fires on historical events (demo finding, HIGH for scores)** (`1f23fad`) — the E1/E2 facet heuristic marked the "LuminaSpark 1.0 general availability" capsule `superseded` simply because newer versions exist, and retrieval only includes `active/confirmed/qualified`, so the correct GA date is filtered out and timeline questions abstain. Historical events (GA dates, funding rounds, releases) are permanent records — the pack `retention_policy` even says so. Fix: exclude event/`state_change` historical object types from the same-actor/same-type supersession heuristic (supersede *state* like pricing/availability, not *events*). This is the main driver of the timeline miss (0.5) and the live-demo abstention. Ref `app/intelligence/lifecycle.py::_check_supersession_heuristic`.
+- [ ] **Chat retrieval: collapse double aux-block discovery** (PR #25 review, LOW) — `_discover_counter_evidence_ids`/`_discover_supersession_links` run once in `_run_retrieve_capsules` (for the DB fetch) and again in `_assemble_context_blocks`; deterministic, so a perf nit not a bug. Compute once and pass through. Ref `app/intelligence/chat.py`.
 - [ ] **`nexus lifecycle run --json` prints nothing (demo finding, LOW)** — the CLI runs but emits no output in `--json` mode against an already-lifecycled corpus (0 new transitions). Should always print the report object. Ref `app/cli/lifecycle.py`.
-- [ ] **Cross-document relation pass (baseline-2026-07-02 top follow-up)** — `classify_relations` only pairs capsules within one document, so cross-doc `supersedes`/`contradicts` edges are never created → 0 relations/0 theses in the baseline, capping supersession (0.0), authority_conflict (0.17), thesis (0.42). Add a domain-wide relation pass (batch by object_family/actor across docs) + optionally synthesize a `supersedes` relation from the lifecycle facet heuristic. See `docs/benchmarks/baseline-2026-07-02.md`.
+- [ ] **Cross-document relation pass (baseline top follow-up)** — `classify_relations` only pairs capsules within one document; explicit cross-doc `supersedes`/`contradicts` edges are never created (the lifecycle facet heuristic partially compensates for supersession). Add a domain-wide relation pass (batch by object_family/actor across docs). See `docs/benchmarks/baseline-2026-07-02.md`.
+- [ ] **Timeline/factoid-recall category is the weakest benchmark score** (0.25–0.5 across runs) — likely an embedding-recall or prompt issue for single-fact date lookups, not a lifecycle bug (the underlying capsule is `active`). Investigate retrieval for short factoid queries.
 - [ ] Stretch after baseline — LoCoMo/LongMemEval download + conversion adapters; BEAM/Memora adapters remain post-hackathon unless the core demo is already complete.
 
 ### Phase G — Qwen Model Tiering (hackathon required)
@@ -74,7 +45,6 @@ PR #24 (merge `f660b8d`). Archived: `docs/iterations/archive/2026-07-02-phase-c-
   - T4 candidate — `qwen3.7-max` / Qwen Max-class model for audit, contradiction, high-confidence adjudication, and final benchmark judge.
 - [ ] G2 — Verify exact Qwen Cloud model IDs, pricing/limits, context windows, and OpenAI-compatible base URL in the active account before implementation hard-codes names.
 - [ ] G3 — Add environment examples for Qwen Cloud: base URL, API key variable, and tier-to-model overrides.
-- [x] G4 — (`90289fe`) Update domain pack/model config so T2+ paths no longer default to non-Qwen models. **Root-caused the 0-relations bug**: the pack's top-level `models.t2/t3` (read via `_resolve_t2_model`) hardcoded `deepseek/deepseek-v4-flash`, so relation classification 404'd on DashScope and produced zero relations (the real cause, not the cross-doc theory). Switched pack `models.T2/T3` + `models.t2/t3` and `config.py` defaults to `qwen3.6-flash`/`qwen3.7-max`.
 
 ### Phase H — MCP / Skills Integration Story (hackathon stretch)
 
@@ -104,9 +74,6 @@ PR #24 (merge `f660b8d`). Archived: `docs/iterations/archive/2026-07-02-phase-c-
   - GAP-7 — `nexus artefacts create` has no DB integration test (only the pure `build_decision_artefact_row` unit tests and a CLI `--help`/bad-UUID smoke test).
   - GAP-8 — `classify_relations` "none"-classification-writes-no-row has unit coverage (`test_relation_classification.py`) but no real-DB integration test.
   - `--min-strength` on `nexus theses synthesize` and `--capsule-id`/`--thesis-id` count limits on `nexus artefacts create` have no range/sanity validation (e.g. `--min-strength 1.5` is silently accepted, just matches nothing).
-- [x] **Fix `capsule_segments.role="support"` CHECK violation** (`1df68cc`, this session) — fallback role now `"grounds"` (column default) + `_EVIDENCE_ROLE_TO_SEGMENT_ROLE` translates claim_evidence vocab (`support`→`supports`, `refute`→`contradicts`). Unblocks live `nexus capsules backfill` and the extraction dual-write path; was blocking the F6 benchmark (zero capsules written). Fixed 8 of the 14 pre-existing real-DB test failures; the remaining 6 (extraction_graph / 2 dual_write) fail on unrelated mock under-provisioning (multi-span seed, single mocked LLM response) and are left per Workflow Rule 6.
-  ~~Original:~~ **Fix `capsule_segments.role="support"` CHECK violation** — `build_capsule_row` (`app/intelligence/capsules.py`) writes `role="support"`, but migration `0005_semantic_capsules.py`'s `ck_capsule_segments_role` CHECK only allows `"supports"` (plural) among `("grounds", "supports", "contradicts", "qualifies", "refines", "exemplifies", "other")`. Breaks `nexus capsules backfill` and the extraction dual-write path against a real Postgres (confirmed on clean `main` @ `91b16c1`, unrelated to the Phase C remainder PR — discovered while running the full test suite against a real DB for that PR's Task 5). 6 tests fail: `tests/intelligence/test_capsule_backfill.py::test_backfill_idempotent`, `::test_backfill_multi_source_ref`, `tests/intelligence/test_capsules_dual_write.py::test_happy_path_single_object`, `::test_multi_source_refs`, `::test_transaction_atomicity`, `::test_embedding_present`. All 4 are unit tests with a mocked DB session, so they never caught this — only a real-DB run surfaces it.
-  Reference: `app/intelligence/capsules.py::build_capsule_row`, `app/db/migrations/versions/0005_semantic_capsules.py::_SEGMENT_ROLES`.
 - [ ] HTTP Basic Auth / API key middleware (security gap, open since Phase 1)
 - [ ] Chat security F1 — multi-turn prompt injection: wrap user messages with untrusted-input marker in agent prompt; plan Llama Guard guardrail pass post-auth (see `docs/security-review-chat-sessions.md`)
 - [ ] Chat security F4 — rate limiting + session/message caps + move `checkpointer.setup()` to lifespan (`slowapi`, `MAX_SESSIONS`, `MAX_MESSAGES_PER_SESSION`)
