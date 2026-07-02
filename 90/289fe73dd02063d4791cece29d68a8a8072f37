@@ -1,0 +1,7 @@
+Summary: pack models.{T2,T3,t2,t3} + config.py t2/t3 defaults switched deepseek->qwen. _resolve_t2_model reads the pack's top-level models key, so relation classification was calling a non-existent deepseek model on DashScope (404) — the true root cause of 0 relations/0 theses. Now Qwen-native T2+.
+
+Scope: app/domain_packs/personal_ai_tech.yaml, app/config.py, tests/intelligence/test_judge_wiring.py, TODO.md.
+
+Tests: judge_wiring + config + domain_packs 29 passed (1 pre-existing path-traversal fail). Full-suite gate to follow.
+
+Risk: MEDIUM — changes the model every extraction/relation/chat call uses by default. Verified qwen3.6-flash/qwen3.7-max live earlier. Final benchmark re-run confirms relations now populate.
