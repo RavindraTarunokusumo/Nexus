@@ -1,0 +1,7 @@
+Summary: restrict _check_supersession_heuristic to core_type='state_change' so historical events/claims/results are not wrongly superseded and stay retrievable. Fixes the live-demo timeline abstention (LuminaSpark 1.0 GA was superseded + filtered).
+
+Scope: app/intelligence/lifecycle.py, tests/intelligence/test_lifecycle.py (heuristic + precedence tests repointed to state_change; new test_heuristic_does_not_supersede_historical_events), TODO.md.
+
+Tests: 11 lifecycle tests pass; ruff/mypy clean on touched files.
+
+Risk: LOW. Narrows an over-broad heuristic; pricing supersession (the demo pricing answer) still works via state_change.
