@@ -10,15 +10,10 @@
 - [ ] H3 — Add submission docs/assets: README hackathon section, architecture diagram, benchmark screenshot/report, demo video outline, Devpost project narrative.
 - [ ] H4 — Treat MCP integrations and repo skills as final-version improvements: document tool contracts now; implement only a thin MCP server/tool wrapper if it does not endanger the core demo.
 
-### Phase C — Reasoning Layer (hackathon required)
+### Phase C — Reasoning Layer
 
-> Spec: `docs/superpowers/specs/2026-07-02-phase-c-remainder-design.md`. Plan: `docs/superpowers/plans/2026-07-02-phase-c-remainder.md`. Migration `0005_semantic_capsules.py` records `theses`/`decision_artefacts` as "written first by Phase E" — both writers below ship as standalone functions + CLI commands this PR, with no automatic trigger; Phase E owns triggering.
-
-- [x] C3a — `app/intelligence/theses.py`: `build_thesis_row` + `synthesize_theses_from_relations` (union-find clustering over `semantic_relations`) + unit tests. (`c51ddea`)
-- [x] C3b — `app/cli/theses.py`: `nexus theses synthesize` command + CLI smoke test. (`a0ffafe`)
-- [x] C4a — `app/intelligence/decision_artefacts.py`: `build_decision_artefact_row` + unit tests. (`a4ff9e4`)
-- [x] C4b — `app/cli/artefacts.py`: `nexus artefacts create` command + CLI smoke test. (`a0ffafe`)
-- [x] C5 — DB-bound integration tests (`tests/intelligence/test_reasoning_layer_db.py`, `@pytest.mark.slow`, real Postgres) for `judge_capsules`, `classify_relations`, and the C3a→C5 round-trip. (`5199516`)
+Complete. Thesis writer, decision artefact writer, and DB integration tests shipped in
+PR #24 (merge `f660b8d`). Archived: `docs/iterations/archive/2026-07-02-phase-c-remainder.md`.
 
 ### Phase D — Retrieval & Qwen Context Assembly (hackathon required)
 
