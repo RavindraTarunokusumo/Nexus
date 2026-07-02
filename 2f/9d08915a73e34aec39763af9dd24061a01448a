@@ -1,0 +1,9 @@
+Summary: fictional AI-tech corpus (release timeline, benchmark chains, pricing supersession, deprecation, rumor-vs-primary conflict, expired forecast, thesis arc) + 22 questions across 6 categories.
+
+Scope: evals/memory/nexus_synthetic/{corpus,questions}.jsonl + README.
+
+Tests: JSONL schema/doc-key/keyword validation run by implementer.
+
+Risk: NONE — data only.
+
+Docs: README included. Implemented by Grok subagent (session 019f2396-b858-7742-b843-e030d3a6eb04).
