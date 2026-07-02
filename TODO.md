@@ -7,7 +7,7 @@
 - [ ] H0 — Register/verify Qwen Cloud access, API key, voucher credits, and model availability from the deployment environment.
 - [ ] H1 — Route **T2 and above** through Qwen Cloud / Model Studio models; keep model names configurable by environment and domain pack.
 - [ ] H2 — Produce a MemoryAgent demo script: ingest AI-tech memory stream → extract capsules → relate/consolidate → supersede stale memory → answer with citations → show benchmark report.
-- [ ] H3 — Add submission docs/assets: ~~README demo walkthrough~~ (done, `pending`), architecture diagram, benchmark screenshot/report, demo video outline, Devpost project narrative.
+- [ ] H3 — Add submission docs/assets: ~~README demo walkthrough~~ (done, `d5bd0ea`), architecture diagram, benchmark screenshot/report, demo video outline, Devpost project narrative.
 - [ ] H4 — Treat MCP integrations and repo skills as final-version improvements: document tool contracts now; implement only a thin MCP server/tool wrapper if it does not endanger the core demo.
 
 ### Phase C — Reasoning Layer
