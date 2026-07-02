@@ -1,8 +1,16 @@
 # TODO
 
-## Future
+## Hackathon Critical Path — Qwen Cloud MemoryAgent (deadline 2026-07-09 5pm EDT)
 
-### Phase C — Reasoning Layer (remaining)
+> Submission target: Devpost Qwen Cloud Hackathon, Track 1 MemoryAgent. For the hackathon branch, optimize for a working Qwen-powered memory demo, benchmark report, and submission package. Defer broad roadmap items that do not strengthen the MemoryAgent story within one week.
+
+- [ ] H0 — Register/verify Qwen Cloud access, API key, voucher credits, and model availability from the deployment environment.
+- [ ] H1 — Route **T2 and above** through Qwen Cloud / Model Studio models; keep model names configurable by environment and domain pack.
+- [ ] H2 — Produce a MemoryAgent demo script: ingest AI-tech memory stream → extract capsules → relate/consolidate → supersede stale memory → answer with citations → show benchmark report.
+- [ ] H3 — Add submission docs/assets: README hackathon section, architecture diagram, benchmark screenshot/report, demo video outline, Devpost project narrative.
+- [ ] H4 — Treat MCP integrations and repo skills as final-version improvements: document tool contracts now; implement only a thin MCP server/tool wrapper if it does not endanger the core demo.
+
+### Phase C — Reasoning Layer (hackathon required)
 
 > Spec: `docs/superpowers/specs/2026-07-02-phase-c-remainder-design.md`. Plan: `docs/superpowers/plans/2026-07-02-phase-c-remainder.md`. Migration `0005_semantic_capsules.py` records `theses`/`decision_artefacts` as "written first by Phase E" — both writers below ship as standalone functions + CLI commands this PR, with no automatic trigger; Phase E owns triggering.
 
@@ -12,95 +20,71 @@
 - [x] C4b — `app/cli/artefacts.py`: `nexus artefacts create` command + CLI smoke test. (`a0ffafe`)
 - [x] C5 — DB-bound integration tests (`tests/intelligence/test_reasoning_layer_db.py`, `@pytest.mark.slow`, real Postgres) for `judge_capsules`, `classify_relations`, and the C3a→C5 round-trip. (`5199516`)
 
-### Phase D — Retrieval & UI Over Meaning (residual)
+### Phase D — Retrieval & Qwen Context Assembly (hackathon required)
 
-> Core cutover landed in PR #21; token-budget context assembly + evidence-path UI landed in PR #22 (archived: `docs/iterations/archive/2026-06-12-phase-d-retrieval-ui.md`). Remaining (Phase-E-gated):
+> Keep only retrieval improvements that visibly improve MemoryAgent quality. Defer schema cutovers and cleanup until after Devpost submission.
 
-- [ ] Context assembly `include` categories + `ordering: evidence_strength` — drive block *selection/ordering* from `pack.context_assembly` (token budget already enforced via `max_tokens_by_tier`; the `include` categories — counter-evidence, superseding/superseded, epistemic notes — and evidence-strength ordering need the relation graph / lifecycle / evidence-quality signals).
-- [ ] Drop `claims` + `claim_evidence` tables (only after `/chat/answer` cutover is green for 1 week).
-- [ ] Un-stub hybrid scoring inputs — `source_authority` (uniform 0.5), `relation_relevance` (0.0), `evidence_quality` (0.0) once Phase E relation-graph / source-authority signals exist.
+- [ ] D1 — Context assembly `include` categories + `ordering: evidence_strength` for supporting evidence, counter-evidence, superseding/superseded memories, and epistemic notes.
+- [ ] D2 — Un-stub hackathon-critical hybrid scoring inputs: `source_authority`, `relation_relevance`, and `evidence_quality`; acceptable first version may use deterministic relation/source/lifecycle heuristics.
+- [ ] D3 — Ensure chat/synthesis answer generation uses a Qwen T2+ model and reports citations/evidence chain in the demo path.
+- [ ] Deferred after hackathon — Drop `claims` + `claim_evidence` tables only after `/chat/answer` cutover is green for 1 week.
 
-### Phase E — Living Knowledge
+### Phase E — Living Knowledge (hackathon MVP)
 
-- [ ] Lifecycle worker — capsule state transitions (candidate → active → confirmed/qualified/superseded/stale/archived/rejected) driven by `pack.retention_policy` + `epistemic_policy`.
-- [ ] Consolidation worker — many capsules → thesis / narrative arc / research model / company risk model.
-- [ ] Stale / superseded detection — `pack.retention_policy.stale_conditions` + `supersession_rules`.
+- [ ] E1 — Minimal lifecycle worker: active → confirmed/qualified/superseded/stale/archived based on relation/lifecycle heuristics sufficient for demo and benchmarks.
+- [ ] E2 — Stale/superseded detection for benchmark/demo fixtures using `pack.retention_policy.stale_conditions` + `supersession_rules` where available.
+- [ ] E3 — Consolidation worker minimal path: many capsules → thesis / narrative arc / research model using the Phase C thesis writer.
 
-### Phase F — Benchmarking Agentic Memory
+### Phase F — Benchmarking Agentic Memory (hackathon required)
 
-> Nexus is an agentic memory system; Phase F should establish benchmark harnesses and repeatable evaluation scripts before expanding integrity/multi-domain work.
+> Build a small but repeatable benchmark first. External benchmark adapters are stretch; Nexus-native synthetic memory probes are required for the one-week submission.
 
-- [ ] Benchmark survey note — document selected external memory/RAG benchmarks and mapping to Nexus capabilities:
-  - LoCoMo / LOCOMO — long-term conversational memory; single-hop, multi-hop, temporal, adversarial QA, event summarization, multimodal dialogue.
-  - LongMemEval — long-term chat-assistant memory; information extraction, temporal reasoning, multi-session reasoning, abstention/unanswerable behavior.
-  - BEAM — long-scale conversational memory stress tests across 128K/500K/1M+ token histories; useful as stretch benchmark after local harness exists.
-  - Memora — personalized-agent long-term memory over weeks/months; preference/user-memory and forgetting/supersession behavior.
-  - RAG/multi-hop baselines — HotpotQA, MuSiQue, 2WikiMultiHopQA-style retrieval/grounded-answer tests adapted to capsule evidence chains.
-- [ ] Add benchmark dataset layout under `evals/memory/`:
-  - `evals/memory/locomo/` for downloaded/converted LoCoMo conversations and QA.
-  - `evals/memory/longmemeval/` for LongMemEval-style sessions/questions.
-  - `evals/memory/nexus_synthetic/` for Nexus-native domain-pack memory probes.
-  - `evals/memory/README.md` documenting licensing/source URLs, conversion steps, and dataset checksums.
-- [ ] Add benchmark runner scripts under `scripts/benchmarks/`:
-  - `download_memory_benchmarks.py` — fetch or verify external benchmark files without committing large raw datasets.
-  - `convert_locomo.py` — convert LoCoMo conversations/questions into Nexus source/doc/span ingestion fixtures.
-  - `convert_longmemeval.py` — convert LongMemEval sessions/questions into Nexus benchmark fixtures.
-  - `run_memory_benchmark.py` — ingest fixture corpus, run Nexus retrieval/chat answers, score outputs, and emit JSONL/Markdown reports.
-- [ ] Add benchmark CLI surface, e.g. `nexus eval memory ...`, reusing the existing evaluation framework where practical:
-  - `nexus eval memory prepare --benchmark locomo|longmemeval|nexus_synthetic`
-  - `nexus eval memory run --benchmark <name> --split <split> --k <n>`
-  - `nexus eval memory report --run-id <id>`
-- [ ] Define scoring metrics for agentic memory:
-  - answer exact/semantic correctness via judge + deterministic aliases where available.
-  - evidence recall@k / precision@k over cited spans/capsules.
-  - multi-hop support coverage: all required supporting memories retrieved and cited.
-  - temporal ordering accuracy for time-sensitive questions.
-  - abstention accuracy for unanswerable/adversarial questions.
-  - freshness/supersession correctness once Phase E lifecycle states exist.
-  - latency, token cost, and DB/query cost per benchmark example.
-- [ ] Add Nexus-native benchmark fixtures for the actual product domain:
+- [ ] F1 — Benchmark survey note mapping LoCoMo, LongMemEval, BEAM, Memora, and RAG/multi-hop baselines to Nexus capabilities; explicitly cite what is implemented now vs stretch.
+- [ ] F2 — Add `evals/memory/nexus_synthetic/` fixtures for the demo domain:
   - AI release timeline memory questions.
   - multi-document benchmark/result comparison questions.
   - superseded/stale claim questions.
   - source-authority conflict questions.
-  - thesis/consolidation questions once Phase C/E writers exist.
-- [ ] Add baseline report artifacts under `docs/benchmarks/`:
-  - `docs/benchmarks/memory-benchmark-plan.md`
-  - `docs/benchmarks/baseline-template.md`
-  - first baseline run report after harness lands.
+  - thesis/consolidation questions.
+  - abstention/unanswerable questions.
+- [ ] F3 — Add benchmark runner script `scripts/benchmarks/run_memory_benchmark.py` to ingest fixture corpus, run Nexus retrieval/chat answers, score outputs, and emit JSONL/Markdown reports.
+- [ ] F4 — Add benchmark CLI surface only if fast to wire: `nexus eval memory run --benchmark nexus_synthetic --k <n>` and `nexus eval memory report --run-id <id>`.
+- [ ] F5 — Define and report hackathon metrics: answer correctness, evidence recall@k, citation faithfulness, temporal correctness, supersession correctness, abstention accuracy, latency, token cost.
+- [ ] F6 — Add baseline report artifacts under `docs/benchmarks/`: `memory-benchmark-plan.md`, `baseline-template.md`, and first baseline run report.
+- [ ] Stretch after baseline — LoCoMo/LongMemEval download + conversion adapters; BEAM/Memora adapters remain post-hackathon unless the core demo is already complete.
 
-### Phase G — Integrity & Multi-Domain
+### Phase G — Qwen Model Tiering (hackathon required)
 
-- [ ] T4 audit pass — integrity checks; contradiction-as-mystery-thread for narrative packs.
-- [ ] Four standing reports (per v0.7) — coverage, contradiction, freshness, cost.
-- [ ] `sec_filing_v1` pack.
-- [ ] `scientific_paper_v1` pack.
-- [ ] `literary_narrative_v1` pack.
-- [ ] Pack inheritance resolution — implement `inherits_from` in the YAML loader; first consumer of the `domain_packs.parent_pack_id` column added in B1.
-- [ ] Cross-domain capsule linking — capsules from different domains referenced by the same thesis.
-- [ ] Optional `spans` → `segments` table rename (Phase B deferred this).
+> T2 and above must be Qwen-based for submission. Also scout/validate whether Qwen can cover T0/T1 so the whole stack can be presented as Qwen-native.
 
-### Phase H — Cost & Multimodal
+- [ ] G1 — Add configurable model tier map and document chosen defaults:
+  - T0 candidate — `Qwen3-Embedding-0.6B` locally or Model Studio `text-embedding-v4` for embeddings; Qwen3 Embedding supports 0.6B/4B/8B, 32K sequence length, instruction-aware embeddings, MRL dimensions, multilingual/code retrieval.
+  - T1 candidate — `Qwen3-Reranker-0.6B` locally or Model Studio `qwen3-rerank` for cheap relevance scoring/reranking; consider `qwen3.6-flash`/turbo-class Qwen model for lightweight classification if available in account.
+  - T2 candidate — `qwen3.7-plus` or `qwen3.6-flash` for semantic extraction, judging, relation classification, and routine chat answers.
+  - T3 candidate — `qwen3.7-max` or strongest available Qwen reasoning model for synthesis, thesis writing, decision artefacts, and benchmark judge passes.
+  - T4 candidate — `qwen3.7-max` / Qwen Max-class model for audit, contradiction, high-confidence adjudication, and final benchmark judge.
+- [ ] G2 — Verify exact Qwen Cloud model IDs, pricing/limits, context windows, and OpenAI-compatible base URL in the active account before implementation hard-codes names.
+- [ ] G3 — Add environment examples for Qwen Cloud: base URL, API key variable, and tier-to-model overrides.
+- [ ] G4 — Update domain pack/model config so T2+ paths no longer default to non-Qwen models for the hackathon submission.
 
-- [ ] T1 local stack — GLiNER2 + bge-small + DeBERTa-v3-xsmall + Qwen2.5-0.5B per v0.7 §11.2.
-- [ ] T1 candidate-capsule prompt + route-to-T2 gating.
-- [ ] Cost dashboard — per-tier / per-pack spend, ratio of T1-only vs T2-escalated.
-- [ ] Multimodal at T1 — image / table / chart segments.
-- [ ] Numeric chart extraction guard — Phase A guarded against this implicitly; codify as a T0 rule.
+### Phase H — MCP / Skills Integration Story (hackathon stretch)
 
-### Phase I — Eval & Observability Hardening
+- [ ] H-MCP1 — Document MCP tool contracts for final version: `nexus.memory.search`, `nexus.memory.remember`, `nexus.memory.answer`, `nexus.memory.benchmark.run`.
+- [ ] H-MCP2 — Implement a thin local MCP wrapper only if core Qwen demo and benchmark report are already green.
+- [ ] H-SKILL1 — Document reusable agent skills/workflows for ingesting memory, answering with evidence, detecting supersession, and running benchmarks.
 
-- [ ] Per-pack evaluation gold sets — extend `evals/gold/semantic_objects/` with one fixture per pack (matches `ai_tech_v3.yaml` shape).
-- [ ] 20-source test sets per domain pack.
-- [ ] Calibration sets for the T2 judge.
-- [ ] Object-level eval dashboard (HTML or web UI over `eval_runs` + `eval_results`).
+### Post-Hackathon / Deferred Roadmap
 
-### Phase 4 — Brief Synthesis + Query Answering
+- [ ] Integrity & Multi-Domain — T4 audit pass, standing reports, `sec_filing_v1`, `scientific_paper_v1`, `literary_narrative_v1`, pack inheritance, cross-domain capsule linking, optional `spans` → `segments` rename.
+- [ ] Cost & Multimodal — T1 local stack beyond Qwen candidates, cost dashboard, multimodal T1, numeric chart extraction guard.
+- [ ] Eval & Observability Hardening — per-pack gold sets, 20-source test sets, T2 judge calibration sets, object-level eval dashboard.
 
-- [ ] T3 model wiring — synthesis uses the strong OpenRouter model from domain pack
-- [ ] POST /briefs/generate — daily/weekly/query briefs from extracted claims
-- [ ] POST /query — grounded answer over claims + spans, with confidence and citations
-- [ ] Re-extraction sweep — background job to retry documents in `extraction_partial`/`extraction_failed`
+### Post-Hackathon / Legacy Phase 4 — Brief Synthesis + Query Answering
+
+- [ ] T3 model wiring — synthesis uses the configured Qwen Cloud T3 model from the domain pack/model tier map.
+- [ ] POST /briefs/generate — daily/weekly/query briefs from semantic capsules/theses with evidence citations.
+- [ ] POST /query — grounded answer endpoint over capsule evidence chains, with confidence and citations.
+- [ ] Re-extraction sweep — background job to retry documents in `extraction_partial`/`extraction_failed`.
 
 ### Ongoing
 
