@@ -181,8 +181,11 @@ def _resolve_transition(
         lambda: _check_contradicted(capsule, incoming, outgoing, capsule_by_id),
         lambda: _check_qualified(incoming),
         lambda: _check_confirmed(incoming, outgoing),
-        lambda: _check_stale(capsule, pack, now),
+        # archived before stale: archive_after_days is the longer window and the more
+        # terminal state, so a capsule old enough for both must resolve to archived —
+        # otherwise it sticks at stale (a non-eligible state) and is never re-evaluated.
         lambda: _check_archived(capsule, pack, now),
+        lambda: _check_stale(capsule, pack, now),
     ]
     for check in checks:
         result = check()

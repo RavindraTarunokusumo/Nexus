@@ -112,7 +112,6 @@ async def test_consolidate_domain_creates_thesis_from_strong_relations(session_f
     assert report.domain == "personal_ai_tech"
     assert report.theses_created == 1
     assert len(report.thesis_ids) == 1
-    assert report.skipped_existing == 0
 
     async with session_factory() as session:
         thesis = await session.get(Thesis, report.thesis_ids[0])
@@ -185,7 +184,6 @@ async def test_consolidate_domain_second_run_creates_nothing_new(session_factory
 
     assert second.theses_created == 0
     assert second.thesis_ids == []
-    assert second.skipped_existing == 0
 
     async with session_factory() as session:
         count = (

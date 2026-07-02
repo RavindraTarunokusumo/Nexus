@@ -389,7 +389,6 @@ async def send_message(
             question=payload.content,
             top_k=payload.top_k,
             model=settings.t2_model,
-            openrouter_api_key=settings.openrouter_api_key,
             db_url=settings.database_url,
             session_factory=request.app.state.session_factory,
             embedder=embedder,

@@ -17,7 +17,6 @@ class ConsolidationReport(BaseModel):
     domain: str
     theses_created: int
     thesis_ids: list[uuid.UUID]
-    skipped_existing: int
 
 
 async def consolidate_domain(
@@ -44,5 +43,4 @@ async def consolidate_domain(
         domain=domain,
         theses_created=len(theses),
         thesis_ids=[t.id for t in theses],
-        skipped_existing=0,
     )

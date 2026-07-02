@@ -118,7 +118,6 @@ async def run_session_turn(
     question: str,
     top_k: int,
     model: str,
-    openrouter_api_key: str,
     db_url: str,
     session_factory: async_sessionmaker,
     embedder: Any,

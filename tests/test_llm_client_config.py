@@ -46,10 +46,11 @@ def test_llm_api_key_empty_when_neither_set(settings_env):
     assert s.llm_api_key == ""
 
 
-def test_settings_accepts_embedding_model_env(settings_env, monkeypatch):
+def test_settings_ignores_unknown_env(settings_env, monkeypatch):
+    # extra="ignore": an unrecognised env var (e.g. the reserved EMBEDDING_MODEL,
+    # not yet wired — T1 embeddings are local) must not crash startup.
     monkeypatch.setenv("EMBEDDING_MODEL", "text-embedding-v4")
-    s = Settings()
-    assert s.embedding_model == "text-embedding-v4"
+    Settings()  # does not raise
 
 
 def test_llm_client_stores_custom_base_url(fake_session_factory):

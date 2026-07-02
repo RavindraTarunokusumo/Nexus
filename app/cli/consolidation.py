@@ -85,5 +85,4 @@ def run(
         "Theses created" + (" (would create)" if dry_run else ""),
         str(report.theses_created),
     )
-    table.add_row("Skipped (existing)", str(report.skipped_existing))
     console.print(table)

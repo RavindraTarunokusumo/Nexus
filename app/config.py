@@ -11,7 +11,6 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     qwen_cloud_api_key: str = ""
     llm_base_url: str = "https://openrouter.ai/api/v1"
-    embedding_model: str = "BAAI/bge-small-en-v1.5"
 
     # Model tiers — single place to swap all three:
     #   T1: local sentence-transformer (embedding, no API key needed)
