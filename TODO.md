@@ -52,10 +52,11 @@ PR #24 (merge `f660b8d`). Archived: `docs/iterations/archive/2026-07-02-phase-c-
   - source-authority conflict questions.
   - thesis/consolidation questions.
   - abstention/unanswerable questions.
-- [ ] F3 — Add benchmark runner script `scripts/benchmarks/run_memory_benchmark.py` to ingest fixture corpus, run Nexus retrieval/chat answers, score outputs, and emit JSONL/Markdown reports.
-- [ ] F4 — Add benchmark CLI surface only if fast to wire: `nexus eval memory run --benchmark nexus_synthetic --k <n>` and `nexus eval memory report --run-id <id>`.
-- [ ] F5 — Define and report hackathon metrics: answer correctness, evidence recall@k, citation faithfulness, temporal correctness, supersession correctness, abstention accuracy, latency, token cost.
-- [ ] F6 — Add baseline report artifacts under `docs/benchmarks/`: `memory-benchmark-plan.md`, `baseline-template.md`, and first baseline run report.
+- [x] F3 — (`1df68cc`) Add benchmark runner script `scripts/benchmarks/run_memory_benchmark.py` to ingest fixture corpus, run Nexus retrieval/chat answers, score outputs, and emit JSONL/Markdown reports.
+- [x] F4 — (`1df68cc`) Add benchmark CLI surface only if fast to wire: `nexus eval memory run --benchmark nexus_synthetic --k <n>` and `nexus eval memory report --run-id <id>`.
+- [x] F5 — (`1df68cc`) Define and report hackathon metrics: answer correctness, evidence recall@k, citation faithfulness, temporal correctness, supersession correctness, abstention accuracy, latency, token cost.
+- [x] F6 — (`pending`) Baseline artifacts under `docs/benchmarks/`: plan (F1), `baseline-template.md`, `baseline-2026-07-02.md` summary + `runs/baseline-2026-07-02/` (report/results/meta). First live Qwen baseline: answer_correctness 0.568, citation_faithfulness 1.000, abstention 0.773.
+- [ ] **Cross-document relation pass (baseline-2026-07-02 top follow-up)** — `classify_relations` only pairs capsules within one document, so cross-doc `supersedes`/`contradicts` edges are never created → 0 relations/0 theses in the baseline, capping supersession (0.0), authority_conflict (0.17), thesis (0.42). Add a domain-wide relation pass (batch by object_family/actor across docs) + optionally synthesize a `supersedes` relation from the lifecycle facet heuristic. See `docs/benchmarks/baseline-2026-07-02.md`.
 - [ ] Stretch after baseline — LoCoMo/LongMemEval download + conversion adapters; BEAM/Memora adapters remain post-hackathon unless the core demo is already complete.
 
 ### Phase G — Qwen Model Tiering (hackathon required)
