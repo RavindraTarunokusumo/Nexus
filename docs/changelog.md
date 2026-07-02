@@ -9,6 +9,25 @@ Track meaningful repository-level changes here.
 - Why it changed
 - Any follow-up work or migration notes
 
+## 2026-07-02 — Phase C Remainder: Thesis + Decision Artefact Writers
+
+Shipped the deferred C3/C4 items from Phase C on branch `claude/telos-residuals-c`.
+
+**What changed:**
+
+- **C3 — Thesis writer.** New `app/intelligence/theses.py`: `build_thesis_row` (pure row construction) and `synthesize_theses_from_relations` (union-find clustering over binary `semantic_relations` within a domain; supports `dry_run`). Shared tier validation in `app/intelligence/tiers.py` (`validate_writer_tier`, `WRITER_TIERS = ("t2", "t3", "t4")`).
+- **C3 CLI — `nexus theses synthesize`.** New `app/cli/theses.py`. Options: `--domain` (required), `--min-strength` (default 0.6), `--dry-run`, `--db-url`, `--json`. Clusters same-family capsules connected by strong relations into `theses` rows; no automatic extraction-graph trigger.
+- **C4 — Decision artefact writer.** New `app/intelligence/decision_artefacts.py`: `build_decision_artefact_row` (pure row construction; this PR emits `artefact_type="memo"` only).
+- **C4 CLI — `nexus artefacts create`.** New `app/cli/artefacts.py`. Options: `--domain`, `--question`, `--answer`, `--capsule-id` (repeatable), `--thesis-id` (repeatable), `--db-url`, `--json`. Manual one-at-a-time creation; no batch/backfill mode.
+- **DB-bound integration tests.** New `tests/intelligence/test_reasoning_layer_db.py` (`@pytest.mark.slow`): real Postgres, mocked LLM — `judge_capsules` unary relation, `classify_relations` binary relation, and C1→C2→C3 thesis round-trip.
+- **New unit tests.** `test_theses.py` (4), `test_decision_artefacts.py` (2), `test_tiers.py` (2). CLI `--help` smoke tests appended to `test_cli_e2e.py`.
+
+**Why:** Closes the Phase C deferrals for first `theses` and `decision_artefacts` writers without wiring automatic per-document triggers that Phase E's consolidation/lifecycle worker would likely replace. Both writers are standalone + CLI-accessible for manual/reviewed use.
+
+**Migration / setup:** None. Requires populated `semantic_capsules` and `semantic_relations` (from extraction or `nexus capsules backfill` + re-extract) before `nexus theses synthesize` can cluster anything. Automatic thesis/artefact creation remains Phase E scope.
+
+**Discovered (not fixed):** Pre-existing `capsule_segments.role` CHECK mismatch — `build_capsule_row` writes `role="support"` but migration `0005_semantic_capsules.py`'s `ck_capsule_segments_role` CHECK only allows `"supports"` (plural). Breaks real-DB capsule writes (backfill and extraction dual-write); unrelated to this PR slice. Logged in `TODO.md`; surfaced while running the full test suite against real Postgres for Task 5.
+
 ## 2026-06-14 — Phase D Residual: Token-Budget Assembly + Evidence-Path UI
 
 Closed the two buildable-now residual items from Phase D on branch `claude/phase-d-residual`.

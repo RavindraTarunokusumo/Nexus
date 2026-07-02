@@ -18,6 +18,8 @@ See [docs/commands.md](commands.md) for full flag reference and examples for eve
 | `ingest` | `url`, `text`, `rss` | HTTP → FastAPI |
 | `extract` | _(root)_ | HTTP → FastAPI — uses the telos-aware semantic-object extraction path; dual-writes capsules |
 | `capsules` | `backfill` | Direct Postgres |
+| `theses` | `synthesize` | Direct Postgres |
+| `artefacts` | `create` | Direct Postgres |
 
 ## `capsules` Subcommand Group
 
@@ -32,6 +34,33 @@ nexus capsules backfill --batch-size 50
 ```
 
 Reads `Claim.entities_json["_v0_7"]` for existing claims that predate the Phase B dual-write and writes the corresponding `SemanticCapsule` + `CapsuleSegment` rows. Idempotent — rows with a conflicting `idempotency_key` are skipped. `--dry-run` prints what would be written without persisting. `--batch-size` controls the number of claims processed per DB transaction (default: 100).
+
+## `theses` Subcommand Group
+
+The `theses` group provides Phase C thesis management commands. Commands read and write Postgres directly — no server required.
+
+### `nexus theses synthesize`
+
+```sh
+nexus theses synthesize --domain personal_ai_tech
+nexus theses synthesize --domain personal_ai_tech --min-strength 0.7
+nexus theses synthesize --domain personal_ai_tech --dry-run
+```
+
+Clusters strongly-related same-family capsules into `theses` rows by union-finding over binary `semantic_relations` (strength >= `--min-strength`) within the given domain pack. Reads relations written by `classify_relations`; writes one thesis per connected component of size >= 2. `--dry-run` reports clusters without committing. Re-running is not idempotent in this first writer (no unique constraint on `theses`) — intended for manual/reviewed use.
+
+## `artefacts` Subcommand Group
+
+The `artefacts` group provides Phase C decision-artefact management commands. Commands read and write Postgres directly — no server required.
+
+### `nexus artefacts create`
+
+```sh
+nexus artefacts create --domain personal_ai_tech --question "..." --answer "..."
+nexus artefacts create --domain personal_ai_tech --question "..." --answer "..." --capsule-id <uuid> --thesis-id <uuid>
+```
+
+Manually creates a `memo`-type `decision_artefacts` row linking the given capsules and/or theses. `--capsule-id` and `--thesis-id` are repeatable. No batch/backfill mode — artefacts are created one at a time via this command until Phase E wires automatic creation.
 
 ## `eval` Subcommand Group (updated flags)
 
