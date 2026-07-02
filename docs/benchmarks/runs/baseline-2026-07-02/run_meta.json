@@ -1,7 +1,7 @@
 {
-  "started_at": "2026-07-02T19:13:29.505816+00:00",
-  "finished_at": "2026-07-02T19:29:15.265860+00:00",
-  "git_rev": "6aadb37",
+  "started_at": "2026-07-02T20:23:42.145627+00:00",
+  "finished_at": "2026-07-02T20:50:36.440281+00:00",
+  "git_rev": "d43a38e",
   "domain": "personal_ai_tech",
   "k": 5,
   "t1_model": "BAAI/bge-small-en-v1.5",
