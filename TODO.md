@@ -15,6 +15,14 @@
 Complete. Thesis writer, decision artefact writer, and DB integration tests shipped in
 PR #24 (merge `f660b8d`). Archived: `docs/iterations/archive/2026-07-02-phase-c-remainder.md`.
 
+> **Session 2026-07-02 (branch `claude/def-hackathon`)** — Phases D/E/F in flight per
+> `docs/superpowers/plans/2026-07-02-def-hackathon.md`. Wave 1 (parallel Grok): T-D12 (D1+D2),
+> T-D3 (D3), T-E12 (E1+E2), T-E3 (E3), T-F2 (F2), T-F1 (F1). Wave 1.5 (orchestrator): CLI
+> registration in `app/cli/main.py`. Wave 2 (parallel Grok): T-F35 (F3+F5), T-F4 (F4).
+> Wave 3 (orchestrator): F6 baseline run + report. Deviation note: interactive spec-acceptance
+> step skipped on explicit user instruction (deadline); implementer self-checks run against
+> per-task databases `nexus_t1..t6` to avoid shared-DB contention during parallel runs.
+
 ### Phase D — Retrieval & Qwen Context Assembly (hackathon required)
 
 > Keep only retrieval improvements that visibly improve MemoryAgent quality. Defer schema cutovers and cleanup until after Devpost submission.
