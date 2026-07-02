@@ -1,0 +1,9 @@
+Summary: apply_lifecycle_transitions with precedence superseded > contradicted > qualified > confirmed > stale > archived; supersession facet heuristic + retention-policy stale rules; lifecycle_app CLI (unregistered).
+
+Scope: app/intelligence/lifecycle.py, app/cli/lifecycle.py, tests/intelligence/test_lifecycle.py (10 real-DB tests).
+
+Tests: 10 new DB integration tests green; full suite green vs baseline.
+
+Risk: LOW — new module, no callers yet; CLI registration lands in Wave 1.5.
+
+Docs: pending. Implemented by Grok subagent (session 019f2396-a52f-7680-a3ee-ac8842f38f50).
