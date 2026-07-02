@@ -21,6 +21,10 @@ __all__ = [
     "build_capsule_row",
 ]
 
+# claim_evidence.evidence_role vocabulary → capsule_segments.role CHECK vocabulary
+# (ck_capsule_segments_role: grounds/supports/contradicts/qualifies/refines/exemplifies/other).
+_EVIDENCE_ROLE_TO_SEGMENT_ROLE = {"support": "supports", "refute": "contradicts"}
+
 
 # Module-level embedder singleton. Lazy-init on first use so test environments
 # that never assemble capsules don't pay the model-load cost. The FastAPI
@@ -91,7 +95,10 @@ def build_capsule_row(
     Used by both extraction.store_claims (live path) and backfill.capsule_from_claim
     (recovery path).
 
-    ``evidence_roles`` maps span_id → role; missing spans fall back to "support".
+    ``evidence_roles`` maps span_id → role; values in the ``claim_evidence``
+    vocabulary ("support"/"refute") are translated to the ``capsule_segments.role``
+    CHECK vocabulary via ``_EVIDENCE_ROLE_TO_SEGMENT_ROLE``; missing spans fall back
+    to "grounds" (the column default). Already-valid segment roles pass through.
     ``created_at``/``updated_at`` default to None (DB defaults); backfill passes
     the claim's original created_at to preserve provenance ordering.
     """
@@ -138,7 +145,8 @@ def build_capsule_row(
     segments: list[CapsuleSegment] = []
     for ref in obj.source_refs:
         span_uuid = uuid.UUID(ref) if isinstance(ref, str) else ref
-        role = roles.get(span_uuid, "support")
+        raw_role = roles.get(span_uuid, "grounds")
+        role = _EVIDENCE_ROLE_TO_SEGMENT_ROLE.get(raw_role, raw_role)
         segments.append(
             CapsuleSegment(
                 capsule_id=capsule_id,
