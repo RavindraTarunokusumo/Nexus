@@ -74,7 +74,7 @@ PR #24 (merge `f660b8d`). Archived: `docs/iterations/archive/2026-07-02-phase-c-
   - T4 candidate — `qwen3.7-max` / Qwen Max-class model for audit, contradiction, high-confidence adjudication, and final benchmark judge.
 - [ ] G2 — Verify exact Qwen Cloud model IDs, pricing/limits, context windows, and OpenAI-compatible base URL in the active account before implementation hard-codes names.
 - [ ] G3 — Add environment examples for Qwen Cloud: base URL, API key variable, and tier-to-model overrides.
-- [x] G4 — (`pending`) Update domain pack/model config so T2+ paths no longer default to non-Qwen models. **Root-caused the 0-relations bug**: the pack's top-level `models.t2/t3` (read via `_resolve_t2_model`) hardcoded `deepseek/deepseek-v4-flash`, so relation classification 404'd on DashScope and produced zero relations (the real cause, not the cross-doc theory). Switched pack `models.T2/T3` + `models.t2/t3` and `config.py` defaults to `qwen3.6-flash`/`qwen3.7-max`.
+- [x] G4 — (`90289fe`) Update domain pack/model config so T2+ paths no longer default to non-Qwen models. **Root-caused the 0-relations bug**: the pack's top-level `models.t2/t3` (read via `_resolve_t2_model`) hardcoded `deepseek/deepseek-v4-flash`, so relation classification 404'd on DashScope and produced zero relations (the real cause, not the cross-doc theory). Switched pack `models.T2/T3` + `models.t2/t3` and `config.py` defaults to `qwen3.6-flash`/`qwen3.7-max`.
 
 ### Phase H — MCP / Skills Integration Story (hackathon stretch)
 
