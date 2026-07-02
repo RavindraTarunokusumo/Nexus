@@ -74,6 +74,13 @@ def _check_supersession_heuristic(
     capsule: SemanticCapsule,
     all_domain_capsules: Sequence[SemanticCapsule],
 ) -> tuple[str, str] | None:
+    # Only mutable *state* is superseded by a newer same-actor/same-type record
+    # (pricing, availability, api changes). Events, claims, results and arguments
+    # are permanent historical records — a newer model release does not supersede
+    # an older one's GA date. This mirrors the pack supersession_rules intent and
+    # keeps historical facts retrievable.
+    if capsule.core_type != "state_change":
+        return None
     actor = _primary_actor(capsule.facets)
     if actor is None:
         return None

@@ -45,6 +45,7 @@ async def _seed_capsule(
     document_id,
     lifecycle_state: str = "active",
     domain_object_type: str = "model_release",
+    core_type: str = "claim",
     facets: dict | None = None,
     epistemic_state: dict | None = None,
     created_at: datetime | None = None,
@@ -55,7 +56,7 @@ async def _seed_capsule(
         source_id=source_id,
         document_id=document_id,
         idempotency_key=str(uuid.uuid4()),
-        core_type="claim",
+        core_type=core_type,
         text=text,
         domain=_DOMAIN,
         object_family="model_release_event",
@@ -126,6 +127,8 @@ async def test_superseded_by_heuristic(session_factory):
             session,
             source_id=source.id,
             document_id=document.id,
+            core_type="state_change",
+            domain_object_type="pricing_change",
             facets={"orgs": ["OpenAI"]},
             created_at=old_time,
         )
@@ -133,6 +136,8 @@ async def test_superseded_by_heuristic(session_factory):
             session,
             source_id=source.id,
             document_id=document.id,
+            core_type="state_change",
+            domain_object_type="pricing_change",
             facets={"orgs": ["openai"]},
             created_at=new_time,
         )
@@ -145,6 +150,44 @@ async def test_superseded_by_heuristic(session_factory):
     assert report.counts.get("superseded") == 1
     assert report.transitions[0].capsule_id == older.id
     assert report.transitions[0].reason == "supersession_heuristic"
+
+
+@pytest.mark.asyncio
+async def test_heuristic_does_not_supersede_historical_events(session_factory):
+    """A newer same-actor/same-type event must not supersede an older event —
+    historical facts (e.g. a GA date) stay retrievable. Only state_change does."""
+    pack = load_pack(_DOMAIN)
+    old_time = _NOW - timedelta(days=10)
+    new_time = _NOW - timedelta(days=1)
+    async with session_factory() as session:
+        source, document = await _seed_source_document(session)
+        older = await _seed_capsule(
+            session,
+            source_id=source.id,
+            document_id=document.id,
+            core_type="event",
+            facets={"orgs": ["Lumina"]},
+            created_at=old_time,
+        )
+        await _seed_capsule(
+            session,
+            source_id=source.id,
+            document_id=document.id,
+            core_type="event",
+            facets={"orgs": ["lumina"]},
+            created_at=new_time,
+        )
+
+    async with session_factory() as session:
+        report = await apply_lifecycle_transitions(
+            session, domain=_DOMAIN, pack=pack, now=_NOW, dry_run=False
+        )
+
+    assert report.counts.get("superseded") is None
+    async with session_factory() as session:
+        refreshed = await session.get(SemanticCapsule, older.id)
+        assert refreshed is not None
+        assert refreshed.lifecycle_state == "active"
 
 
 @pytest.mark.asyncio
@@ -320,6 +363,8 @@ async def test_precedence_superseded_over_contradicted(session_factory):
             session,
             source_id=source.id,
             document_id=document.id,
+            core_type="state_change",
+            domain_object_type="pricing_change",
             facets={"orgs": ["Acme"]},
             epistemic_state={"source_authority": "tertiary"},
             created_at=old_time,
@@ -328,6 +373,8 @@ async def test_precedence_superseded_over_contradicted(session_factory):
             session,
             source_id=source.id,
             document_id=document.id,
+            core_type="state_change",
+            domain_object_type="pricing_change",
             facets={"orgs": ["acme"]},
             epistemic_state={"source_authority": "primary"},
             created_at=new_time,
