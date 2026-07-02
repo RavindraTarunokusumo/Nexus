@@ -98,7 +98,9 @@ def test_synthesize_theses_from_relations_clusters_connected_capsules(monkeypatc
     domain_capsules_result.scalars.return_value.all.return_value = list(caps.values())
     rel_result = MagicMock()
     rel_result.scalars.return_value.all.return_value = relations
-    session.execute = AsyncMock(side_effect=[domain_capsules_result, rel_result])
+    existing_result = MagicMock()
+    existing_result.scalars.return_value.all.return_value = []
+    session.execute = AsyncMock(side_effect=[domain_capsules_result, rel_result, existing_result])
     session.add_all = MagicMock()
     session.commit = AsyncMock()
 
@@ -150,7 +152,9 @@ def test_synthesize_theses_from_relations_dry_run_rolls_back(monkeypatch):
     domain_capsules_result.scalars.return_value.all.return_value = list(caps.values())
     rel_result = MagicMock()
     rel_result.scalars.return_value.all.return_value = relations
-    session.execute = AsyncMock(side_effect=[domain_capsules_result, rel_result])
+    existing_result = MagicMock()
+    existing_result.scalars.return_value.all.return_value = []
+    session.execute = AsyncMock(side_effect=[domain_capsules_result, rel_result, existing_result])
     session.add_all = MagicMock()
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
@@ -205,7 +209,9 @@ def test_synthesize_theses_from_relations_three_capsule_chain(monkeypatch):
     domain_capsules_result.scalars.return_value.all.return_value = list(caps.values())
     rel_result = MagicMock()
     rel_result.scalars.return_value.all.return_value = relations
-    session.execute = AsyncMock(side_effect=[domain_capsules_result, rel_result])
+    existing_result = MagicMock()
+    existing_result.scalars.return_value.all.return_value = []
+    session.execute = AsyncMock(side_effect=[domain_capsules_result, rel_result, existing_result])
     session.add_all = MagicMock()
     session.commit = AsyncMock()
 
@@ -260,7 +266,9 @@ def test_synthesize_theses_from_relations_splits_contradicting_members(monkeypat
     domain_capsules_result.scalars.return_value.all.return_value = list(caps.values())
     rel_result = MagicMock()
     rel_result.scalars.return_value.all.return_value = relations
-    session.execute = AsyncMock(side_effect=[domain_capsules_result, rel_result])
+    existing_result = MagicMock()
+    existing_result.scalars.return_value.all.return_value = []
+    session.execute = AsyncMock(side_effect=[domain_capsules_result, rel_result, existing_result])
     session.add_all = MagicMock()
     session.commit = AsyncMock()
 
@@ -270,3 +278,116 @@ def test_synthesize_theses_from_relations_splits_contradicting_members(monkeypat
     assert len(theses) == 1
     assert set(theses[0].supporting_capsule_ids) == {cap_a}
     assert set(theses[0].contradicting_capsule_ids) == {cap_b, cap_c}
+
+
+def test_synthesize_theses_from_relations_skips_existing_matching_thesis(monkeypatch):
+    """Idempotent re-run: skip cluster when domain already has matching thesis_type + supporting set."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    from app.intelligence import theses as theses_mod
+    from app.intelligence.theses import synthesize_theses_from_relations
+
+    cap_a, cap_b = uuid.uuid4(), uuid.uuid4()
+
+    def _capsule(id_, family="model_release_event", salience=0.5, text="t"):
+        c = MagicMock()
+        c.id, c.object_family, c.salience, c.text = id_, family, salience, text
+        return c
+
+    caps = {
+        cap_a: _capsule(cap_a, salience=0.9, text="anchor"),
+        cap_b: _capsule(cap_b),
+    }
+
+    def _relation(
+        src, tgt, strength=0.8, polarity="positive", relation_type="supports", confidence=0.8
+    ):
+        r = MagicMock()
+        r.source_capsule_id, r.target_capsule_id = src, tgt
+        r.strength, r.polarity, r.relation_type, r.confidence = (
+            strength,
+            polarity,
+            relation_type,
+            confidence,
+        )
+        return r
+
+    relations = [_relation(cap_a, cap_b)]
+
+    existing_thesis = MagicMock()
+    existing_thesis.thesis_type = "model_release_event"
+    existing_thesis.supporting_capsule_ids = [cap_a, cap_b]
+
+    session = AsyncMock()
+    domain_capsules_result = MagicMock()
+    domain_capsules_result.scalars.return_value.all.return_value = list(caps.values())
+    rel_result = MagicMock()
+    rel_result.scalars.return_value.all.return_value = relations
+    existing_result = MagicMock()
+    existing_result.scalars.return_value.all.return_value = [existing_thesis]
+    session.execute = AsyncMock(side_effect=[domain_capsules_result, rel_result, existing_result])
+    session.add_all = MagicMock()
+    session.commit = AsyncMock()
+
+    build_thesis_row_mock = MagicMock()
+    monkeypatch.setattr(theses_mod, "build_thesis_row", build_thesis_row_mock)
+
+    theses = asyncio.run(
+        synthesize_theses_from_relations(session, domain="personal_ai_tech", min_strength=0.6)
+    )
+    assert theses == []
+    build_thesis_row_mock.assert_not_called()
+    session.add_all.assert_not_called()
+
+
+def test_synthesize_theses_from_relations_skips_all_contradicting_cluster(monkeypatch):
+    """Cluster whose only edge is contradicting has no supporting evidence — skip it."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    from app.intelligence.theses import synthesize_theses_from_relations
+
+    cap_a, cap_b = uuid.uuid4(), uuid.uuid4()
+
+    def _capsule(id_, family="model_release_event", salience=0.5, text="t"):
+        c = MagicMock()
+        c.id, c.object_family, c.salience, c.text = id_, family, salience, text
+        return c
+
+    caps = {
+        cap_a: _capsule(cap_a, salience=0.9, text="anchor"),
+        cap_b: _capsule(cap_b),
+    }
+
+    def _relation(
+        src, tgt, strength=0.8, polarity="positive", relation_type="supports", confidence=0.8
+    ):
+        r = MagicMock()
+        r.source_capsule_id, r.target_capsule_id = src, tgt
+        r.strength, r.polarity, r.relation_type, r.confidence = (
+            strength,
+            polarity,
+            relation_type,
+            confidence,
+        )
+        return r
+
+    relations = [_relation(cap_a, cap_b, relation_type="contradicts", polarity="negative")]
+
+    session = AsyncMock()
+    domain_capsules_result = MagicMock()
+    domain_capsules_result.scalars.return_value.all.return_value = list(caps.values())
+    rel_result = MagicMock()
+    rel_result.scalars.return_value.all.return_value = relations
+    existing_result = MagicMock()
+    existing_result.scalars.return_value.all.return_value = []
+    session.execute = AsyncMock(side_effect=[domain_capsules_result, rel_result, existing_result])
+    session.add_all = MagicMock()
+    session.commit = AsyncMock()
+
+    theses = asyncio.run(
+        synthesize_theses_from_relations(session, domain="personal_ai_tech", min_strength=0.6)
+    )
+    assert theses == []
+    session.add_all.assert_not_called()

@@ -100,6 +100,7 @@ def _thesis_from_cluster(
     domain: str,
     min_cluster_size: int,
     created_by_tier: str,
+    existing_thesis_keys: set[tuple[str, frozenset[uuid.UUID]]] | None = None,
 ) -> Thesis | None:
     if len(member_ids) < min_cluster_size:
         return None
@@ -119,14 +120,21 @@ def _thesis_from_cluster(
             contradicting.add(r.source_capsule_id)
             contradicting.add(target_id)
     supporting = member_ids - contradicting
+    if not supporting:
+        return None
 
     anchor = max(members, key=lambda c: c.salience)
     confidence = sum(r.confidence for r in component_edges) / len(component_edges)
+    thesis_type = anchor.object_family
+    if existing_thesis_keys is not None:
+        thesis_key = (thesis_type, frozenset(supporting))
+        if thesis_key in existing_thesis_keys:
+            return None
 
     return build_thesis_row(
         thesis_id=uuid.uuid4(),
         domain=domain,
-        thesis_type=anchor.object_family,
+        thesis_type=thesis_type,
         statement=anchor.text,
         supporting_capsule_ids=sorted(supporting, key=str),
         contradicting_capsule_ids=sorted(contradicting, key=str),
@@ -178,6 +186,12 @@ async def synthesize_theses_from_relations(
         cid: domain_capsule_by_id[cid] for cid in cluster_capsule_ids if cid in domain_capsule_by_id
     }
 
+    existing_result = await session.execute(select(Thesis).where(Thesis.domain == domain))
+    existing_thesis_keys = {
+        (t.thesis_type, frozenset(t.supporting_capsule_ids))
+        for t in existing_result.scalars().all()
+    }
+
     theses: list[Thesis] = []
     for member_ids in components.values():
         thesis = _thesis_from_cluster(
@@ -187,6 +201,7 @@ async def synthesize_theses_from_relations(
             domain=domain,
             min_cluster_size=min_cluster_size,
             created_by_tier=created_by_tier,
+            existing_thesis_keys=existing_thesis_keys,
         )
         if thesis is not None:
             theses.append(thesis)

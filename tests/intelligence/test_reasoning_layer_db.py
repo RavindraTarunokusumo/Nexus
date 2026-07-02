@@ -217,6 +217,14 @@ async def test_classify_relations_to_thesis_round_trip(session_factory):
     assert len(theses) == 1
     assert set(theses[0].supporting_capsule_ids) == {cap_a.id, cap_b.id}
 
+    async with session_factory() as session:
+        count = (
+            await session.execute(
+                select(func.count()).select_from(Thesis).where(Thesis.domain == "personal_ai_tech")
+            )
+        ).scalar_one()
+        assert count == 1
+
 
 @pytest.mark.asyncio
 async def test_synthesize_theses_from_relations_dry_run_does_not_persist(session_factory):
