@@ -1,0 +1,9 @@
+Summary: D1 context assembly (roles, epistemic notes, counter-evidence/supersession aux blocks, evidence_strength ordering) + D2 real authority/evidence/relation scoring inputs.
+
+Scope: app/intelligence/chat.py, app/intelligence/prompts/chat_answer.py, 3 test files.
+
+Tests: 477 passed on nexus_gate; 14 failures identical to pre-existing baseline; 21 new/updated chat tests.
+
+Risk: Retrieval lifecycle filter widened to active/confirmed/qualified; ChatCitation gains optional role/epistemic_note fields (additive).
+
+Docs: pending doc-updater at PR time. Implemented by Grok subagent (session 019f2396-97a6-7492-9b4f-e026d37a7db6).
