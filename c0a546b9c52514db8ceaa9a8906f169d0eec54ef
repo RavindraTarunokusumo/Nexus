@@ -1,0 +1,19 @@
+Summary:
+Restored AGENTS.md and CLAUDE.md to the canonical Bootstrap Harness AGENTS.md workflow, adapted to Nexus.
+
+Scope:
+- Replaced the erroneous weather-monitor/Grok-derived instruction workflow.
+- Removed Post-PR/Grok handoff sections from the Nexus instruction files.
+- Kept Reflection as the final workflow section before the GitNexus block.
+- Preserved Nexus project map and GitNexus rules.
+
+Tests:
+- git diff --check -- AGENTS.md CLAUDE.md
+- grep validation confirmed no Post-PR/Grok/Step 8/Step 9 wording.
+- Python heading check confirmed Reflection is the final pre-GitNexus section in both files.
+
+Risk:
+Docs-only instruction correction.
+
+Docs:
+AGENTS.md, CLAUDE.md
