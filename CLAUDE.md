@@ -35,7 +35,7 @@ Rules:
 1. **(Preamble)** Ensure you're in a dedicated local branch/worktree under `.worktree/<session-name>` and activate the project environment (Python `.venv` in the repo root; `npm install` in `web/` for frontend work — see [docs/commands.md](docs/commands.md)). Read `docs/insights.md` and the [Workflow Rules](#workflow-rules).
 2. **(GitNexus)** Read the [GitNexus](#gitnexus--code-intelligence) section at the start of every session.
 3. **(Spec Writing + Lightweight Plan)** For feature implementation, write a detailed specification document following a spec-driven process (requirements, data models, interfaces, workflows, edge cases, success criteria, constraints) under `docs/superpowers/specs/`. Do not write implementation plans or code until the spec is complete and accepted — use the `brainstorming` skill to produce or refine it. Read the docs (see [Project Map](#project-map)) and use GitNexus as your primary means to understand the codebase. For debugging or minor patching, skip this step. Once the spec is accepted, produce a **lightweight implementation plan** under `docs/superpowers/plans/` that serves as the Grok implementer's contract — file structure, task decomposition, per-task **Interfaces** (Consumes/Produces signatures), build order, and risks. Do **not** inline verbatim per-step code or exact shell commands; the implementer regenerates those from the contract. The plan's value is the cross-task contract (who calls what, in what order), not transcribed code — that contract is what catches the class of bug a narrowly-scoped implementer cannot see (e.g. a changed signature breaking another caller). This preserves the spec→plan→implementation independent-verification chain at a fraction of the planning cost.
-4. **(Implementing)** Log tasks and sub-items in `TODO.md` first, then implement each task by delegating to a **Grok subagent as the implementer** via the non-interactive CLI (`grok -p "<task instructions>" -m grok-composer-2.5-fast --effort high --yolo --output-format json`), one ephemeral session per task (per the [Grok Build Implementation/Review Handoff](#grok-build-implementationreview-handoff)). Capture the `sessionId` from the JSON result, review and validate the produced changes, run the full validation suite (`ruff check`, `ruff format --check`, `mypy app/`, `pytest`; `npm run lint` + `npm test` from `web/` for frontend changes) before each commit, attach a git note afterwards using the [template](.github/git_notes_template.md), then delete the ephemeral `~/.grok/sessions/.../<sessionId>` directory for that implementation subagent. Commit any files the subagent wrote immediately (per Workflow Rule 9). Cross each sub-item and item off once done. Where the task graph allows — independent tasks with disjoint files and no shared dependency on unlanded work — run multiple implementer subagents in parallel; otherwise implement sequentially. After each delegated task, independently validate with the **full** test suite plus typecheck and lint before committing — never trust the implementer's scoped self-report (it grades only against its narrow task scope and will report green while a cross-cutting change, e.g. a modified signature breaking another caller, stays broken). Also review the diff and normalize implementer output (e.g. trailing newlines) during review. Before moving to Step 5, complete the [Pre-PR](#pre-pr) gates. If Grok fails, fall back to the `subagent-driven-development` skill.
+4. **(Implementing)** Log tasks and sub-items in `TODO.md` first, then implement each task by delegating to a **Grok subagent as the implementer** via the non-interactive CLI (`grok -p "<task instructions>" -m grok-composer-2.5-fast --effort high --yolo --output-format json`), one ephemeral session per task (per the [Grok Build Implementation/Review Handoff](#grok-build-implementationreview-handoff)). Capture the `sessionId` from the JSON result, review and validate the produced changes, run the full validation suite (`ruff check`, `ruff format --check`, `mypy app/`, `pytest`; `npm run lint` + `npm test` from `web/` for frontend changes) before each commit, attach a git note afterwards using the [template](.github/git_notes_template.md), then delete the ephemeral `~/.grok/sessions/.../<sessionId>` directory for that implementation subagent. Commit any files the subagent wrote immediately (per Workflow Rule 9). Cross each sub-item and item off once done. Where the task graph allows — independent tasks with disjoint files and no shared dependency on unlanded work — run multiple implementer subagents in parallel; otherwise implement sequentially. After each delegated task, independently validate with the **full** test suite plus typecheck and lint before committing — never trust the implementer's scoped self-report (it grades only against its narrow task scope and will report green while a cross-cutting change, e.g. a modified signature breaking another caller, stays broken). Also review the diff and normalize implementer output (e.g. trailing newlines) during review. If Grok fails, fall back to the `subagent-driven-development` skill.
 5. **(Submit PR)** Follow the instructions in the [Submit PR](#submit-pr) workflow — using non-interactive `grok -p` commands where possible to trigger reviews — and notify the user once every step has been completed. If Grok fails, spawn native subagents as a fallback.
 6. **(Post-PR)** Update documentation files once the PR has been merged and archive completed TODO items from `TODO.md` into `docs/iterations/archive/`; ensure each subitem in the TODO is tagged with the commit hash and each session is tagged with the merge ID — `TODO.md` should only contain **active or future** work. These Post-PR doc/archive commits are pushed **directly to `main`** (no PR — the feature PR is already merged); fast-forward only, never force.
 7. **(Reflection)** Conclude the session by doing the [Reflection](#reflection) exercise; the Reflection commit is likewise pushed **directly to `main`** (no PR). After receiving confirmation from the user, delete the worktree and branch.
@@ -54,19 +54,9 @@ Rules:
 10. After a delegated implementation task, validate with the **full** suite + typecheck + lint (not the implementer's scoped tests) before committing. A per-task implementer self-scopes its own verification and structurally cannot see cross-task breakage (e.g. a changed signature breaking another caller); only the full project-level run catches it.
 11. `gitnexus_impact` requires the exact function/class name, not the module or file name. Use the symbol name as indexed (e.g. `answer_chat`, not `routes_chat`).
 
-### Pre-PR
-
-Before moving from Implementing to Submit PR. **All subagent delegations in this repo — implementation, review, docs, or any other spawned sub-work — use the Grok handoff below, not Claude's native `Agent` tool**, unless Grok is unavailable/blocked (see the fallback note in each step):
-
-- Confirm the implementation still matches the accepted spec.
-- Run `/simplify` (skill) — delegate each of its review angles as a separate Grok handoff (parallel where the angles are independent) instead of Claude subagents; apply the fixes yourself as senior dev.
-- Invoke `security-review` (skill) if the change touches auth, secrets, network calls, privileged operations, user input, money movement, broker/payment logic, or security-sensitive architecture — via Grok handoff. Always cite the justification for invoking (or skipping) it.
-- Run full validation (`ruff check`, `ruff format --check`, `mypy app/`, `pytest`; `npm run lint` + `npm test` from `web/` for frontend changes).
-- Ensure `TODO.md` is current.
-
 ### Grok Build Implementation/Review Handoff
 
-The canonical contract for delegating any unit of work — implementation tasks (Step 4), Pre-PR gates (`/simplify`, `security-review`), or PR reviews ([Submit PR](#submit-pr)) — to an ephemeral Grok subagent. All flows share this mechanism; only the prompt and the post-processing differ. Grok is the default delegate for every subagent-shaped task in this repo; fall back to Claude's native `Agent` tool only when Grok is unavailable/blocked, and record the fallback reason in `TODO.md`.
+The canonical contract for delegating any unit of work — implementation tasks (Step 4) or Submit PR gates/reviews (`/simplify`, `security-review`, PR code review — see [Submit PR](#submit-pr)) — to an ephemeral Grok subagent. All flows share this mechanism; only the prompt and the post-processing differ. Grok is the default delegate for every subagent-shaped task in this repo; fall back to Claude's native `Agent` tool only when Grok is unavailable/blocked, and record the fallback reason in `TODO.md`.
 
 **Invoke** (headless, single-turn, no TUI):
 
@@ -96,12 +86,13 @@ find "$HOME/.grok/sessions" -type d -name "$sessionId" -prune -exec rm -rf {} +
 
 ### Submit PR
 
-1. Fill out the **[Template](.github/pull_request_template.md)** and submit the PR (capture the PR number/URL, e.g. via `gh pr create --json number,url`).
+**All subagent delegations in this section — /simplify's review angles, security-review, PR code review — use the Grok handoff above, not Claude's native `Agent` tool**, unless Grok is unavailable/blocked.
 
-2. If the changes affect security (or explicitly stated), delegate a non-interactive security review to a Grok subagent (ephemeral session). Always cite justification. Capture the session ID and clean it up afterwards. Example:
+1. Run `/simplify` (skill) on the branch diff — delegate each review angle as a separate Grok handoff (parallel where the angles are independent) and apply the fixes yourself as senior dev.
+
+2. If the changes affect auth, secrets, network calls, privileged operations, user input, money movement, broker/payment logic, or security-sensitive architecture (or explicitly stated), delegate a non-interactive security review to a Grok subagent (ephemeral session). Always cite justification for invoking (or skipping) it. Capture the session ID and clean it up afterwards. Example:
    ```bash
-   prNum=$(gh pr view --json number -q .number)
-   prompt="Use the /security-review skill on PR #$prNum. Report only HIGH-confidence newly introduced vulnerabilities from the diff."
+   prompt="Use the /security-review skill on this branch's diff against main. Report only HIGH-confidence newly introduced vulnerabilities."
    json=$(HOME=/root grok -p "$prompt" -m grok-composer-2.5-fast --effort high --yolo --output-format json)
    sessionId=$(echo "$json" | python3 -c "import json,sys;print(json.load(sys.stdin)['sessionId'])")
 
@@ -110,7 +101,11 @@ find "$HOME/.grok/sessions" -type d -name "$sessionId" -prune -exec rm -rf {} +
    find "$HOME/.grok/sessions" -type d -name "$sessionId" -prune -exec rm -rf {} +
    ```
 
-3. Generate the main professional code review by delegating the Grok bundled reviewer per the [Grok Build Implementation/Review Handoff](#grok-build-implementationreview-handoff). Capture the PR number first and use the review prompt:
+3. Run full validation (`ruff check`, `ruff format --check`, `mypy app/`, `pytest`; `npm run lint` + `npm test` from `web/` for frontend changes) and ensure `TODO.md` is current.
+
+4. Fill out the **[Template](.github/pull_request_template.md)** and submit the PR (capture the PR number/URL, e.g. via `gh pr create --json number,url`).
+
+5. Generate the main professional code review by delegating the Grok bundled reviewer per the [Grok Build Implementation/Review Handoff](#grok-build-implementationreview-handoff). Capture the PR number first and use the review prompt:
    ```
    Use /bundled:review --pr #$prNum. The skill should post a PENDING GitHub review. After it completes, provide a very brief summary of what was done.
    ```
