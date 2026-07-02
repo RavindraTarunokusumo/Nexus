@@ -1,0 +1,9 @@
+Summary: consolidate_domain thin wrapper over synthesize_theses_from_relations returning ConsolidationReport; consolidation_app CLI (unregistered).
+
+Scope: app/intelligence/consolidation.py, app/cli/consolidation.py, tests/intelligence/test_consolidation.py (3 real-DB tests).
+
+Tests: 3 new DB tests green; full suite green vs baseline.
+
+Risk: LOW — thin wrapper, no callers yet.
+
+Docs: pending. Implemented by Grok subagent (session 019f2396-b2a6-7cd0-8b77-2e67be5882b0).
