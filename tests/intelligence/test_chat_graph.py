@@ -17,12 +17,13 @@ def _make_session_factory(
     mock_session.__aexit__ = AsyncMock(return_value=False)
     mock_session.scalar = AsyncMock(return_value=MagicMock() if has_sentinel else None)
 
-    # _run_retrieve_capsules calls execute twice: candidate query, then evidence query.
+    empty_result = MagicMock()
+    empty_result.all.return_value = []
     candidate_result = MagicMock()
     candidate_result.all.return_value = rows or []
     evidence_result = MagicMock()
     evidence_result.all.return_value = evidence_rows or []
-    mock_session.execute = AsyncMock(side_effect=[candidate_result, evidence_result])
+    mock_session.execute = AsyncMock(side_effect=[candidate_result, empty_result, evidence_result])
 
     sf = MagicMock()
     sf.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -62,6 +63,11 @@ def _make_pack(query_intents: dict | None = None) -> MagicMock:
         "evidence_quality": 0.03,
     }
     pack.context_assembly.max_tokens_by_tier = {}
+    pack.context_assembly.include = [
+        "highest_salience_relevant_objects",
+        "source_refs_and_excerpts",
+    ]
+    pack.context_assembly.ordering = "evidence_strength"
     return pack
 
 
@@ -78,6 +84,8 @@ def _capsule_row(capsule_id: uuid.UUID | None = None, doc_id: uuid.UUID | None =
     row.semantic_sim = 0.9
     row.title = "Release article"
     row.url = "https://example.com/release"
+    row.epistemic_state = {}
+    row.confidence = 0.8
     return row
 
 

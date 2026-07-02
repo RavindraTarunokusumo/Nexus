@@ -69,17 +69,17 @@ def test_object_family_no_match_scores_zero() -> None:
     assert score == 0.0
 
 
-def test_stubbed_weights_contribute_zero() -> None:
+def test_relation_and_evidence_weights_use_defaults_when_missing() -> None:
     from app.intelligence.chat import compute_hybrid_score
 
     score = compute_hybrid_score(
-        _candidate(sem=0.99, salience=0.99),
+        _candidate(sem=0.0, salience=0.0),
         _weights(relation_relevance=1.0, evidence_quality=1.0),
         [],
         _MIN,
         _MAX,
     )
-    assert score == 0.0
+    assert abs(score - 0.5) < 1e-6
 
 
 def test_recency_newer_beats_older() -> None:
