@@ -1,0 +1,17 @@
+Summary:
+Corrected the Nexus instruction workflow so Post-PR is Step 6 and Reflection is Step 7/final step.
+
+Scope:
+- Updated AGENTS.md and CLAUDE.md consistently.
+- Removed separate Pre-PR/Reflection sections after the workflow body.
+- Preserved Nexus GitNexus block.
+
+Tests:
+- git diff --check -- AGENTS.md CLAUDE.md
+- Python validation confirmed Step 6 is Post-PR, Step 7 is Reflection, no separate Post-PR/Reflection sections, and no Grok Build wording.
+
+Risk:
+Docs-only instruction correction.
+
+Docs:
+AGENTS.md, CLAUDE.md
