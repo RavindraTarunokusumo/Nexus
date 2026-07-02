@@ -1,0 +1,9 @@
+Summary: Fix capsule_segments.role vocabulary mismatch that 500'd every extraction (B2 dual-write) and broke backfill (B3). Add _segment_role coercion ("support"->"supports", unknown/missing->"grounds").
+
+Scope: app/intelligence/capsules.py (fix), app/intelligence/backfill.py (docstring), tests/intelligence/{test_capsules_segment_role.py (new), test_capsule_backfill.py, test_capsules_dual_write.py}.
+
+Tests: 146 passed across tests/intelligence + tests/db + test_extraction_graph (testcontainers). New no-DB unit test: 13 cases. Live end-to-end validation script: 10/10 checks PASS (10 capsules + 10 segments dual-written).
+
+Risk: LOW. gitnexus_impact on build_capsule_row = LOW (2 callers: store_claims, capsule_from_claim — both fixed paths). No signature change.
+
+Docs: none required (internal vocabulary fix). cli/testing doc note for the validation script lands with V1.

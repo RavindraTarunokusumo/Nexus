@@ -1,0 +1,1 @@
+Summary: Replace review-fix TODO placeholder with the implementing commit hash.\n\nScope: TODO.md only.\n\nTests: pre-commit run --files TODO.md.\n\nRisk: Low ledger-only update.\n\nDocs: TODO.md ledger updated.

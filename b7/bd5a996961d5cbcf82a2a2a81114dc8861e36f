@@ -1,0 +1,5 @@
+Summary: typer App with status/sources/documents/document commands
+Scope: app/cli/main.py, tests/test_cli_e2e.py
+Tests: 6 e2e tests via CliRunner
+Risk: low — DB-only reads
+Docs: none

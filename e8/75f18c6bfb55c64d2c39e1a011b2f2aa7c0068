@@ -1,0 +1,9 @@
+Summary: Add 'nexus runs list' and 'nexus runs show' CLI commands for observability (Task 11).
+
+Scope: app/cli/db.py (list_runs, show_run), app/cli/render.py (render_runs_list, render_run_detail), app/cli/main.py (runs_app sub-typer with list/show commands), tests/test_cli_runs.py (5 integration tests).
+
+Tests: 5 new tests pass (table display, JSON output, missing-run exit-1). Full suite: 135 passed.
+
+Risk: LOW — new functions only, no existing symbols modified. gitnexus_detect_changes confirms no broken execution flows.
+
+Docs: Commands follow existing CLI pattern (_with_session, _settings, _require_db_url, _run). Renderers use existing _print_json/_to_jsonable for correct UUID/datetime serialization.

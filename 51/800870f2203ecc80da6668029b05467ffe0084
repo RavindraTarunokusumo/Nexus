@@ -1,0 +1,9 @@
+Summary: Recorded workflow observations from the chat session memory spec session.
+
+Scope: docs/insights.md only.
+
+Tests: pre-commit run --all-files.
+
+Risk: Low; documentation-only reflection.
+
+Docs: Updated workflow insights.

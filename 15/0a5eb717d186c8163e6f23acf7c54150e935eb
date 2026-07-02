@@ -1,0 +1,9 @@
+Summary: Documented the hybrid chatbot API and CLI and tagged completed chatbot TODO sub-items.
+
+Scope: docs/commands.md, docs/architecture.md, TODO.md.
+
+Tests: npx gitnexus detect-changes --repo C:\Users\rvind\OneDrive\Desktop\Projects\Nexus (low risk); python -m pytest tests/test_llm_client.py tests/test_chat_graph.py tests/test_chat_api.py tests/test_cli_render.py tests/test_cli_e2e.py -v (58 passed); ruff check .; ruff format --check .; pre-commit run --files docs\commands.md docs\architecture.md TODO.md; pre-commit run --files TODO.md.
+
+Risk: Low; docs and workflow ledger update only.
+
+Docs: Added nexus chat usage and POST /chat/answer architecture entry.

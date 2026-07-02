@@ -1,0 +1,9 @@
+Summary: Add scripts/run_phase2b_cli_validation.ps1 — combined Phase 2 (retrieval) + Phase B (capsule dual-write + backfill) destructive end-to-end CLI validation.
+
+Scope: scripts/run_phase2b_cli_validation.ps1 (new), TODO.md.
+
+Tests: Ran live against Postgres 55432 + FastAPI 8000 — 10/10 checks PASS. Caught the capsule_segments.role 500 bug (fixed in 153ab0c). Robust JSON-payload parser added (HTTP-backed nexus commands emit structured logs to stderr).
+
+Risk: LOW. Test tooling only; no app code in this commit.
+
+Docs: V3 (cli.md/testing.md note) pending in Pre-PR doc-updater pass.

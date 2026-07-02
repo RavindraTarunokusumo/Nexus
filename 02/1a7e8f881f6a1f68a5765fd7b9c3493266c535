@@ -1,0 +1,9 @@
+Summary: /simplify pass — concurrent pair judging (asyncio.gather), dead _HAS_PRODUCTION_PROMPT fallback removed, TOCTOU existence checks removed, ds.task.value bug fixed, unused CLI args dropped, Counter-based kappa.
+
+Scope: app/evaluation/judges.py, runner.py, datasets.py, meta_eval.py, app/cli/eval.py.
+
+Tests: 60/60 eval tests passing.
+
+Risk: Low — no schema changes. The concurrent gather change improves latency without changing correctness; tests confirm same outputs.
+
+Docs: N/A

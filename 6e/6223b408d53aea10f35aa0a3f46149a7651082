@@ -1,0 +1,9 @@
+Summary: Add default_pack_id config setting for chat/answer and session turns.
+
+Scope: app/config.py (default_pack_id: str = personal_ai_tech).
+
+Tests: covered indirectly via chat graph tests (run_chat_with_context loads default_pack_id when no pack passed).
+
+Risk: Low. New optional setting with default; no callers changed.
+
+Docs: none.

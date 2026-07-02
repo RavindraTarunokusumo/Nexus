@@ -1,0 +1,5 @@
+Summary: HTTP client wrappers calling FastAPI endpoints
+Scope: app/cli/http.py
+Tests: tested indirectly via e2e monkeypatching
+Risk: low — thin wrapper, CLIHttpError on non-2xx
+Docs: none

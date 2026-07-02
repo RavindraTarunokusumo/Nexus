@@ -1,0 +1,5 @@
+Summary: CitationEvidence(span_id, span_index, text) model + ChatCitation.evidence field; _build_evidence_map shapes (capsule_id, span_id, span_index, text) rows into per-capsule excerpts (cap _MAX_EVIDENCE_SPANS=5, truncate _EVIDENCE_EXCERPT_CHARS=280).
+Scope: app/intelligence/chat.py, tests/intelligence/test_chat_assembly.py.
+Tests: 9 unit tests pass.
+Risk: Low — additive model + pure helper.
+Docs: Covered in later docs commit.

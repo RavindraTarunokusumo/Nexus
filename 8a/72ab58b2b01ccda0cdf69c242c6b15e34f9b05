@@ -1,0 +1,9 @@
+Summary: LLM-as-a-Judge eval framework — 3 new DB tables, full evaluation pipeline (datasets, metrics, judges, runner, meta-eval), nexus eval CLI sub-app, gold-set YAML files.
+
+Scope: app/evaluation/ (new package), app/db/models.py (+EvalDataset/EvalRun/EvalResult), app/db/migrations/versions/0003_evaluation.py, app/cli/eval.py (new), app/cli/main.py (+eval_app), evals/ (new directory with gold YAML files).
+
+Tests: 59 new eval tests across 6 test files. 194 total passing (0 failures).
+
+Risk: HIGH (new package, new DB schema). No regression into existing execution flows — _run false-positive from main.py additive-only edit. Critical bugs fixed: cost tracking, SUT system prompt, EvalTask enum .value.
+
+Docs: database.md needs eval tables section; index.md needs eval framework entry; commands.md needs nexus eval sub-commands.

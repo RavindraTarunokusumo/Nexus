@@ -1,0 +1,9 @@
+Summary: Rewrite chat graph from 4-node span-based (retrieve_spans/load_claims/generate_answer/format_result) to 4-node capsule-based (classify_intent/retrieve_capsules/generate_answer/format_result). Citations now carry capsule_id/object_type/object_family/lifecycle_state/summary instead of span_id/claim_ids. Hybrid telos-aware scoring (compute_hybrid_score) ranks capsule candidates; load_pack imported at module level so run_chat_with_context resolves default pack and tests can patch it.
+
+Scope: app/intelligence/chat.py (full rewrite), app/intelligence/prompts/chat_answer.py (capsule block format), tests/intelligence/test_chat_graph.py (new, 6 tests).
+
+Tests: 15/15 intelligence tests pass (test_chat_intent 4 + test_chat_scoring 5 + test_chat_graph 6). tests/test_chat_api.py 5/6 pass; the 1 failure (graph_error detail wording) is PRE-EXISTING (reproduced with rewrite stashed) and lives in routes_chat.py, out of scope.
+
+Risk: Medium. Core retrieval path replaced. 3 existing callers (routes_chat, session_memory x2) pass no pack and keep working via default_pack_id.
+
+Docs: doc-updater pending in Pre-PR.

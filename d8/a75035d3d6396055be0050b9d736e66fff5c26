@@ -1,0 +1,9 @@
+Summary: Added configurable LLM run_type while preserving claim extraction default.
+
+Scope: app/intelligence/llm_client.py and tests/test_llm_client.py.
+
+Tests: python -m pytest tests/test_llm_client.py -k 'run_type or happy_path' -v; pre-commit run --files app/intelligence/llm_client.py tests/test_llm_client.py (failed: unrelated mypy error in app/intelligence/extraction.py:199).
+
+Risk: Low; backward-compatible keyword default.
+
+Docs: None.

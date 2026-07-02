@@ -1,0 +1,9 @@
+Summary: Replace LLMClient._log with tracer.record_agent_run; remove payload truncation; add split token accounting (prompt_tokens, completion_tokens).
+
+Scope: app/intelligence/llm_client.py — _log method removed, complete_json updated to call record_agent_run in finally block with full input payload and split token fields. tests/test_llm_client.py — two new DB-backed tests added.
+
+Tests: 126 passed (2 new: test_agent_run_stores_full_payload_without_truncation, test_agent_run_split_tokens_populated). New tests confirmed red before implementation.
+
+Risk: LOW — LLMClient interface unchanged; extraction.py and routes_claims.py import only classes/exceptions that are preserved. record_agent_run never raises (catches internally).
+
+Docs: No doc changes needed for this internal observability wiring.

@@ -1,0 +1,9 @@
+Summary: Wire extraction graph to telos-aware semantic-object path (A6 integration commit).
+
+Scope: app/intelligence/extraction.py (full rewrite of _extract_one_span, store_claims, new validate_and_project node, load_spans extended to fetch Source + DomainPack); tests/test_extraction_graph.py (updated to SemanticExtractionOutput responses, added v0.7 traceability assertions, new test_claim_has_v07_traceability_keys).
+
+Tests: 44 unit tests (tests/intelligence/) pass. Integration tests (test_extraction_graph.py) require conftest which fails to load due to pre-existing langgraph.checkpoint.postgres env issue — not caused by A6 changes.
+
+Risk: LOW — make_extraction_graph and run_with_context signatures unchanged; STATUS_* constants kept; routes_claims.py untouched; ExtractionOutput/ExtractedClaim kept in llm_client.py for eval runner.
+
+Docs: No doc changes required; A6 is an internal graph rewire.

@@ -1,0 +1,5 @@
+Summary: DB reader for status/sources/documents via short-lived asyncpg sessions
+Scope: app/cli/db.py, tests/test_cli_db.py
+Tests: 8 integration tests (testcontainers)
+Risk: low — read-only, own session, disposes cleanly
+Docs: none

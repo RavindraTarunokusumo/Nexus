@@ -1,0 +1,5 @@
+Summary: Reflection — four phase-d-residual workflow lessons (junction node_modules into fresh worktrees, detect_changes blind to non-indexed worktrees, Write-tool+absolute --body-file for gh pr create, inline TDD as a reliable subagent-driven fallback).
+Scope: docs/insights.md.
+Tests: N/A.
+Risk: None.
+Docs: This is the reflection.

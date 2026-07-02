@@ -1,0 +1,5 @@
+Summary: Post-merge bookkeeping for PR #22 — trimmed completed Phase D residual items from TODO.md (token-budget assembly + evidence-path UI), revised the remaining context_assembly item to the Phase-E-gated include/ordering scope, and appended a Residual Follow-up section (PR #22 / 7341e45 merge id + commit hashes) to the Phase D archive.
+Scope: TODO.md, docs/iterations/archive/2026-06-12-phase-d-retrieval-ui.md.
+Tests: N/A (docs).
+Risk: None.
+Docs: This is the archival bookkeeping.

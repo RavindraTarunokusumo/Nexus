@@ -1,0 +1,9 @@
+Summary: Added active TODO session for hybrid chatbot implementation.
+
+Scope: TODO.md only.
+
+Tests: pre-commit run --files TODO.md.
+
+Risk: Low; workflow ledger only.
+
+Docs: None.

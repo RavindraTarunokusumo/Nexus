@@ -1,0 +1,9 @@
+Summary: Wire extraction_run/span_scope context managers and DB audit helpers into extraction graph.
+
+Scope: app/intelligence/extraction.py, app/api/routes_claims.py
+
+Tests: 128 passed (2 new: span_extractions rows, document *_at timestamps)
+
+Risk: LOW — additive observability writes; no logic changes to claim extraction flow.
+
+Docs: No doc changes required; tracer.py and run_context.py already documented.

@@ -1,0 +1,9 @@
+Summary: Add SpanExtraction ORM model and observability columns to AgentRun and Document.
+
+Scope: app/db/models.py only. Additive changes — 4 nullable timestamp columns on Document (chunked_at, embedded_at, extraction_started_at, extraction_completed_at), 5 nullable columns on AgentRun (run_id, document_id, span_id, prompt_tokens, completion_tokens), and new SpanExtraction table with 8 fields (id, run_id, span_id, document_id, status, attempts, error, created_at).
+
+Tests: 105 passed, 0 failed. No existing tests broken.
+
+Risk: MEDIUM (both AgentRun and Document have 8 direct importers). Changes are purely additive — nullable columns and a new model — so no callers break.
+
+Docs: No doc changes needed; schema docs will be updated in a dedicated migration step.

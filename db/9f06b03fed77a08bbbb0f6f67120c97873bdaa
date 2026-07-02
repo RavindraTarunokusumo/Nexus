@@ -1,0 +1,9 @@
+Summary: Add new tests for span_extractions table population and document timestamp marking.
+
+Scope: tests/test_extraction_graph.py
+
+Tests: 2 new integration tests added; all 128 pass.
+
+Risk: LOW — test-only changes.
+
+Docs: None required.

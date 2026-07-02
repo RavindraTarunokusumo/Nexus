@@ -1,0 +1,9 @@
+Summary: Added linked planning specs for LangChain-backed chat session memory and a simple React Tailwind web UI.
+
+Scope: docs/superpowers/specs chat memory and web UI specs, plus paired GitNexus stats updates in AGENTS.md and CLAUDE.md from index refresh.
+
+Tests: pre-commit run --all-files.
+
+Risk: Low; documentation-only planning change.
+
+Docs: Added chat session memory and chat web UI design specs.

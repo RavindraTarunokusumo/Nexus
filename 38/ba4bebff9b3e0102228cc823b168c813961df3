@@ -1,0 +1,9 @@
+Summary: Implemented run_context module with ContextVar-based context binding for async pipeline correlation IDs.
+
+Scope: NEW — run_context.py + __init__.py + test_observability_context.py. No impact on existing code.
+
+Tests: All 6 tests passing (extraction_run binding, reset on exit, span_scope binding, reset on exception, no context bleed under gather, default context outside scope).
+
+Risk: NONE. New module, no integration with existing code paths yet. Token-reset pattern prevents context leakage in concurrent tasks.
+
+Docs: Module docstrings and function docstrings included. Async context manager patterns documented inline.

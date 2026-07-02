@@ -1,0 +1,5 @@
+Summary: ingest url/text/rss commands on ingest_app sub-typer
+Scope: app/cli/main.py, tests/test_cli_e2e.py
+Tests: 10 e2e tests
+Risk: low — HTTP only, no DB writes from CLI
+Docs: none

@@ -1,0 +1,25 @@
+@
+Summary:
+Implemented centralized logging for Nexus observability. Added configure_logging() for idempotent root logger setup, _JsonFormatter for JSON-structured logging, and RunContextFilter to inject correlation IDs (run_id, document_id, span_id) from contextvars into all log records.
+
+Scope:
+- app/observability/logger.py: 105 lines (configure_logging, RunContextFilter, _JsonFormatter, _make_json_formatter)
+- tests/test_observability_logger.py: 97 lines (6 unit tests)
+- No changes to existing files
+
+Tests:
+- test_configure_logging_is_idempotent: Verifies idempotency (second call is no-op unless force=True)
+- test_configure_logging_force_reconfigures: Confirms force=True reconfigures
+- test_json_formatter_emits_required_fields: Validates JSON output includes ts, level, logger, msg
+- test_run_context_filter_injects_ids: Tests correlation IDs injected via contextvars in async context
+- test_run_context_filter_survives_broken_contextvar: Verifies filter returns True even if contextvar lookup fails
+- test_json_formatter_handles_non_serialisable_extra: Confirms repr() fallback for non-JSON-serializable extras
+- All 117 existing tests pass (no regressions)
+
+Risk:
+LOW — New module, no integration yet. RunContextFilter.filter() always returns True (never drops records). Async test uses @pytest.mark.asyncio with proper context setup.
+
+Docs:
+- Docstrings on all public functions and classes
+- Inline comments on _SKIP set in _JsonFormatter
+@

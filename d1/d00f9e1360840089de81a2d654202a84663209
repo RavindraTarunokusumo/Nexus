@@ -1,0 +1,5 @@
+Summary: Rich table + JSON formatters for all CLI output shapes
+Scope: app/cli/render.py, tests/test_cli_render.py
+Tests: 10 unit tests
+Risk: low — pure functions, no I/O side effects
+Docs: none

@@ -1,0 +1,5 @@
+Summary: _run_retrieve_capsules selects blocks via _assemble_within_budget using pack.context_assembly.max_tokens_by_tier["T2"] instead of a flat top_k slice.
+Scope: app/intelligence/chat.py; tests/intelligence/test_chat_graph.py (_make_pack sets max_tokens_by_tier={} to stay on flat path).
+Tests: graph + assembly suites pass (11).
+Risk: Low — impact analysis upstream = only retrieve_capsules node.
+Docs: Covered in later docs commit.

@@ -1,0 +1,5 @@
+Summary: After budget assembly, _run_retrieve_capsules runs one capsule_segments JOIN spans query for the selected capsule ids and attaches shaped evidence to each block; format_result carries evidence into ChatCitation.
+Scope: app/intelligence/chat.py (imports CapsuleSegment, Span; evidence query; block field; format_result), tests/intelligence/test_chat_graph.py (_make_session_factory two-call mock + test_retrieve_capsules_attaches_evidence).
+Tests: 26 intelligence unit tests pass.
+Risk: Low — impact analysis upstream LOW; second read-only session for the evidence query is a conscious, documented tradeoff.
+Docs: Covered in later docs commit.

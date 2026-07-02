@@ -1,0 +1,9 @@
+Summary: Fix CLI citation table to show capsule_id under Capsule column (was span_id/Span)
+
+Scope: app/cli/render.py only — column header + key name update
+
+Tests: No dedicated test; covered implicitly by integration use
+
+Risk: Low — cosmetic CLI display fix, no API or data impact
+
+Docs: N/A

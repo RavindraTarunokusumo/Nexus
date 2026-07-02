@@ -1,0 +1,9 @@
+Summary: Test asserting run_id is present and UUID-parseable in ExtractionSummary API response.
+
+Scope: tests/test_routes_claims.py — new test_extraction_summary_includes_run_id.
+
+Tests: 129 passed.
+
+Risk: LOW — test-only change.
+
+Docs: None.

@@ -1,0 +1,13 @@
+Summary: Update ChatCitation TypeScript type to match backend capsule schema; rewrite CitationList component with capsule metadata cards (lifecycle dot, object-type badge, score, host, truncated summary).
+
+Scope: web/src/api/client.ts, web/src/components/CitationList.tsx, web/src/test/components.test.tsx
+
+Tests: 24/24 frontend Vitest tests pass; CitationList tests updated for new fixture (capsule_id, object_type, lifecycle_state, summary).
+
+Risk: LOW — frontend-only change, no backend touched.
+
+Docs: None required.
+
+---
+Task 6 assessment (test_validation_harness.py):
+Summary: No change needed to test_semantic_search_path. nexus search calls http_search_spans → /search/spans (span-based endpoint), entirely separate from /chat/answer. Test mocks http_search_spans and only asserts data[0]["score"] — does not reference span_id, claim_ids, or any ChatCitation field. Case A: different code path, no update required.

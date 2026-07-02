@@ -1,0 +1,9 @@
+Summary: Add chunked_at and embedded_at timestamp marks to _chunk_and_embed background task.
+
+Scope: app/api/routes_ingestion.py (_chunk_and_embed), tests/test_chunk_embed_task.py (new test).
+
+Tests: 130 passed. New test: test_chunk_embed_sets_timestamps verifies both timestamp fields are set.
+
+Risk: LOW — _chunk_and_embed has zero direct callers (background task only); mark_document_timestamp never raises.
+
+Docs: No doc changes required for this internal observability mark.

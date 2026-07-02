@@ -1,0 +1,5 @@
+Summary: search command wired to POST /search/spans
+Scope: app/cli/main.py, tests/test_cli_e2e.py
+Tests: 7 e2e tests
+Risk: low — HTTP only, monkeypatched in tests
+Docs: none

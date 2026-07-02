@@ -1,0 +1,14 @@
+Summary:
+Archived the completed Hybrid Chatbot iteration after PR #9 merged.
+
+Scope:
+TODO.md and docs/iterations/archive/2026-05-22-hybrid-chatbot.md only.
+
+Tests:
+pre-commit run --files TODO.md docs/iterations/archive/2026-05-22-hybrid-chatbot.md; npx gitnexus detect-changes reported low risk/no affected processes.
+
+Risk:
+Low; documentation and workflow ledger cleanup only.
+
+Docs:
+Added the Hybrid Chatbot archive entry with merge commit 7267e33 and task commit hashes.

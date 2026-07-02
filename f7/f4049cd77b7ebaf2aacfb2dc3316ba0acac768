@@ -1,0 +1,9 @@
+Summary: LLM-as-a-Judge eval framework — 3 new DB tables, evaluation pipeline, nexus eval CLI, gold YAML files. Pre-PR: doc-updater (4 docs), security fixes (budget ceiling, db_url strip).
+
+Scope: app/evaluation/ (new package — datasets, metrics, judges, runner, meta_eval, prompts), app/db/models.py (+3 ORM classes), migration 0003, app/cli/eval.py (6 commands), app/cli/main.py (+eval_app), evals/ (gold YAML + human labels), docs/ (database, commands, architecture, index).
+
+Tests: 59 new eval tests, 194 total passing.
+
+Risk: HIGH (new schema). Existing flows unaffected — _run false-positive in detect_changes. Security: budget ceiling guard (50 USD), database_url .strip() guard, no API key leaks.
+
+Docs: Updated database.md (3 tables), commands.md (6 commands), architecture.md (eval package + diagram), index.md (module map).

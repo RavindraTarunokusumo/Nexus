@@ -1,0 +1,20 @@
+Summary:
+Design spec only — no implementation. Selected approach: hybrid
+leaderboard-aligned (MTEB for T1; FEVER + HaluEval + CheckThat! for T2).
+Pipeline-vs-component split is the headline architectural decision —
+isolates whether Nexus's prompt/chunking helps or hurts raw model quality.
+
+Scope:
+- docs/superpowers/specs/2026-05-24-public-benchmarks-design.md
+
+Tests:
+N/A — spec only.
+
+Risk:
+None — documentation-only change on a worktree branch. Two specs in this
+session form a coherent eval story (Spec #1 in-house judge + Spec #2
+public benchmarks) sharing persistence and CLI namespace.
+
+Docs:
+New spec file. docs/index.md update deferred to implementation PR.
+Cross-link reciprocated to Spec #1.

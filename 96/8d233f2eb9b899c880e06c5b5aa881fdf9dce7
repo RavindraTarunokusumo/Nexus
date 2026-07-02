@@ -1,0 +1,5 @@
+Summary: Backfill Phase D merge id (48a4b09, 2026-06-13T22:40:49Z, RavindraTarunokusumo) into the Phase D archive header post-merge.
+Scope: docs/iterations/archive/2026-06-12-phase-d-retrieval-ui.md.
+Tests: N/A.
+Risk: None.
+Docs: This is the archival fix.

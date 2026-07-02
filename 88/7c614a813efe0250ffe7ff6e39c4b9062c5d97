@@ -1,0 +1,11 @@
+Summary: Initialize logging at application startup to ensure all log messages are properly configured from the first moment of execution.
+
+Scope: Added configure_logging() import and initialization to:
+  - app/main.py: Called as first statement inside lifespan() context manager (before make_engine)
+  - app/cli/main.py: Called at module level before app = typer.Typer()
+
+Tests: All 130 existing tests pass; no regressions detected.
+
+Risk: LOW — configure_logging() is idempotent and only configures logging infrastructure. No changes to business logic. Impact analysis showed 0 direct callers.
+
+Docs: No docs changes required; configure_logging() behavior and placement documented in app/observability/logger.py

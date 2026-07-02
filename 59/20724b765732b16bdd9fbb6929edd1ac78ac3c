@@ -1,0 +1,14 @@
+Summary:
+Align architecture, CLI, commands, and testing documentation with the hybrid chatbot implementation.
+
+Scope:
+Documentation only: chat endpoint behavior, CLI access model, run context/LLM run-type docs, and test coverage notes.
+
+Tests:
+pre-commit run --files docs/architecture.md docs/cli.md docs/commands.md docs/testing.md; gitnexus detect-changes --repo main workspace reported low risk/no affected processes.
+
+Risk:
+Low; documentation-only update.
+
+Docs:
+Updated docs/architecture.md, docs/cli.md, docs/commands.md, docs/testing.md.
