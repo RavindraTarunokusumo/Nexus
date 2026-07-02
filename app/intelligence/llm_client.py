@@ -39,9 +39,10 @@ class LLMSchemaError(LLMError):
 class LLMClient:
     """Async OpenRouter client. Records every call to agent_runs via tracer."""
 
-    def __init__(self, api_key: str, session_factory: Any) -> None:
+    def __init__(self, api_key: str, session_factory: Any, base_url: str = _BASE_URL) -> None:
         self._api_key = api_key
         self._session_factory = session_factory
+        self._base_url = base_url
 
     async def complete_json(
         self,
@@ -80,7 +81,7 @@ class LLMClient:
 
         try:
             async with httpx.AsyncClient(
-                base_url=_BASE_URL,
+                base_url=self._base_url,
                 headers={
                     "Authorization": f"Bearer {self._api_key}",
                     "Content-Type": "application/json",

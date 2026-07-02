@@ -1,10 +1,13 @@
 # app/cli/eval.py
-"""nexus eval sub-commands — run, show, diff, register-dataset, calibrate."""
+"""nexus eval sub-commands — run, show, diff, register-dataset, calibrate, memory."""
 
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import json
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -24,6 +27,26 @@ from app.intelligence.llm_client import LLMClient
 
 console = Console()
 eval_app = typer.Typer(help="LLM-as-a-Judge evaluation commands.")
+memory_app = typer.Typer(help="Memory-benchmark commands (fixtures under evals/memory/).")
+eval_app.add_typer(memory_app, name="memory")
+
+_EVALS_MEMORY_DIR = Path("evals/memory")
+_BENCHMARK_RUNS_DIR = Path("docs/benchmarks/runs")
+
+
+def _run(coro):
+    """Run a coroutine safely — works both inside and outside a running event loop."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop is None:
+        return asyncio.run(coro)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(asyncio.run, coro)
+        return future.result()
 
 
 def _get_session_factory(db_url: str):
@@ -191,7 +214,11 @@ def eval_run(
         prompt_sha = "unknown"
 
     ds = load_dataset(dataset_path)
-    client = LLMClient(api_key=app_settings.openrouter_api_key, session_factory=sf)
+    client = LLMClient(
+        api_key=app_settings.llm_api_key,
+        session_factory=sf,
+        base_url=app_settings.llm_base_url,
+    )
 
     result = asyncio.run(
         execute_run(
@@ -404,3 +431,112 @@ def eval_calibrate(
     if pearson_gnd is not None:
         typer.echo(f"  groundedness r:     {pearson_gnd:.4f}")
     typer.echo(f"  → {output['recommendation']}")
+
+
+def _load_memory_runner_entry():
+    """Lazily import the memory-benchmark runner's async entry point.
+
+    Contract (plan T-F35): scripts/benchmarks/run_memory_benchmark.py exposes
+    `async def run_benchmark(*, fixtures: Path, k: int, out: Path | None = None,
+    skip_ingest: bool = False, domain: str | None = None) -> dict`.
+    """
+    try:
+        from scripts.benchmarks.run_memory_benchmark import run_benchmark
+    except ImportError as exc:
+        typer.echo(
+            f"Benchmark runner not available (scripts.benchmarks.run_memory_benchmark): {exc}",
+            err=True,
+        )
+        raise typer.Exit(code=1) from exc
+    return run_benchmark
+
+
+def _new_run_id() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _summarize_run(run_dir: Path) -> str:
+    meta_path = run_dir / "run_meta.json"
+    parts = [f"run_id={run_dir.name}"]
+    if not meta_path.exists():
+        return ", ".join(parts)
+    try:
+        meta = json.loads(meta_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return ", ".join(parts)
+    for key in ("k", "git_rev", "models", "timestamp"):
+        if key in meta:
+            parts.append(f"{key}={meta[key]}")
+    return ", ".join(parts)
+
+
+@memory_app.command("run")
+def memory_run(
+    benchmark: str = typer.Option(
+        "nexus_synthetic", "--benchmark", help="Fixture set name under evals/memory/."
+    ),
+    k: int = typer.Option(5, "--k", help="Top-k retrieved capsules per question."),
+    out: Optional[Path] = typer.Option(
+        None,
+        "--out",
+        help="Output directory (default docs/benchmarks/runs/<UTC timestamp>).",
+    ),
+    skip_ingest: bool = typer.Option(
+        False, "--skip-ingest", help="Skip corpus ingestion (assume fixtures already ingested)."
+    ),
+    domain: Optional[str] = typer.Option(
+        None, "--domain", help="Override domain (defaults to the fixture pack's domain)."
+    ),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Run the memory benchmark against a fixture set and write results under --out."""
+    fixtures_dir = _EVALS_MEMORY_DIR / benchmark
+    if not fixtures_dir.exists():
+        typer.echo(
+            f"Unknown benchmark '{benchmark}': no fixtures at {fixtures_dir}.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    out_dir = out or (_BENCHMARK_RUNS_DIR / _new_run_id())
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    entry = _load_memory_runner_entry()
+
+    try:
+        _run(
+            entry(
+                fixtures=fixtures_dir,
+                k=k,
+                out=out_dir,
+                skip_ingest=skip_ingest,
+                domain=domain,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 — surface any runner failure as a CLI error
+        typer.echo(f"Benchmark run failed: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    run_id = out_dir.name
+    if json_output:
+        typer.echo(json.dumps({"run_id": run_id, "out": str(out_dir)}, indent=2))
+        return
+
+    typer.echo(f"\n✓ Benchmark run complete: {run_id}")
+    typer.echo(f"  Output: {out_dir}")
+    typer.echo(f"  Run `nexus eval memory report --run-id {run_id}` to view the report.")
+
+
+@memory_app.command("report")
+def memory_report(
+    run_id: str = typer.Option(..., "--run-id", help="Run identifier (output directory name)."),
+) -> None:
+    """Print a benchmark run's report.md plus a one-line summary."""
+    run_dir = _BENCHMARK_RUNS_DIR / run_id
+    report_path = run_dir / "report.md"
+    if not report_path.exists():
+        typer.echo(f"No report found for run '{run_id}' at {report_path}.", err=True)
+        raise typer.Exit(code=1)
+
+    typer.echo(report_path.read_text())
+    typer.echo(f"\nSummary: {_summarize_run(run_dir)}")

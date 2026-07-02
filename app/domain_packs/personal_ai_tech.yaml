@@ -849,8 +849,8 @@ model_routing_policy:
       embeddings: bge-small for dense retrieval and near-duplicate detection
       classifier: DeBERTa-xsmall for domain/topic classification
       fallback_lm: Qwen 0.5B for low-stakes compression and labeling
-    T2: deepseek/deepseek-v4-flash
-    T3: deepseek/deepseek-v4-pro
+    T2: qwen3.6-flash
+    T3: qwen3.7-max
 
 budgets:
   max_segments_per_source: 500
@@ -1073,5 +1073,5 @@ brief_sections:
   - watch_next
 
 models:
-  t2: deepseek/deepseek-v4-flash
-  t3: deepseek/deepseek-v4-pro
+  t2: qwen3.6-flash
+  t3: qwen3.7-max

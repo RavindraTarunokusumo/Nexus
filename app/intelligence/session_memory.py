@@ -19,6 +19,7 @@ from langgraph.graph.message import add_messages
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from typing_extensions import TypedDict
 
+from app.config import settings
 from app.intelligence.chat import make_chat_graph, run_chat_with_context
 from app.intelligence.llm_client import LLMClient
 
@@ -117,7 +118,6 @@ async def run_session_turn(
     question: str,
     top_k: int,
     model: str,
-    openrouter_api_key: str,
     db_url: str,
     session_factory: async_sessionmaker,
     embedder: Any,
@@ -138,7 +138,9 @@ async def run_session_turn(
         human_msgs = [m for m in state["messages"] if isinstance(m, HumanMessage)]
         q = str(human_msgs[-1].content)
 
-        llm_client = LLMClient(openrouter_api_key, session_factory)
+        llm_client = LLMClient(
+            settings.llm_api_key, session_factory, base_url=settings.llm_base_url
+        )
         graph = make_chat_graph(session_factory, llm_client, embedder)
         try:
             result = await run_chat_with_context(graph, q, model, top_k=top_k)

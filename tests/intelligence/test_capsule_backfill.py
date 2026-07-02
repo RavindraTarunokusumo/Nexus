@@ -207,7 +207,7 @@ def test_capsule_from_claim_pure_function():
     - idempotency_key matches build_capsule_idempotency_key output exactly.
     - N segments == len(source_refs).
     - Every capsule field matches the plan §6 mapping.
-    - CapsuleSegment.role reflects the evidence_roles lookup (not a hardcoded value).
+    - CapsuleSegment.role reflects the evidence_roles lookup, translated to segment-role vocab.
     - Falls back to "support" when a span_id has no entry in evidence_roles.
     """
     doc_id = uuid.uuid4()
@@ -219,7 +219,7 @@ def test_capsule_from_claim_pure_function():
     claim = _FakeClaim(doc_id=doc_id, span_ids=[span_id_a, span_id_b])
     v07 = claim.entities_json["_v0_7"]
 
-    # span_id_a → "support", span_id_b → "refute"; verifies both propagate correctly.
+    # span_id_a "support"→"supports", span_id_b "refute"→"contradicts" (translated to segment-role vocab).
     evidence_roles = {span_id_a: "support", span_id_b: "refute"}
 
     capsule, segments = capsule_from_claim(
@@ -269,11 +269,11 @@ def test_capsule_from_claim_pure_function():
     assert len(segments) == 2
     seg_by_span = {s.segment_id: s for s in segments}
     assert seg_by_span[span_id_a].capsule_id == capsule.id
-    assert seg_by_span[span_id_a].role == "support"
+    assert seg_by_span[span_id_a].role == "supports"
     assert seg_by_span[span_id_b].capsule_id == capsule.id
-    assert seg_by_span[span_id_b].role == "refute"
+    assert seg_by_span[span_id_b].role == "contradicts"
 
-    # Fallback: a span not in evidence_roles should receive "support"
+    # Fallback: a span not in evidence_roles should receive "grounds" (column default)
     span_id_unknown = uuid.uuid4()
     claim_single = _FakeClaim(doc_id=doc_id, span_ids=[span_id_unknown])
     _, segs_fallback = capsule_from_claim(
@@ -284,7 +284,7 @@ def test_capsule_from_claim_pure_function():
         embedding=dummy_embedding,
         evidence_roles={},  # empty — triggers fallback
     )
-    assert segs_fallback[0].role == "support"
+    assert segs_fallback[0].role == "grounds"
 
 
 # ---------------------------------------------------------------------------

@@ -192,7 +192,9 @@ async def answer_chat(payload: ChatAnswerRequest, request: Request) -> ChatAnswe
             detail="Embedder not initialised.",
         )
 
-    client = LLMClient(settings.openrouter_api_key, request.app.state.session_factory)
+    client = LLMClient(
+        settings.llm_api_key, request.app.state.session_factory, base_url=settings.llm_base_url
+    )
     graph = make_chat_graph(request.app.state.session_factory, client, embedder)
     try:
         final = await run_chat_with_context(
@@ -387,7 +389,6 @@ async def send_message(
             question=payload.content,
             top_k=payload.top_k,
             model=settings.t2_model,
-            openrouter_api_key=settings.openrouter_api_key,
             db_url=settings.database_url,
             session_factory=request.app.state.session_factory,
             embedder=embedder,

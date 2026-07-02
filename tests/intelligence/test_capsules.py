@@ -144,7 +144,7 @@ def test_build_capsule_row_segment_roles_default():
         created_by_tier="t2",
         created_by_model=None,
     )
-    assert all(s.role == "support" for s in segments)
+    assert all(s.role == "grounds" for s in segments)
 
 
 def test_build_capsule_row_segment_roles_custom():
@@ -168,7 +168,7 @@ def test_build_capsule_row_segment_roles_custom():
     roles = {s.segment_id: s.role for s in segments}
     assert roles[span_uuid] == "grounds"
     other_ids = [s.segment_id for s in segments if s.segment_id != span_uuid]
-    assert all(roles[sid] == "support" for sid in other_ids)
+    assert all(roles[sid] == "grounds" for sid in other_ids)
 
 
 def test_build_capsule_row_created_at_passthrough():

@@ -85,8 +85,9 @@ async def extract_claims(
         await session.commit()
 
     llm_client = LLMClient(
-        api_key=settings.openrouter_api_key,
+        api_key=settings.llm_api_key,
         session_factory=request.app.state.session_factory,
+        base_url=settings.llm_base_url,
     )
     graph = make_extraction_graph(request.app.state.session_factory, llm_client)
     final = await run_with_context(graph, document_id, settings.t2_model)
