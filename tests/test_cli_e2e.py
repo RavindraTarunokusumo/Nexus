@@ -346,3 +346,15 @@ def test_capsules_backfill_help_works():
     result = runner.invoke(app, ["capsules", "backfill", "--help"])
     assert result.exit_code == 0
     assert "--dry-run" in result.stdout
+
+
+def test_theses_synthesize_help_works():
+    result = runner.invoke(app, ["theses", "synthesize", "--help"])
+    assert result.exit_code == 0
+    assert "--domain" in result.stdout
+
+
+def test_artefacts_create_help_works():
+    result = runner.invoke(app, ["artefacts", "create", "--help"])
+    assert result.exit_code == 0
+    assert "--question" in result.stdout
