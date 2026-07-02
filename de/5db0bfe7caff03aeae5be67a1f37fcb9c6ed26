@@ -1,0 +1,7 @@
+Summary: refreshed baseline artifacts + summary after the three bring-up fixes; relations/theses/confirmed-lifecycle now populate on Qwen. Documents corrected root-cause (model routing) and remaining timeline/supersedes-relation gaps.
+
+Scope: docs/benchmarks/baseline-2026-07-02.md, runs/baseline-2026-07-02/.
+
+Tests: n/a (docs + generated data). Full-suite gate green (505 passed, 6 pre-existing) on the code changes.
+
+Risk: NONE (docs).
