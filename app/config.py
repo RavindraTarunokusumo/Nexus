@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     # Optional with sensible defaults.
     redis_url: str = "redis://localhost:6379/0"
     openrouter_api_key: str = ""
+    qwen_cloud_api_key: str = ""
+    llm_base_url: str = "https://openrouter.ai/api/v1"
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
 
     # Model tiers — single place to swap all three:
     #   T1: local sentence-transformer (embedding, no API key needed)
@@ -22,6 +25,10 @@ class Settings(BaseSettings):
     default_pack_id: str = "personal_ai_tech"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @property
+    def llm_api_key(self) -> str:
+        return self.qwen_cloud_api_key or self.openrouter_api_key
 
 
 settings = Settings()  # type: ignore[call-arg]  # reads from env/.env at runtime

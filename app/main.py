@@ -49,7 +49,9 @@ async def lifespan(app: FastAPI):
         app.state.checkpointer = checkpointer
 
         if app.state.embedder is not None:
-            client = LLMClient(settings.openrouter_api_key, session_factory)
+            client = LLMClient(
+                settings.llm_api_key, session_factory, base_url=settings.llm_base_url
+            )
             chat_graph = make_chat_graph(session_factory, client, app.state.embedder)
             app.state.memory_graph = make_memory_graph(chat_graph, checkpointer)
             logger.info("Session memory initialised.")

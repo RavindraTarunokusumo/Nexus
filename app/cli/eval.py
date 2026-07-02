@@ -191,7 +191,11 @@ def eval_run(
         prompt_sha = "unknown"
 
     ds = load_dataset(dataset_path)
-    client = LLMClient(api_key=app_settings.openrouter_api_key, session_factory=sf)
+    client = LLMClient(
+        api_key=app_settings.llm_api_key,
+        session_factory=sf,
+        base_url=app_settings.llm_base_url,
+    )
 
     result = asyncio.run(
         execute_run(
