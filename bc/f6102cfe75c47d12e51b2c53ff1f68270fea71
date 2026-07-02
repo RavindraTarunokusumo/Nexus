@@ -1,0 +1,9 @@
+Summary: orchestrator-reserved CLI registration for Wave-1 subagent typers + TODO bookkeeping.
+
+Scope: app/cli/main.py (2 imports, 2 add_typer), TODO.md.
+
+Tests: CliRunner smoke — --help exit 0, lifecycle/consolidation present, lifecycle run --help exit 0.
+
+Risk: NONE — additive registration.
+
+Docs: pending.
