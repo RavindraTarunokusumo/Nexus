@@ -1,0 +1,11 @@
+Summary: fallback segment role grounds (was invalid 'support'); _EVIDENCE_ROLE_TO_SEGMENT_ROLE maps support->supports, refute->contradicts. Single-point fix in build_capsule_row (used by extraction store_claims + backfill).
+
+Scope: app/intelligence/capsules.py, tests/intelligence/test_capsules.py, tests/intelligence/test_capsule_backfill.py, TODO.md.
+
+Tests: full suite 504 passed, 6 failed (down from 14) on nexus_gate; -8 failures, 0 new; remaining 6 are pre-existing mock under-provisioning in extraction_graph/dual_write, unrelated.
+
+Risk: LOW (gitnexus impact build_capsule_row = LOW). Debugging patch on the F6 critical path.
+
+Docs: TODO updated.
+
+NOTE: this commit was inadvertently git-amended once during authoring (no-amend rule slip); no push had occurred, tree was clean, so the only effect was a changed hash — corrected forward here, not via reset.
