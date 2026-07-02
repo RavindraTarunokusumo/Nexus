@@ -1,0 +1,9 @@
+Summary: Adopted weather-monitor-NL's 7-Step Workflow + Grok Build Implementation/Review Handoff into AGENTS.md/CLAUDE.md, replacing the old 9-step workflow. Superseded the earlier same-session partial edit that only removed numbered Step 8/9 without the Grok delegation requirement.
+
+Scope: AGENTS.md, CLAUDE.md only. GitNexus rules/resources block preserved byte-identical. Copilot Code Review PR gate preserved.
+
+Tests: Docs-only change; validated via git diff review, grep for "Grok Build Implementation/Review Handoff" presence, grep for absence of numbered Step 8/9, and byte-diff of the GitNexus block against HEAD. pre-commit unavailable in this shell (not on PATH / not installed as git hook in this environment) so `pre-commit run --all-files` could not be executed — pre-existing environment gap, not introduced by this change.
+
+Risk: Low (instruction/process docs only, no application code touched). Governs future session behavior: Implementation steps must now delegate to a non-interactive Grok CLI subagent (--yolo) as junior implementer; senior dev retains diff review, validation, and all git operations.
+
+Docs: AGENTS.md, CLAUDE.md rewritten in place; no other docs referenced the removed #workflow/#reflection anchors (verified via grep).
