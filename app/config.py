@@ -14,11 +14,12 @@ class Settings(BaseSettings):
 
     # Model tiers — single place to swap all three:
     #   T1: local sentence-transformer (embedding, no API key needed)
-    #   T2: fast LLM via OpenRouter (claim extraction)
-    #   T3: strong LLM via OpenRouter (synthesis / query — future)
+    #   T2: fast LLM via llm_base_url (extraction, relation classification, chat)
+    #   T3: strong LLM via llm_base_url (synthesis / query)
+    # Defaults are Qwen Cloud (DashScope) model ids; override per env.
     t1_model: str = "BAAI/bge-small-en-v1.5"
-    t2_model: str = "deepseek/deepseek-v4-flash"
-    t3_model: str = "deepseek/deepseek-v4-pro"
+    t2_model: str = "qwen3.6-flash"
+    t3_model: str = "qwen3.7-max"
 
     # Default domain pack loaded for /chat/answer and session turns.
     default_pack_id: str = "personal_ai_tech"

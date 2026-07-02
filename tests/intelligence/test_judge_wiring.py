@@ -22,7 +22,7 @@ from app.intelligence.llm_client import SemanticObject
 def test_resolve_t2_model_reads_top_level_models_key():
     pack = load_pack("personal_ai_tech")
     model = _resolve_t2_model(pack, fallback="fallback-model")
-    assert model == "deepseek/deepseek-v4-flash"
+    assert model == "qwen3.6-flash"
 
 
 def test_resolve_t2_model_uses_fallback_when_absent():
