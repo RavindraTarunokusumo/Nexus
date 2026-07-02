@@ -1,0 +1,9 @@
+Summary: Settings gains qwen_cloud_api_key/llm_base_url/embedding_model + llm_api_key fallback property; LLMClient takes base_url; all 5 constructor sites routed through settings.
+
+Scope: app/config.py, app/intelligence/llm_client.py, .env.example, 5 call sites, tests/test_llm_client_config.py.
+
+Tests: 7 new config tests; full suite green vs baseline.
+
+Risk: LOW — additive default arg; verified live against dashscope-intl with qwen3.6-flash and qwen3.7-max.
+
+Docs: pending. Implemented by Grok subagent (session 019f2396-9be9-7da2-9e73-dacfc79500ba).
