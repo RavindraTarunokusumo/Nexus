@@ -1,0 +1,18 @@
+Summary:
+Applied Ravindra-approved canonical Nexus instruction workflow to AGENTS.md and CLAUDE.md.
+
+Scope:
+- Canonical workflow is copied from the approved reference text and adapted only to Nexus context.
+- Includes Grok Build Implementation/Review Handoff.
+- Removes weather-monitor production-specific content.
+- Preserves Nexus GitNexus block.
+
+Tests:
+- git diff --check -- AGENTS.md CLAUDE.md
+- Python validation confirmed Nexus project description, Grok handoff, Post-PR, Reflection, no weather production section, no Step 8/Step 9 wording.
+
+Risk:
+Docs-only instruction correction.
+
+Docs:
+AGENTS.md, CLAUDE.md
