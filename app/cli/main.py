@@ -67,13 +67,17 @@ app.add_typer(runs_app, name="runs")
 
 from app.cli.artefacts import artefacts_app  # noqa: E402
 from app.cli.capsules import capsules_app  # noqa: E402
+from app.cli.consolidation import consolidation_app  # noqa: E402
 from app.cli.eval import eval_app  # noqa: E402
+from app.cli.lifecycle import lifecycle_app  # noqa: E402
 from app.cli.theses import theses_app  # noqa: E402
 
 app.add_typer(eval_app, name="eval")
 app.add_typer(capsules_app, name="capsules")
 app.add_typer(theses_app, name="theses")
 app.add_typer(artefacts_app, name="artefacts")
+app.add_typer(lifecycle_app, name="lifecycle")
+app.add_typer(consolidation_app, name="consolidation")
 
 
 def _run(coro):

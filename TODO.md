@@ -22,28 +22,30 @@ PR #24 (merge `f660b8d`). Archived: `docs/iterations/archive/2026-07-02-phase-c-
 > Wave 3 (orchestrator): F6 baseline run + report. Deviation note: interactive spec-acceptance
 > step skipped on explicit user instruction (deadline); implementer self-checks run against
 > per-task databases `nexus_t1..t6` to avoid shared-DB contention during parallel runs.
+> Delegation change mid-session: user directed Wave 2+ (and reviews) to **Sonnet 5 native
+> subagents** instead of Grok; Wave 1 landed via Grok before the instruction.
 
 ### Phase D — Retrieval & Qwen Context Assembly (hackathon required)
 
 > Keep only retrieval improvements that visibly improve MemoryAgent quality. Defer schema cutovers and cleanup until after Devpost submission.
 
-- [ ] D1 — Context assembly `include` categories + `ordering: evidence_strength` for supporting evidence, counter-evidence, superseding/superseded memories, and epistemic notes.
-- [ ] D2 — Un-stub hackathon-critical hybrid scoring inputs: `source_authority`, `relation_relevance`, and `evidence_quality`; acceptable first version may use deterministic relation/source/lifecycle heuristics.
-- [ ] D3 — Ensure chat/synthesis answer generation uses a Qwen T2+ model and reports citations/evidence chain in the demo path.
+- [x] D1 — (`f809b8c`) Context assembly `include` categories + `ordering: evidence_strength` for supporting evidence, counter-evidence, superseding/superseded memories, and epistemic notes.
+- [x] D2 — (`f809b8c`) Un-stub hackathon-critical hybrid scoring inputs: `source_authority`, `relation_relevance`, and `evidence_quality`; acceptable first version may use deterministic relation/source/lifecycle heuristics.
+- [x] D3 — (`5b464ea`) Ensure chat/synthesis answer generation uses a Qwen T2+ model and reports citations/evidence chain in the demo path.
 - [ ] Deferred after hackathon — Drop `claims` + `claim_evidence` tables only after `/chat/answer` cutover is green for 1 week.
 
 ### Phase E — Living Knowledge (hackathon MVP)
 
-- [ ] E1 — Minimal lifecycle worker: active → confirmed/qualified/superseded/stale/archived based on relation/lifecycle heuristics sufficient for demo and benchmarks.
-- [ ] E2 — Stale/superseded detection for benchmark/demo fixtures using `pack.retention_policy.stale_conditions` + `supersession_rules` where available.
-- [ ] E3 — Consolidation worker minimal path: many capsules → thesis / narrative arc / research model using the Phase C thesis writer.
+- [x] E1 — (`d9a881b`) Minimal lifecycle worker: active → confirmed/qualified/superseded/stale/archived based on relation/lifecycle heuristics sufficient for demo and benchmarks.
+- [x] E2 — (`d9a881b`) Stale/superseded detection for benchmark/demo fixtures using `pack.retention_policy.stale_conditions` + `supersession_rules` where available.
+- [x] E3 — (`ca9b44d`) Consolidation worker minimal path: many capsules → thesis / narrative arc / research model using the Phase C thesis writer.
 
 ### Phase F — Benchmarking Agentic Memory (hackathon required)
 
 > Build a small but repeatable benchmark first. External benchmark adapters are stretch; Nexus-native synthetic memory probes are required for the one-week submission.
 
-- [ ] F1 — Benchmark survey note mapping LoCoMo, LongMemEval, BEAM, Memora, and RAG/multi-hop baselines to Nexus capabilities; explicitly cite what is implemented now vs stretch.
-- [ ] F2 — Add `evals/memory/nexus_synthetic/` fixtures for the demo domain:
+- [x] F1 — (`ae3228a`) Benchmark survey note mapping LoCoMo, LongMemEval, BEAM, Memora, and RAG/multi-hop baselines to Nexus capabilities; explicitly cite what is implemented now vs stretch.
+- [x] F2 — (`2f9d089`) Add `evals/memory/nexus_synthetic/` fixtures for the demo domain:
   - AI release timeline memory questions.
   - multi-document benchmark/result comparison questions.
   - superseded/stale claim questions.
