@@ -4,11 +4,12 @@
 
 > Submission target: Devpost Qwen Cloud Hackathon, Track 1 MemoryAgent. For the hackathon branch, optimize for a working Qwen-powered memory demo, benchmark report, and submission package. Defer broad roadmap items that do not strengthen the MemoryAgent story within one week.
 
-- [ ] H0 — Register/verify Qwen Cloud access, API key, voucher credits, and model availability from the deployment environment.
+- [X] H0 — Register/verify Qwen Cloud access, API key, voucher credits, and model availability from the deployment environment.
 - [x] H1 — Route **T2 and above** through Qwen Cloud / Model Studio models; keep model names configurable by environment and domain pack. (PR #25 D3/G4)
 - [x] H2 — Produce a MemoryAgent demo script: ingest AI-tech memory stream → extract capsules → relate/consolidate → supersede stale memory → answer with citations → show benchmark report. (PR #25; `scripts/benchmarks/demo_answer.py` + `nexus eval memory run`)
-- [ ] H3 — Add submission docs/assets: ~~README demo walkthrough~~ (done, PR #25), architecture diagram, benchmark screenshot/report, demo video outline, Devpost project narrative.
+- [X] H3 — Add submission docs/assets: ~~README demo walkthrough~~ (done, PR #25), architecture diagram, benchmark screenshot/report, demo video outline, Devpost project narrative.
 - [ ] H4 — Treat MCP integrations and repo skills as final-version improvements: document tool contracts now; implement only a thin MCP server/tool wrapper if it does not endanger the core demo.
+- [ ] H5 — Implement a Qwen memory query router before the next benchmark pass: classify each incoming question (timeline/factoid vs. multi-doc vs. supersession vs. abstention) and dispatch to a retrieval/answer strategy tuned for that shape, instead of one fixed chat-graph path for every question. Candidate fix for the weak timeline/factoid-recall category — see the Phase F follow-up below.
 
 ### Phase C — Reasoning Layer
 
@@ -30,21 +31,17 @@ baseline: `docs/benchmarks/baseline-2026-07-02.md`. Archived:
 - [ ] **Chat retrieval: collapse double aux-block discovery** (PR #25 review, LOW) — `_discover_counter_evidence_ids`/`_discover_supersession_links` run once in `_run_retrieve_capsules` (for the DB fetch) and again in `_assemble_context_blocks`; deterministic, so a perf nit not a bug. Compute once and pass through. Ref `app/intelligence/chat.py`.
 - [ ] **`nexus lifecycle run --json` prints nothing (demo finding, LOW)** — the CLI runs but emits no output in `--json` mode against an already-lifecycled corpus (0 new transitions). Should always print the report object. Ref `app/cli/lifecycle.py`.
 - [ ] **Cross-document relation pass (baseline top follow-up)** — `classify_relations` only pairs capsules within one document; explicit cross-doc `supersedes`/`contradicts` edges are never created (the lifecycle facet heuristic partially compensates for supersession). Add a domain-wide relation pass (batch by object_family/actor across docs). See `docs/benchmarks/baseline-2026-07-02.md`.
-- [ ] **Timeline/factoid-recall category is the weakest benchmark score** (0.25–0.5 across runs) — likely an embedding-recall or prompt issue for single-fact date lookups, not a lifecycle bug (the underlying capsule is `active`). Investigate retrieval for short factoid queries.
+- [ ] **Timeline/factoid-recall category is the weakest benchmark score** (0.25–0.5 across runs) — likely an embedding-recall or prompt issue for single-fact date lookups, not a lifecycle bug (the underlying capsule is `active`). Investigate retrieval for short factoid queries. Candidate fix: the query router (H5, above).
 - [ ] Stretch after baseline — LoCoMo/LongMemEval download + conversion adapters; BEAM/Memora adapters remain post-hackathon unless the core demo is already complete.
 
 ### Phase G — Qwen Model Tiering (hackathon required)
 
 > T2 and above must be Qwen-based for submission. Also scout/validate whether Qwen can cover T0/T1 so the whole stack can be presented as Qwen-native.
 
-- [ ] G1 — Add configurable model tier map and document chosen defaults:
-  - T0 candidate — `Qwen3-Embedding-0.6B` locally or Model Studio `text-embedding-v4` for embeddings; Qwen3 Embedding supports 0.6B/4B/8B, 32K sequence length, instruction-aware embeddings, MRL dimensions, multilingual/code retrieval.
-  - T1 candidate — `Qwen3-Reranker-0.6B` locally or Model Studio `qwen3-rerank` for cheap relevance scoring/reranking; consider `qwen3.6-flash`/turbo-class Qwen model for lightweight classification if available in account.
-  - T2 candidate — `qwen3.7-plus` or `qwen3.6-flash` for semantic extraction, judging, relation classification, and routine chat answers.
-  - T3 candidate — `qwen3.7-max` or strongest available Qwen reasoning model for synthesis, thesis writing, decision artefacts, and benchmark judge passes.
-  - T4 candidate — `qwen3.7-max` / Qwen Max-class model for audit, contradiction, high-confidence adjudication, and final benchmark judge.
-- [ ] G2 — Verify exact Qwen Cloud model IDs, pricing/limits, context windows, and OpenAI-compatible base URL in the active account before implementation hard-codes names.
-- [ ] G3 — Add environment examples for Qwen Cloud: base URL, API key variable, and tier-to-model overrides.
+- [x] G1 (T2/T3) — `qwen3.6-flash` (T2: extraction, judging, relation classification, chat) and `qwen3.7-max` (T3: synthesis, thesis writing, decision artefacts) wired as config defaults + domain-pack overrides. (PR #25 H1/D3/G4)
+- [ ] G1 (T0/T1/T4 stretch) — T0 embeddings via `Qwen3-Embedding-0.6B`/`text-embedding-v4` (T1 currently runs locally via `BAAI/bge-small-en-v1.5`); T1 reranking via `Qwen3-Reranker-0.6B`/`qwen3-rerank`; T4 high-confidence audit/adjudication pass.
+- [x] G2 — Verify exact Qwen Cloud model IDs, base URL (`https://dashscope-intl.aliyuncs.com/compatible-mode/v1`), and live availability. (PR #25 D3, confirmed via the F6 baseline run)
+- [x] G3 — Environment examples for Qwen Cloud: base URL, API key variable, tier-to-model overrides. (`.env.example`, PR #25)
 
 ### Phase H — MCP / Skills Integration Story (hackathon stretch)
 
