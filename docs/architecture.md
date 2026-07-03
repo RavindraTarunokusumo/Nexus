@@ -94,6 +94,13 @@ app/
                            #   pack, min_strength, min_cluster_size, dry_run) — thin wrapper over
                            #   theses.synthesize_theses_from_relations; ConsolidationReport
                            #   (theses_created, thesis_ids)
+    cross_relations.py     # Cross-document relation pass (PR #27):
+                           #   classify_cross_document_relations(session_factory, client, domain,
+                           #   pack, model, max_pairs, dry_run) — pairs non-terminal capsules
+                           #   across documents grouped by (object_family, primary actor),
+                           #   direction/priority by Document.published_at (fallback created_at),
+                           #   dedup against existing rows, max_pairs LLM-call cap; same T2
+                           #   classifier/persistence as the per-doc pass; CrossDocReport
     prompts/classify_intent.py  # IntentClassification model (intent + question shape) +
                            #   build_classify_prompt; one LLM call classifies both the pack
                            #   query-intent and the router question shape
@@ -190,10 +197,13 @@ app/
     consolidation.py       # Typer sub-app — nexus consolidation run --domain [--pack]
                            #   [--min-strength] [--min-cluster-size] [--dry-run] [--json];
                            #   calls app.intelligence.consolidation.consolidate_domain
+    relations.py           # Typer sub-app — nexus relations run [--domain] [--pack]
+                           #   [--max-pairs] [--model] [--dry-run] [--json]; calls
+                           #   app.intelligence.cross_relations.classify_cross_document_relations
     main.py                # Typer app — nexus console-script entry point;
                            #   registers `runs` sub-app with `list` and `show` commands;
                            #   registers `eval`, `capsules`, `theses`, `artefacts`, `lifecycle`,
-                           #   `consolidation` sub-apps
+                           #   `consolidation`, `relations` sub-apps
 scripts/
   benchmarks/
     scoring.py              # Pure F5 metric functions: score_answer (per-question), aggregate
@@ -287,6 +297,11 @@ external source
           groups same-family capsule pairs by object_family → RelationClassification;
           skips "none" results; writes binary SemanticRelation rows
           (target_capsule_id SET); respects remaining T2 budget
+-> cross-document relation pass (T2, PR #27 — nexus relations run, or the
+     benchmark stage between extraction and lifecycle):
+          pairs capsules ACROSS documents by (object_family, primary actor),
+          newer-by-published_at as source; writes the same SemanticRelation rows;
+          cross-doc supersedes edges drive lifecycle supersession and thesis clustering
 -> query answering:
      single-turn  POST /chat/answer  (stateless, no session)
                     -> classify_intent (one LLM call: pack query-intent + router

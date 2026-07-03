@@ -81,6 +81,8 @@ CLI entry point: `app/cli/eval.py` — `nexus eval` sub-app. See [Commands](comm
 | `tests/test_eval_memory_cli.py` | Unit (no DB) | `nexus eval memory run`/`report` — lazy runner import, missing-fixtures/report errors |
 | `tests/benchmarks/test_scoring.py` | Unit (no I/O) | `score_answer`/`aggregate` — recall/precision math, abstention/forbidden edge cases, None-exclusion |
 | `tests/intelligence/test_router.py` | Unit (no DB) | H5 query router — `resolve_strategy` known/unknown shapes, `general` all-defaults, weight-merge semantics, top_k floor |
+| `tests/intelligence/test_cross_relations.py` | Unit (no DB) | Cross-doc relation pass — (family, actor) pairing, same-doc exclusion, dedup, published_at direction (incl. permuted ingestion order), max_pairs cap, dry-run, LLM-error continuation |
+| `tests/test_relations_cli.py` | Unit (no DB) | `nexus relations run` — help, pack-domain default, `--json` zero-count output |
 
 Benchmark fixtures: [`evals/memory/nexus_synthetic/`](../evals/memory/nexus_synthetic/README.md). First live baseline: [`docs/benchmarks/baseline-2026-07-02.md`](benchmarks/baseline-2026-07-02.md). Router validation run (PR #26): [`docs/benchmarks/runs/router-t-r2/`](benchmarks/runs/router-t-r2/report.md).
 

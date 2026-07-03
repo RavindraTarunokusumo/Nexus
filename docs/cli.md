@@ -22,6 +22,7 @@ See [docs/commands.md](commands.md) for full flag reference and examples for eve
 | `artefacts` | `create` | Direct Postgres |
 | `lifecycle` | `run` | Direct Postgres |
 | `consolidation` | `run` | Direct Postgres |
+| `relations` | `run` | Direct Postgres + Qwen Cloud (T2) |
 | `eval memory` | `run`, `report` | Direct Postgres + Qwen Cloud |
 
 ## `capsules` Subcommand Group
@@ -92,6 +93,20 @@ nexus consolidation run --domain personal_ai_tech --dry-run
 ```
 
 Clusters strongly-related capsules (`--min-strength`, default 0.6) into `theses` rows for `--domain` (required). `--min-cluster-size` (default 2) sets the minimum connected-component size. `--dry-run` reports clusters without writing.
+
+## `relations` Subcommand Group
+
+The `relations` group runs the cross-document relation pass (PR #27): classifies capsule pairs **across documents** — grouped by `(object_family, primary actor)`, ordered by document publication date — with the same T2 classifier and relation grammar as the per-document extraction pass. Cross-doc `supersedes`/`contradicts` edges feed the lifecycle worker and thesis clustering.
+
+### `nexus relations run`
+
+```sh
+nexus relations run                                  # pack's domain, T2 model resolved from pack/settings
+nexus relations run --domain ai_tech --max-pairs 30
+nexus relations run --dry-run --json
+```
+
+`--domain` defaults to the pack's domain (warns on mismatch). `--max-pairs` (default 60) caps LLM calls. `--model` overrides the resolved T2 model. `--dry-run` reports candidate pairs without classifying. `--json` always prints the full report, including zero-count runs. Idempotent: pairs already linked by a relation row are skipped.
 
 ## `eval` Subcommand Group (updated flags)
 
