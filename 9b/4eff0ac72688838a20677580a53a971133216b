@@ -1,0 +1,1 @@
+Summary: T-X1 cross-doc relation worker + 13 unit tests. Row-field parity with extraction._run_classify_relations verified line-by-line; SemanticCapsule.domain column confirmed. Tests: 530 passed / 6 pre-existing; ruff/format/mypy at baseline. Grok implementer, session cleaned.
