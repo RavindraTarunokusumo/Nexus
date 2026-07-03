@@ -267,3 +267,29 @@ Re-running a ~15-25 minute live benchmark multiple times (to validate successive
 ### `gitnexus_impact` returning `risk: "UNKNOWN", impactedCount: 0` can mean "symbol not found," not "no callers"
 
 Running impact analysis on `_check_supersession_heuristic` (a module-private helper, single leading underscore) returned `risk: UNKNOWN, impactedCount: 0` — read in the moment as "safe, no callers," but more likely means the indexer didn't resolve the underscore-prefixed name as a distinct symbol at all (unlike the earlier-documented "file-level import coarsening" gotcha, this is a lookup miss, not an over-broad match). **Lesson:** an `UNKNOWN` risk value (as opposed to `LOW`/`MEDIUM`/`HIGH`) is itself a signal to fall back to `Grep`/direct reading rather than trusting the count — reserve confidence in "0 impacted" for a real `LOW` risk result on a symbol GitNexus actually resolved.
+
+## Session: router-h5 (2026-07-03)
+
+### For silent-zero live runs, query `agent_runs` status before grepping logs
+
+The first router benchmark run scored plausibly-nonzero overall (0.22) but every answer returned in ~40ms with 0 tokens. Grepping the run log for error/404/failed found nothing — the HTTP failures were swallowed into DB rows, not stdout. One query (`SELECT run_type, status, count(*) FROM agent_runs GROUP BY 1,2`) showed 36/36 calls at `http_401` and made the diagnosis instant (missing `LLM_BASE_URL` → Qwen key sent to OpenRouter). The `agent_runs` status distribution is the fastest first probe for any live run that produces suspicious zeros — more definitive than log grepping because the client records failures there even when nothing reaches stdout.
+
+### Validate `.env` against `.env.example` keys before a live run, not after it fails
+
+The 401 root cause was an env var present in `.env.example` but absent from the machine's real `.env` (`LLM_BASE_URL`), which had evidently been dropped at some point after the previous session's successful runs. A 5-second key-diff (`comm` on sorted `grep -o '^[A-Z_]*=' `) before the first live run would have saved a full ~20-minute benchmark cycle. Worth doing at every session start that will make LLM calls.
+
+### With a shared editable venv, verify which checkout a worktree run imports
+
+The project venv is an editable install of the main checkout, so a worktree's `nexus` console script or bare imports resolve to main's code, not the branch under test. Running `python -m <module>` from the worktree works because cwd shadows the editable path — but only if nothing changes cwd. Verifying explicitly (`python -c "import app.intelligence.router as r; print(r.__file__)"`) before the benchmark cost one command and removed the risk of validating the wrong code. Do this check before any live validation run from a worktree.
+
+### "Pre-existing failure" sets are environment-specific — re-derive, don't carry over
+
+The Grok implementer reported "6 pre-existing failures" whose composition differed from the documented set (two new names: a path-handling loader test and a chat-API 503 test; two prior names absent). Both new ones reproduced on clean `main` in this Linux environment — genuinely pre-existing here, but that could not be assumed from the prior session's Windows-derived list. Verifying against clean `main` took two minutes and prevented both false acceptance and a false alarm. The baseline failure list is a per-environment fact, not a repo fact.
+
+### Scale review-angle parallelism to diff size
+
+CLAUDE.md's Submit PR flow suggests one Grok handoff per /simplify review angle. For this ~250-line diff, one combined 4-angle handoff found the real issues (duplicate shape registries, dataclass-vs-BaseModel precedent) at a quarter of the session overhead; separate handoffs would have each re-read the same small diff. For large multi-module diffs the per-angle split still makes sense. Judgment call, worth making explicitly each time rather than defaulting to maximum parallelism.
+
+### Mocked-session SQL assertions via the captured statement object
+
+To test that a retrieval node's `.limit()` actually reflects strategy math (a PR-review gap: the pure unit test duplicated the formula offline), the existing AsyncMock session pattern already captures the executed statement: `sf.return_value.__aenter__.return_value.execute.call_args_list[0].args[0]._limit_clause.value`. No new fixtures needed. `_limit_clause` is SQLAlchemy-internal but stable in 2.x; the pattern turns "wiring untested" review findings into three-line tests.
