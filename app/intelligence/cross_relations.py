@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from itertools import combinations
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -33,9 +33,13 @@ _NON_TERMINAL_STATES = frozenset({"candidate", "active", "confirmed", "qualified
 class CrossDocReport(BaseModel):
     candidate_pairs: int
     classified_pairs: int
-    relations_created: int
     relation_ids: list[uuid.UUID]
     skipped_existing: int
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def relations_created(self) -> int:
+        return len(self.relation_ids)
 
 
 @dataclass(frozen=True)
@@ -104,6 +108,7 @@ async def classify_cross_document_relations(
     max_pairs: int = 60,
     dry_run: bool = False,
 ) -> CrossDocReport:
+    existing_pair_keys: set[tuple[uuid.UUID, uuid.UUID]] = set()
     async with session_factory() as session:
         capsules = (
             (
@@ -117,39 +122,33 @@ async def classify_cross_document_relations(
             .scalars()
             .all()
         )
-
-    cap_ids = {c.id for c in capsules}
-    existing_pair_keys: set[tuple[uuid.UUID, uuid.UUID]] = set()
-
-    if cap_ids:
-        async with session_factory() as session:
+        cap_ids = {c.id for c in capsules}
+        if cap_ids:
             existing_rels = (
                 (
                     await session.execute(
                         select(SemanticRelation).where(
                             SemanticRelation.target_thesis_id.is_(None),
                             SemanticRelation.source_capsule_id.in_(cap_ids),
+                            SemanticRelation.target_capsule_id.in_(cap_ids),
                         )
                     )
                 )
                 .scalars()
                 .all()
             )
-        for rel in existing_rels:
-            if rel.target_capsule_id is not None and rel.target_capsule_id in cap_ids:
-                existing_pair_keys.add(
-                    _canonical_pair_key(rel.source_capsule_id, rel.target_capsule_id)
-                )
+            existing_pair_keys = {
+                _canonical_pair_key(rel.source_capsule_id, rel.target_capsule_id)
+                for rel in existing_rels
+            }
 
     pairs, skipped_existing = build_cross_doc_pairs(capsules, existing_pair_keys)
     candidate_pairs = len(pairs)
 
-    should_classify = not dry_run and max_pairs > 0
-    to_classify = pairs[:max_pairs] if should_classify else []
+    to_classify = pairs[:max_pairs] if not dry_run and max_pairs > 0 else []
     classified_pairs = len(to_classify)
 
     relation_ids: list[uuid.UUID] = []
-    relations_created = 0
 
     for pair in to_classify:
         cap_a = pair.newer
@@ -208,12 +207,10 @@ async def classify_cross_document_relations(
             await session.commit()
 
         relation_ids.append(relation_id)
-        relations_created += 1
 
     return CrossDocReport(
         candidate_pairs=candidate_pairs,
         classified_pairs=classified_pairs,
-        relations_created=relations_created,
         relation_ids=relation_ids,
         skipped_existing=skipped_existing,
     )

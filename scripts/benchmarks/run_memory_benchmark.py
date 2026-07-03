@@ -338,12 +338,7 @@ async def run_benchmark(
         question_count=len(questions),
         started_at=started_at,
         finished_at=finished_at,
-        cross_doc_relations={
-            "candidate_pairs": cross_doc_report.candidate_pairs,
-            "classified_pairs": cross_doc_report.classified_pairs,
-            "relations_created": cross_doc_report.relations_created,
-            "skipped_existing": cross_doc_report.skipped_existing,
-        },
+        cross_doc_relations=cross_doc_report.model_dump(exclude={"relation_ids"}),
     )
 
     return {"out_dir": str(out_dir), "aggregate": agg, "metric_keys": METRIC_KEYS}

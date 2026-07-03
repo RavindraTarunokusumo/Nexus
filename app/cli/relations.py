@@ -71,8 +71,8 @@ def run(
         base_url=settings.llm_base_url,
     )
 
-    async def _classify():
-        return await classify_cross_document_relations(
+    report = _run(
+        classify_cross_document_relations(
             sf,
             client,
             domain=domain,
@@ -81,8 +81,7 @@ def run(
             max_pairs=max_pairs,
             dry_run=dry_run,
         )
-
-    report = _run(_classify())
+    )
 
     if json_output:
         typer.echo(report.model_dump_json(indent=2))
