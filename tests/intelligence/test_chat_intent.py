@@ -13,18 +13,25 @@ def _make_pack(intent_keys: list[str]) -> MagicMock:
     return pack
 
 
+def _intent_result(intent: str, shape: str = "general") -> MagicMock:
+    result = MagicMock()
+    result.intent = intent
+    result.shape = shape
+    return result
+
+
 @pytest.mark.asyncio
 async def test_classify_intent_matched() -> None:
     from app.intelligence.chat import _run_classify_intent
 
     client = AsyncMock()
-    client.complete_json.return_value = (MagicMock(intent="technical_deep_dive"), 50)
+    client.complete_json.return_value = (_intent_result("technical_deep_dive", "factoid"), 50)
     pack = _make_pack(["technical_deep_dive", "landscape_scan"])
     state = {"question": "How does GPT-5 work?", "model": "deepseek/test", "pack": pack}
 
     result = await _run_classify_intent(state, client)
 
-    assert result == {"query_intent": "technical_deep_dive"}
+    assert result == {"query_intent": "technical_deep_dive", "question_shape": "factoid"}
 
 
 @pytest.mark.asyncio
@@ -32,27 +39,28 @@ async def test_classify_intent_unknown_falls_back_to_general() -> None:
     from app.intelligence.chat import _run_classify_intent
 
     client = AsyncMock()
-    client.complete_json.return_value = (MagicMock(intent="made_up_intent"), 50)
+    client.complete_json.return_value = (_intent_result("made_up_intent", "multi_doc"), 50)
     pack = _make_pack(["technical_deep_dive"])
     state = {"question": "...", "model": "deepseek/test", "pack": pack}
 
     result = await _run_classify_intent(state, client)
 
-    assert result == {"query_intent": "general"}
+    assert result == {"query_intent": "general", "question_shape": "multi_doc"}
 
 
 @pytest.mark.asyncio
-async def test_classify_intent_empty_pack_intents_skips_llm() -> None:
+async def test_classify_intent_empty_pack_intents_still_classifies_shape() -> None:
     from app.intelligence.chat import _run_classify_intent
 
     client = AsyncMock()
+    client.complete_json.return_value = (_intent_result("general", "factoid"), 50)
     pack = _make_pack([])
-    state = {"question": "...", "model": "deepseek/test", "pack": pack}
+    state = {"question": "When did X GA?", "model": "deepseek/test", "pack": pack}
 
     result = await _run_classify_intent(state, client)
 
-    assert result == {"query_intent": "general"}
-    client.complete_json.assert_not_called()
+    assert result == {"query_intent": "general", "question_shape": "factoid"}
+    client.complete_json.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -66,7 +74,7 @@ async def test_classify_intent_llm_error_falls_back_to_general() -> None:
 
     result = await _run_classify_intent(state, client)
 
-    assert result == {"query_intent": "general"}
+    assert result == {"query_intent": "general", "question_shape": "general"}
 
 
 @pytest.mark.asyncio
@@ -80,4 +88,4 @@ async def test_classify_intent_schema_error_falls_back_to_general() -> None:
 
     result = await _run_classify_intent(state, client)
 
-    assert result == {"query_intent": "general"}
+    assert result == {"query_intent": "general", "question_shape": "general"}

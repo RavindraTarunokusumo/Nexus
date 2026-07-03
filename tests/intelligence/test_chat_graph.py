@@ -32,11 +32,15 @@ def _make_session_factory(
 
 
 def _make_client(
-    intent: str = "general", answer: str = "The answer", citations: list[str] | None = None
+    intent: str = "general",
+    shape: str = "general",
+    answer: str = "The answer",
+    citations: list[str] | None = None,
 ) -> AsyncMock:
     client = AsyncMock()
     intent_result = MagicMock()
     intent_result.intent = intent
+    intent_result.shape = shape
     answer_result = MagicMock()
     answer_result.answer = answer
     answer_result.citations = citations if citations is not None else ["C1"]
@@ -96,6 +100,7 @@ async def test_classify_intent_writes_query_intent() -> None:
     client = AsyncMock()
     result_mock = MagicMock()
     result_mock.intent = "technical_deep_dive"
+    result_mock.shape = "general"
     client.complete_json.return_value = (result_mock, 10)
 
     pack = MagicMock()
@@ -104,7 +109,7 @@ async def test_classify_intent_writes_query_intent() -> None:
 
     result = await _run_classify_intent(state, client)
 
-    assert result == {"query_intent": "technical_deep_dive"}
+    assert result == {"query_intent": "technical_deep_dive", "question_shape": "general"}
 
 
 @pytest.mark.asyncio
@@ -192,7 +197,7 @@ async def test_insufficient_evidence_when_no_capsule_embeddings() -> None:
     from app.intelligence.chat import make_chat_graph, run_chat_with_context
 
     sf = _make_session_factory(has_sentinel=False)
-    client = AsyncMock()
+    client = _make_client()
     embedder = _make_embedder()
     pack = _make_pack()
 
@@ -220,3 +225,66 @@ async def test_citation_label_normalization_brackets() -> None:
 
     assert len(result["citations"]) == 1
     assert str(result["citations"][0]["capsule_id"]) == str(capsule_id)
+
+
+@pytest.mark.asyncio
+async def test_classify_intent_shape_fallback_on_llm_error() -> None:
+    from app.intelligence.chat import _run_classify_intent
+    from app.intelligence.llm_client import LLMError
+
+    client = AsyncMock()
+    client.complete_json.side_effect = LLMError("fail")
+
+    pack = MagicMock()
+    pack.retrieval_policy.query_intents = {"general": {}}
+    state = {"question": "When did X GA?", "model": "test-model", "pack": pack}
+
+    result = await _run_classify_intent(state, client)
+
+    assert result == {"query_intent": "general", "question_shape": "general"}
+
+
+@pytest.mark.asyncio
+async def test_classify_intent_shape_fallback_on_invalid_shape() -> None:
+    from app.intelligence.chat import _run_classify_intent
+
+    client = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.intent = "general"
+    result_mock.shape = "not_a_real_shape"
+    client.complete_json.return_value = (result_mock, 10)
+
+    pack = MagicMock()
+    pack.retrieval_policy.query_intents = {"general": {}}
+    state = {"question": "When did X GA?", "model": "test-model", "pack": pack}
+
+    result = await _run_classify_intent(state, client)
+
+    assert result == {"query_intent": "general", "question_shape": "general"}
+
+
+@pytest.mark.asyncio
+async def test_generate_answer_threads_factoid_hint() -> None:
+    from app.intelligence.chat import make_chat_graph, run_chat_with_context
+    from app.intelligence.prompts import chat_answer as chat_answer_module
+    from app.intelligence.router import resolve_strategy
+
+    capsule_id = uuid.uuid4()
+    sf = _make_session_factory(rows=[_capsule_row(capsule_id)])
+    client = _make_client(shape="factoid", answer="Jan 2026.", citations=["C1"])
+    embedder = _make_embedder()
+    pack = _make_pack(query_intents={"general": {}})
+
+    graph = make_chat_graph(sf, client, embedder)
+    with (
+        patch("app.intelligence.chat.load_pack", return_value=pack),
+        patch(
+            "app.intelligence.chat.build_user_prompt",
+            wraps=chat_answer_module.build_user_prompt,
+        ) as mock_build_prompt,
+    ):
+        await run_chat_with_context(graph, "When did X GA?", "test-model", top_k=1)
+
+    expected_hint = resolve_strategy("factoid").answer_hint
+    mock_build_prompt.assert_called_once()
+    assert mock_build_prompt.call_args.kwargs.get("hint") == expected_hint
