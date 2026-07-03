@@ -305,6 +305,8 @@ async def _extract_documents(
     corpus: list[dict[str, Any]],
     session_factory: async_sessionmaker,
     client: LLMClient,
+    *,
+    t2_model: str,
 ) -> None:
     graph = make_extraction_graph(session_factory, client)
     async with session_factory() as session:
@@ -316,7 +318,7 @@ async def _extract_documents(
             )
         ).all()
     for doc_id in [row.id for row in rows if row.status == "embedded"]:
-        await run_with_context(graph, doc_id, settings.t2_model)
+        await run_with_context(graph, doc_id, t2_model)
 
 
 async def _instance_stats(
@@ -458,6 +460,7 @@ async def run_longmemeval(
     offset: int = 0,
     k: int = 5,
     out: Path | None = None,
+    pack: str | None = None,
 ) -> dict[str, Any]:
     started_at = datetime.now(timezone.utc)
     resolved_categories = categories or list(_DEFAULT_CATEGORIES)
@@ -473,9 +476,10 @@ async def run_longmemeval(
         offset=offset,
     )
 
-    pack = load_pack(settings.default_pack_id)
-    resolved_domain = pack.metadata.domain
-    t2_model = _resolve_t2_model(pack, settings.t2_model)
+    pack_id = pack or settings.default_pack_id
+    pack_obj = load_pack(pack_id)
+    resolved_domain = pack_obj.metadata.domain
+    t2_model = _resolve_t2_model(pack_obj, settings.t2_model)
 
     engine = make_engine(settings.database_url)
     session_factory = make_session_factory(engine)
@@ -492,19 +496,19 @@ async def run_longmemeval(
             corpus = _instance_to_corpus(instance)
             corpus_urls = [normalize_url(doc["url"]) for doc in corpus]
 
-            await _ingest_corpus(corpus, session_factory, embedder, settings.default_pack_id)
-            await _extract_documents(corpus, session_factory, client)
+            await _ingest_corpus(corpus, session_factory, embedder, pack_id)
+            await _extract_documents(corpus, session_factory, client, t2_model=t2_model)
             await classify_cross_document_relations(
                 session_factory,
                 client,
                 domain=resolved_domain,
-                pack=pack,
+                pack=pack_obj,
                 model=t2_model,
             )
             async with session_factory() as session:
-                await apply_lifecycle_transitions(session, domain=resolved_domain, pack=pack)
+                await apply_lifecycle_transitions(session, domain=resolved_domain, pack=pack_obj)
             async with session_factory() as session:
-                await consolidate_domain(session, domain=resolved_domain, pack=pack)
+                await consolidate_domain(session, domain=resolved_domain, pack=pack_obj)
 
             doc_count, capsule_count, relation_count, zero_capsule_docs = await _instance_stats(
                 session_factory, corpus_urls
@@ -514,9 +518,9 @@ async def run_longmemeval(
             final = await run_chat_with_context(
                 chat_graph,
                 instance["question"],
-                settings.t2_model,
+                t2_model,
                 top_k=k,
-                pack=pack,
+                pack=pack_obj,
             )
             latency_s = time.monotonic() - start
 
@@ -574,6 +578,7 @@ async def run_longmemeval(
         "instance_count": len(instances),
         "judge_errors": judge_errors,
         "domain": resolved_domain,
+        "pack_id": pack_id,
     }
     _write_outputs(out_dir, rows, judge_model=settings.t3_model, run_meta=run_meta)
 
@@ -598,6 +603,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--offset", type=int, default=0)
     parser.add_argument("--k", type=int, default=5)
     parser.add_argument("--out", type=Path, default=None)
+    parser.add_argument(
+        "--pack",
+        type=str,
+        default=None,
+        help="Domain pack id (defaults to settings.default_pack_id).",
+    )
     return parser.parse_args(argv)
 
 
@@ -612,6 +623,7 @@ def main(argv: list[str] | None = None) -> None:
             offset=args.offset,
             k=args.k,
             out=args.out,
+            pack=args.pack,
         )
     )
     print(f"Wrote LongMemEval results to {result['out_dir']}")

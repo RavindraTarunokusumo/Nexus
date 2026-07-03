@@ -1,7 +1,9 @@
 """Unit tests for LongMemEval adapter pure helpers (no DB, LLM, or network)."""
 
+from app.config import settings
 from scripts.benchmarks.run_longmemeval import (
     LongMemEvalJudgeVerdict,
+    _parse_args,
     build_judge_prompt,
     is_abstention,
     render_session_text,
@@ -151,3 +153,23 @@ def test_longmemeval_judge_verdict_parsing():
         '{"correct": false, "rationale": "Missing key fact."}'
     )
     assert negative.correct is False
+
+
+def test_parse_args_pack_defaults_to_none():
+    args = _parse_args([])
+    assert args.pack is None
+
+
+def test_parse_args_pack_pass_through():
+    args = _parse_args(["--pack", "conversation_v1"])
+    assert args.pack == "conversation_v1"
+
+
+def test_run_longmemeval_pack_defaults_to_settings_default_pack_id():
+    import inspect
+
+    from scripts.benchmarks import run_longmemeval as module
+
+    sig = inspect.signature(module.run_longmemeval)
+    assert sig.parameters["pack"].default is None
+    assert settings.default_pack_id == "personal_ai_tech"
