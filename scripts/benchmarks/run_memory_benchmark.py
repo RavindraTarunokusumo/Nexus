@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.api.routes_ingestion import (
@@ -26,7 +26,7 @@ from app.api.routes_ingestion import (
     _persist_document,
 )
 from app.config import settings
-from app.db.models import Document
+from app.db.models import Document, SemanticCapsule
 from app.db.session import make_engine, make_session_factory
 from app.domain_packs.loader import load_pack
 from app.ingestion.cleaner import normalize_url
@@ -301,6 +301,23 @@ async def run_benchmark(
             await apply_lifecycle_transitions(session, domain=resolved_domain, pack=pack)
         async with session_factory() as session:
             await consolidate_domain(session, domain=resolved_domain, pack=pack)
+
+        # A transient LLM failure during extraction can leave a doc at
+        # claims_extracted with zero capsules — silently absent from memory.
+        async with session_factory() as session:
+            zero_capsule_docs = [
+                url_to_doc_key.get(normalize_url(url), url)
+                for (url,) in (
+                    await session.execute(
+                        select(Document.url)
+                        .outerjoin(SemanticCapsule, SemanticCapsule.document_id == Document.id)
+                        .group_by(Document.id)
+                        .having(func.count(SemanticCapsule.id) == 0)
+                    )
+                ).all()
+            ]
+        if zero_capsule_docs:
+            print(f"WARNING: documents with zero capsules: {zero_capsule_docs}")
 
         rows = await _answer_questions(
             questions, url_to_doc_key, session_factory, client, embedder, pack, k
