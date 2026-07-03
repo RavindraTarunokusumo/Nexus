@@ -10,6 +10,9 @@
 - [ ] H3 — Add submission docs/assets: ~~README demo walkthrough~~ (done, PR #25), architecture diagram, benchmark screenshot/report, demo video outline, Devpost project narrative.
 - [ ] H4 — Treat MCP integrations and repo skills as final-version improvements: document tool contracts now; implement only a thin MCP server/tool wrapper if it does not endanger the core demo.
 - [ ] H5 — Implement a Qwen memory query router before the next benchmark pass: classify each incoming question (timeline/factoid vs. multi-doc vs. supersession vs. abstention) and dispatch to a retrieval/answer strategy tuned for that shape, instead of one fixed chat-graph path for every question. Candidate fix for the weak timeline/factoid-recall category — see the Phase F follow-up below.
+  Spec: `docs/superpowers/specs/2026-07-03-query-router.md`. Plan: `docs/superpowers/plans/2026-07-03-query-router.md`.
+  - [ ] T-R1 — `app/intelligence/router.py` (shapes + `RetrievalStrategy` table + `resolve_strategy`) wired through `classify_intent`/`retrieve_capsules`/`generate_answer`; single shared T2 classify call returns intent + shape; unit tests.
+  - [ ] T-R2 — Live benchmark validation on scratch DB (`nexus eval memory run --benchmark nexus_synthetic --k 5`): timeline category improves over 0.25–0.5; faithfulness stays 1.000; forbidden stays 0.000; abstention ≥ 0.7. Tune `STRATEGIES` if needed.
 
 ### Phase C — Reasoning Layer
 
