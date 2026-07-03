@@ -191,6 +191,8 @@ async def _answer_questions(
                 "retrieved_doc_keys": retrieved_doc_keys,
                 "latency_s": latency_s,
                 "tokens_used": final.get("tokens_used", 0),
+                "question_shape": final.get("question_shape", "general"),
+                "query_intent": final.get("query_intent", "general"),
                 **metrics,
             }
         )

@@ -112,6 +112,21 @@ the pack like the benchmark does).
    faithfulness 1.000; forbidden 0.000. Relations count rises vs the ~27 same-doc-only
    baseline.
 
+## T-X3 findings (amendment)
+
+The first T-X3 run failed the gate on timeline (1.000→0.500) and superseded
+(0.556→0.444) — root-caused NOT to the cross-doc pass but to the router's
+`current_state` strategy: its `recency: 0.25` override buries past-dated capsules,
+because the recency score input is capsule `created_at` (= ingestion order on a fresh
+DB), not document publication date. Classifier variance sent past-event date questions
+to `current_state` this run. In-scope tuning applied (router spec sanctions
+benchmark-driven strategy tuning): `current_state` loses its weight override (hint +
+supersession aux blocks remain), `factoid`'s prompt definition now explicitly covers
+when-questions about past events, and the benchmark runner records
+`question_shape`/`query_intent` per row. Cross-doc wins stood in the failed run
+regardless: thesis 0.500→0.667, citation precision 0.583→0.792.
+Follow-up (out of scope): recency scoring should use document publication date.
+
 ## Constraints
 
 - No changes to `extraction.py` logic (import-only), no schema changes, no pack changes.
