@@ -7,7 +7,7 @@
 - [X] H0 — Register/verify Qwen Cloud access, API key, voucher credits, and model availability from the deployment environment.
 - [x] H1 — Route **T2 and above** through Qwen Cloud / Model Studio models; keep model names configurable by environment and domain pack. (PR #25 D3/G4)
 - [x] H2 — Produce a MemoryAgent demo script: ingest AI-tech memory stream → extract capsules → relate/consolidate → supersede stale memory → answer with citations → show benchmark report. (PR #25; `scripts/benchmarks/demo_answer.py` + `nexus eval memory run`)
-- [X] H3 — Add submission docs/assets: ~~README demo walkthrough~~ (done, PR #25), architecture diagram, benchmark screenshot/report, demo video outline, Devpost project narrative.
+- [ ] H3 — Add submission docs/assets: ~~README demo walkthrough~~ (done, PR #25), architecture diagram, benchmark screenshot/report, demo video outline, Devpost project narrative.
 - [ ] H4 — Treat MCP integrations and repo skills as final-version improvements: document tool contracts now; implement only a thin MCP server/tool wrapper if it does not endanger the core demo.
 - [ ] H5 — Implement a Qwen memory query router before the next benchmark pass: classify each incoming question (timeline/factoid vs. multi-doc vs. supersession vs. abstention) and dispatch to a retrieval/answer strategy tuned for that shape, instead of one fixed chat-graph path for every question. Candidate fix for the weak timeline/factoid-recall category — see the Phase F follow-up below.
 
