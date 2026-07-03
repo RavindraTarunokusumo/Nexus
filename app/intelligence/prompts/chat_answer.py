@@ -14,7 +14,12 @@ Context blocks may include role annotations:
 - supersession: facts that supersede or are superseded by primary evidence — prefer superseding facts over superseded ones; when answering about changed facts, mention supersession explicitly."""
 
 
-def build_user_prompt(question: str, context_blocks: list[dict[str, Any]]) -> str:
+def build_user_prompt(
+    question: str,
+    context_blocks: list[dict[str, Any]],
+    *,
+    hint: str = "",
+) -> str:
     blocks = []
     for block in context_blocks:
         lines = [
@@ -32,4 +37,7 @@ def build_user_prompt(question: str, context_blocks: list[dict[str, Any]]) -> st
             lines.append(f"Epistemic note: {epistemic_note}")
         lines.extend(["Capsule:", block["text"]])
         blocks.append("\n".join(lines))
-    return "\n\n".join(["Question:", question, "Context:", "\n\n".join(blocks)])
+    parts = ["Question:", question, "Context:", "\n\n".join(blocks)]
+    if hint:
+        parts.append(f"Answer guidance: {hint}")
+    return "\n\n".join(parts)

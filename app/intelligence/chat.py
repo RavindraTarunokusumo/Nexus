@@ -20,6 +20,7 @@ from app.intelligence.prompts.classify_intent import (
     IntentClassification,
     build_classify_prompt,
 )
+from app.intelligence.router import QUESTION_SHAPES, resolve_strategy
 from app.observability.run_context import chat_run
 
 
@@ -55,6 +56,7 @@ class ChatState(TypedDict):
     model: str
     run_id: uuid.UUID | None
     query_intent: str
+    question_shape: str
     pack: Any
     context_blocks: list[dict[str, Any]]
     answer: str
@@ -491,10 +493,8 @@ def compute_hybrid_score(
 async def _run_classify_intent(state: dict, client: Any) -> dict:
     pack = state.get("pack")
     if pack is None:
-        return {"query_intent": "general"}
+        return {"query_intent": "general", "question_shape": "general"}
     intent_names = list(pack.retrieval_policy.query_intents.keys())
-    if not intent_names:
-        return {"query_intent": "general"}
     try:
         result, _ = await client.complete_json(
             model=state["model"],
@@ -504,9 +504,11 @@ async def _run_classify_intent(state: dict, client: Any) -> dict:
             run_type="chat_classify_intent",
         )
         intent = result.intent if result.intent in intent_names else "general"
+        shape = result.shape if result.shape in QUESTION_SHAPES else "general"
     except LLMError:
         intent = "general"
-    return {"query_intent": intent}
+        shape = "general"
+    return {"query_intent": intent, "question_shape": shape}
 
 
 async def _run_retrieve_capsules(
@@ -531,6 +533,14 @@ async def _run_retrieve_capsules(
         include = list(pack.context_assembly.include)
         ordering = pack.context_assembly.ordering
 
+    strategy = resolve_strategy(state.get("question_shape", "general"))
+    if pack is not None:
+        # Overrides merge onto pack weights only; with no pack the base weights are
+        # empty and the merge would score on the overridden components alone.
+        weights.update(strategy.weight_overrides)
+    effective_top_k = max(1, state["top_k"] + strategy.top_k_delta)
+    fetch_k = effective_top_k * strategy.fetch_k_multiplier
+
     async with session_factory() as session:
         sentinel = await session.scalar(
             select(SemanticCapsule).where(SemanticCapsule.embedding.isnot(None)).limit(1)
@@ -540,7 +550,6 @@ async def _run_retrieve_capsules(
 
         query_vec = embedder.embed_one(state["question"])
         distance = SemanticCapsule.embedding.cosine_distance(query_vec)
-        fetch_k = state["top_k"] * 3
         rows = (
             await session.execute(
                 select(
@@ -606,7 +615,7 @@ async def _run_retrieve_capsules(
             key=lambda x: x[1],
             reverse=True,
         )
-        top = _assemble_within_budget(scored, state["top_k"], token_budget)
+        top = _assemble_within_budget(scored, effective_top_k, token_budget)
 
         selected_ids = {c["id"] for c, _ in top}
         auxiliary_ids: list[uuid.UUID] = []
@@ -666,7 +675,12 @@ def make_chat_graph(session_factory: async_sessionmaker, client: Any, embedder: 
     async def generate_answer(state: ChatState) -> dict:
         if not state.get("context_blocks"):
             return {"answer": INSUFFICIENT_EVIDENCE_ANSWER, "citation_labels": [], "tokens_used": 0}
-        user = build_user_prompt(state["question"], state["context_blocks"])
+        strategy = resolve_strategy(state.get("question_shape", "general"))
+        user = build_user_prompt(
+            state["question"],
+            state["context_blocks"],
+            hint=strategy.answer_hint,
+        )
         try:
             result, tokens = await client.complete_json(
                 model=state["model"],
@@ -756,6 +770,7 @@ async def run_chat_with_context(
                 "model": model,
                 "run_id": run_id,
                 "query_intent": "general",
+                "question_shape": "general",
                 "pack": pack,
                 "context_blocks": [],
                 "answer": "",
