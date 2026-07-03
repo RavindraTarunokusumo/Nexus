@@ -78,6 +78,12 @@ app/
                            #   epistemic_note per block) and evidence_strength ordering;
                            #   validates citation labels against retrieved context; wraps graph
                            #   in chat_run context
+    router.py              # H5 query router: STRATEGIES registry (single source of truth) of
+                           #   per-question-shape RetrievalStrategy (weight_overrides merged over
+                           #   pack hybrid weights, fetch_k_multiplier, top_k_delta, answer_hint);
+                           #   shapes factoid/multi_doc/current_state/conflict/general classified
+                           #   in the same T2 classify_intent call; general == pre-router behavior
+                           #   and is the fallback on LLMError/off-list shape
     lifecycle.py           # Phase E living-knowledge worker: apply_lifecycle_transitions(session,
                            #   domain, pack, dry_run) — deterministic precedence superseded >
                            #   contradicted > qualified > confirmed > stale > archived over
@@ -88,8 +94,9 @@ app/
                            #   pack, min_strength, min_cluster_size, dry_run) — thin wrapper over
                            #   theses.synthesize_theses_from_relations; ConsolidationReport
                            #   (theses_created, thesis_ids)
-    prompts/classify_intent.py  # IntentClassification model + build_classify_prompt; LLM
-                           #   query-intent classification against pack query_intents
+    prompts/classify_intent.py  # IntentClassification model (intent + question shape) +
+                           #   build_classify_prompt; one LLM call classifies both the pack
+                           #   query-intent and the router question shape
     llm_client.py          # LLMClient.complete_json — OpenAI-compatible calls (Qwen Cloud by
                            #   default via settings.llm_base_url/llm_api_key, OpenRouter-compatible),
                            #   Pydantic validation;
@@ -282,9 +289,11 @@ external source
           (target_capsule_id SET); respects remaining T2 budget
 -> query answering:
      single-turn  POST /chat/answer  (stateless, no session)
-                    -> classify_intent (LLM, against pack query_intents)
+                    -> classify_intent (one LLM call: pack query-intent + router
+                         question shape; router.py strategy dispatched per shape)
                     -> retrieve_capsules (HNSW cosine over semantic_capsules,
-                         lifecycle_state='active') + telos-aware hybrid scoring
+                         lifecycle active/confirmed/qualified) + telos-aware hybrid
+                         scoring with per-shape weight overrides / fetch_k / top_k
      multi-turn   POST /chat/sessions/{id}/messages
                     -> run_session_turn() (LangGraph + AsyncPostgresSaver checkpoint)
                     -> persists chat_messages rows (user + assistant) atomically
@@ -342,7 +351,7 @@ Request body:
 | 422 | Blank question or invalid `top_k` |
 | 503 | Embedder not initialised, OpenRouter unavailable, or chat graph failed |
 
-Retrieval runs HNSW cosine search over `semantic_capsules` (filtered to `lifecycle_state='active'`), then re-ranks candidates with `compute_hybrid_score` — a telos-aware blend of five active components (semantic similarity, domain object-type match, source authority, recency, salience) plus two stubbed at zero (relation relevance, evidence quality). Component weights come from the active domain pack's `retrieval_policy.hybrid_score_weights`; an LLM `classify_intent` step selects the pack query-intent that supplies retrieval priorities. Score-ranked candidates are then assembled under the pack's declarative token budget (`context_assembly.max_tokens_by_tier["T2"]`, estimated at ~4 chars/token) — `_assemble_within_budget` adds blocks in score order until the budget or `top_k` is reached, always keeping at least the top block; when the pack omits the budget it falls back to the flat `top_k` slice.
+Retrieval runs HNSW cosine search over `semantic_capsules` (filtered to lifecycle `active`/`confirmed`/`qualified`), then re-ranks candidates with `compute_hybrid_score` — a telos-aware blend of all seven components (semantic similarity, domain object-type match, source authority, recency, salience, relation relevance, evidence quality; the last three un-stubbed since Phase D). Component weights come from the active domain pack's `retrieval_policy.hybrid_score_weights`; the `classify_intent` LLM call selects both the pack query-intent (supplying retrieval priorities) and the H5 **question shape**, whose `router.py` strategy merges weight overrides onto the pack weights and scales the candidate fetch pool and effective `top_k` (e.g. `factoid` fetches 6× with similarity-dominant weights; `general` preserves pre-router behavior). Score-ranked candidates are then assembled under the pack's declarative token budget (`context_assembly.max_tokens_by_tier["T2"]`, estimated at ~4 chars/token) — `_assemble_within_budget` adds blocks in score order until the budget or the effective `top_k` is reached, always keeping at least the top block; when the pack omits the budget it falls back to the flat slice. The shape's `answer_hint` is appended to the answer prompt as an `Answer guidance:` line.
 
 Each citation carries `capsule_id`, `document_id`, `document_title`, `url`, `score`, `object_type`, `object_family`, `lifecycle_state`, a `summary` (the capsule text), and `evidence` — the supporting capsule→span excerpts (`span_id`, `span_index`, `text`) drawn from `capsule_segments`, capped per capsule and truncated for display. If retrieval finds no usable capsule embeddings, the route returns `200` with the insufficient-evidence answer, empty citations, and zero token usage without making a model call.
 

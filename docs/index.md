@@ -80,8 +80,9 @@ CLI entry point: `app/cli/eval.py` — `nexus eval` sub-app. See [Commands](comm
 | `tests/intelligence/test_consolidation.py` | Integration (`@pytest.mark.slow`) | `consolidate_domain` — thesis creation, dry-run, dedup on re-run |
 | `tests/test_eval_memory_cli.py` | Unit (no DB) | `nexus eval memory run`/`report` — lazy runner import, missing-fixtures/report errors |
 | `tests/benchmarks/test_scoring.py` | Unit (no I/O) | `score_answer`/`aggregate` — recall/precision math, abstention/forbidden edge cases, None-exclusion |
+| `tests/intelligence/test_router.py` | Unit (no DB) | H5 query router — `resolve_strategy` known/unknown shapes, `general` all-defaults, weight-merge semantics, top_k floor |
 
-Benchmark fixtures: [`evals/memory/nexus_synthetic/`](../evals/memory/nexus_synthetic/README.md). First live baseline: [`docs/benchmarks/baseline-2026-07-02.md`](benchmarks/baseline-2026-07-02.md).
+Benchmark fixtures: [`evals/memory/nexus_synthetic/`](../evals/memory/nexus_synthetic/README.md). First live baseline: [`docs/benchmarks/baseline-2026-07-02.md`](benchmarks/baseline-2026-07-02.md). Router validation run (PR #26): [`docs/benchmarks/runs/router-t-r2/`](benchmarks/runs/router-t-r2/report.md).
 
 ## Working Notes
 
