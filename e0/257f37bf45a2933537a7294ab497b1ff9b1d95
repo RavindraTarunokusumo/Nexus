@@ -1,0 +1,5 @@
+Summary: Qwen memory query router (H5 T-R1). Single T2 classify call returns intent + question shape; per-shape RetrievalStrategy (weight overrides, fetch_k multiplier, top_k delta) + answer hint. general shape == pre-router behavior, used as fallback.
+Scope: app/intelligence/router.py (new), chat.py, prompts/classify_intent.py, prompts/chat_answer.py, tests (test_router.py new; test_chat_graph.py, test_chat_intent.py extended).
+Tests: 513 passed / 6 pre-existing failures (2 env-specific: test_loader abs-path, test_chat_api 503 — confirmed failing on clean main; 4 known extraction/dual-write mock failures). ruff/mypy identical to baseline.
+Risk: LOW — all touched symbols single-caller (gitnexus + grep verified). Behavior change: shape is classified even when pack has no query_intents (spec edge case).
+Docs: spec docs/superpowers/specs/2026-07-03-query-router.md; plan docs/superpowers/plans/2026-07-03-query-router.md. Implemented by Grok subagent (session cleaned).
