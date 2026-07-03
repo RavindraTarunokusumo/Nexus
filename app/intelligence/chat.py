@@ -534,7 +534,10 @@ async def _run_retrieve_capsules(
         ordering = pack.context_assembly.ordering
 
     strategy = resolve_strategy(state.get("question_shape", "general"))
-    weights.update(strategy.weight_overrides)
+    if pack is not None:
+        # Overrides merge onto pack weights only; with no pack the base weights are
+        # empty and the merge would score on the overridden components alone.
+        weights.update(strategy.weight_overrides)
     effective_top_k = max(1, state["top_k"] + strategy.top_k_delta)
     fetch_k = effective_top_k * strategy.fetch_k_multiplier
 

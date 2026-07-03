@@ -11,6 +11,9 @@ class RetrievalStrategy:
     answer_hint: str = ""
 
 
+# weight_overrides merge onto pack hybrid_score_weights without renormalization:
+# within one query every candidate is scored with the same weights, so scaling the
+# sum is a monotone transform that cannot change ranking — only the absolute score.
 STRATEGIES: dict[str, RetrievalStrategy] = {
     "factoid": RetrievalStrategy(
         weight_overrides={"semantic_similarity": 0.6, "salience": 0.05, "recency": 0.05},

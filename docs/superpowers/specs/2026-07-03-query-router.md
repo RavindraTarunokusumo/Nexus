@@ -119,6 +119,11 @@ question → classify_intent (ONE T2 Qwen call → intent + shape)
   degrades: classify shape-only in that branch. Implementer's choice; behavior contract is
   "shape is always classified unless the LLM errors."
 - `top_k_delta` pushing effective top_k below 1 → floor at 1.
+- `pack is None` (degenerate direct-invocation path; `run_chat_with_context` and the API
+  always load a pack) → intentional exception to "shape is always classified": classify
+  short-circuits to `general` with no LLM call, and retrieval skips weight overrides
+  (merging onto empty base weights would score on the overridden components alone).
+  Fetch/top_k scaling and hints still apply.
 - `general` strategy must be behaviorally identical to pre-router code (regression guard).
 
 ## Success criteria
