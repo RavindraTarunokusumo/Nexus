@@ -1,0 +1,1 @@
+Summary: T-X3 run-2 diagnosis — timeline miss traced to lumina-spark-1-5-release extracting 0 capsules (claim_extraction network_error, status still advanced to claims_extracted). Correct abstention given absent doc; not a router/cross-doc defect. Added zero-capsule-doc warning to the runner; robustness gap (retry/status) logged in TODO as out-of-scope pipeline change.
