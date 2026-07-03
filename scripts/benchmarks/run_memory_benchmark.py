@@ -36,8 +36,9 @@ from app.intelligence.chat import (
     run_chat_with_context,
 )
 from app.intelligence.consolidation import consolidate_domain
+from app.intelligence.cross_relations import classify_cross_document_relations
 from app.intelligence.embedder import Embedder
-from app.intelligence.extraction import make_extraction_graph, run_with_context
+from app.intelligence.extraction import _resolve_t2_model, make_extraction_graph, run_with_context
 from app.intelligence.lifecycle import apply_lifecycle_transitions
 from app.intelligence.llm_client import LLMClient
 from scripts.benchmarks.scoring import METRIC_KEYS, aggregate, score_answer
@@ -232,6 +233,7 @@ def _write_run_meta(
     question_count: int,
     started_at: datetime,
     finished_at: datetime,
+    cross_doc_relations: dict[str, int] | None = None,
 ) -> None:
     meta = {
         "started_at": started_at.isoformat(),
@@ -246,6 +248,8 @@ def _write_run_meta(
         "doc_count": doc_count,
         "question_count": question_count,
     }
+    if cross_doc_relations is not None:
+        meta["cross_doc_relations"] = cross_doc_relations
     (out_dir / "run_meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
 
@@ -271,6 +275,7 @@ async def run_benchmark(
 
     pack = load_pack(settings.default_pack_id)
     resolved_domain = domain or pack.metadata.domain
+    t2_model = _resolve_t2_model(pack, settings.t2_model)
 
     engine = make_engine(settings.database_url)
     session_factory = make_session_factory(engine)
@@ -281,6 +286,14 @@ async def run_benchmark(
         if not skip_ingest:
             await _ingest_corpus(corpus, session_factory, embedder, settings.default_pack_id)
             await _extract_new_documents(corpus, session_factory, client, settings.default_pack_id)
+
+        cross_doc_report = await classify_cross_document_relations(
+            session_factory,
+            client,
+            domain=resolved_domain,
+            pack=pack,
+            model=t2_model,
+        )
 
         async with session_factory() as session:
             await apply_lifecycle_transitions(session, domain=resolved_domain, pack=pack)
@@ -306,6 +319,12 @@ async def run_benchmark(
         question_count=len(questions),
         started_at=started_at,
         finished_at=finished_at,
+        cross_doc_relations={
+            "candidate_pairs": cross_doc_report.candidate_pairs,
+            "classified_pairs": cross_doc_report.classified_pairs,
+            "relations_created": cross_doc_report.relations_created,
+            "skipped_existing": cross_doc_report.skipped_existing,
+        },
     )
 
     return {"out_dir": str(out_dir), "aggregate": agg, "metric_keys": METRIC_KEYS}
