@@ -70,6 +70,7 @@ from app.cli.capsules import capsules_app  # noqa: E402
 from app.cli.consolidation import consolidation_app  # noqa: E402
 from app.cli.eval import eval_app  # noqa: E402
 from app.cli.lifecycle import lifecycle_app  # noqa: E402
+from app.cli.relations import relations_app  # noqa: E402
 from app.cli.theses import theses_app  # noqa: E402
 
 app.add_typer(eval_app, name="eval")
@@ -78,6 +79,7 @@ app.add_typer(theses_app, name="theses")
 app.add_typer(artefacts_app, name="artefacts")
 app.add_typer(lifecycle_app, name="lifecycle")
 app.add_typer(consolidation_app, name="consolidation")
+app.add_typer(relations_app, name="relations")
 
 
 def _run(coro):

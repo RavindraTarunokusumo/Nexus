@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.api.routes_ingestion import (
@@ -26,7 +26,7 @@ from app.api.routes_ingestion import (
     _persist_document,
 )
 from app.config import settings
-from app.db.models import Document
+from app.db.models import Document, SemanticCapsule
 from app.db.session import make_engine, make_session_factory
 from app.domain_packs.loader import load_pack
 from app.ingestion.cleaner import normalize_url
@@ -36,8 +36,9 @@ from app.intelligence.chat import (
     run_chat_with_context,
 )
 from app.intelligence.consolidation import consolidate_domain
+from app.intelligence.cross_relations import classify_cross_document_relations
 from app.intelligence.embedder import Embedder
-from app.intelligence.extraction import make_extraction_graph, run_with_context
+from app.intelligence.extraction import _resolve_t2_model, make_extraction_graph, run_with_context
 from app.intelligence.lifecycle import apply_lifecycle_transitions
 from app.intelligence.llm_client import LLMClient
 from scripts.benchmarks.scoring import METRIC_KEYS, aggregate, score_answer
@@ -190,6 +191,8 @@ async def _answer_questions(
                 "retrieved_doc_keys": retrieved_doc_keys,
                 "latency_s": latency_s,
                 "tokens_used": final.get("tokens_used", 0),
+                "question_shape": final.get("question_shape", "general"),
+                "query_intent": final.get("query_intent", "general"),
                 **metrics,
             }
         )
@@ -232,6 +235,7 @@ def _write_run_meta(
     question_count: int,
     started_at: datetime,
     finished_at: datetime,
+    cross_doc_relations: dict[str, int] | None = None,
 ) -> None:
     meta = {
         "started_at": started_at.isoformat(),
@@ -246,6 +250,8 @@ def _write_run_meta(
         "doc_count": doc_count,
         "question_count": question_count,
     }
+    if cross_doc_relations is not None:
+        meta["cross_doc_relations"] = cross_doc_relations
     (out_dir / "run_meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
 
@@ -255,6 +261,7 @@ async def run_benchmark(
     k: int = 5,
     out: Path | None = None,
     skip_ingest: bool = False,
+    skip_cross_doc: bool = False,
     domain: str | None = None,
 ) -> dict[str, Any]:
     """Run the full memory benchmark pipeline and write results under *out*.
@@ -271,6 +278,7 @@ async def run_benchmark(
 
     pack = load_pack(settings.default_pack_id)
     resolved_domain = domain or pack.metadata.domain
+    t2_model = _resolve_t2_model(pack, settings.t2_model)
 
     engine = make_engine(settings.database_url)
     session_factory = make_session_factory(engine)
@@ -282,10 +290,39 @@ async def run_benchmark(
             await _ingest_corpus(corpus, session_factory, embedder, settings.default_pack_id)
             await _extract_new_documents(corpus, session_factory, client, settings.default_pack_id)
 
+        cross_doc_report = None
+        if not skip_cross_doc:
+            cross_doc_report = await classify_cross_document_relations(
+                session_factory,
+                client,
+                domain=resolved_domain,
+                pack=pack,
+                model=t2_model,
+            )
+
         async with session_factory() as session:
             await apply_lifecycle_transitions(session, domain=resolved_domain, pack=pack)
         async with session_factory() as session:
             await consolidate_domain(session, domain=resolved_domain, pack=pack)
+
+        # A transient LLM failure during extraction can leave a doc at
+        # claims_extracted with zero capsules — silently absent from memory.
+        corpus_urls = list(url_to_doc_key)
+        async with session_factory() as session:
+            zero_capsule_docs = [
+                url_to_doc_key.get(normalize_url(url), url)
+                for (url,) in (
+                    await session.execute(
+                        select(Document.url)
+                        .outerjoin(SemanticCapsule, SemanticCapsule.document_id == Document.id)
+                        .where(Document.url.in_(corpus_urls))
+                        .group_by(Document.id)
+                        .having(func.count(SemanticCapsule.id) == 0)
+                    )
+                ).all()
+            ]
+        if zero_capsule_docs:
+            print(f"WARNING: documents with zero capsules: {zero_capsule_docs}")
 
         rows = await _answer_questions(
             questions, url_to_doc_key, session_factory, client, embedder, pack, k
@@ -306,6 +343,9 @@ async def run_benchmark(
         question_count=len(questions),
         started_at=started_at,
         finished_at=finished_at,
+        cross_doc_relations=(
+            cross_doc_report.model_dump(exclude={"relation_ids"}) if cross_doc_report else None
+        ),
     )
 
     return {"out_dir": str(out_dir), "aggregate": agg, "metric_keys": METRIC_KEYS}
@@ -317,6 +357,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--k", type=int, default=5)
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--skip-ingest", action="store_true")
+    parser.add_argument("--skip-cross-doc", action="store_true")
     parser.add_argument("--domain", type=str, default=None)
     return parser.parse_args(argv)
 
@@ -329,6 +370,7 @@ def main(argv: list[str] | None = None) -> None:
             k=args.k,
             out=args.out,
             skip_ingest=args.skip_ingest,
+            skip_cross_doc=args.skip_cross_doc,
             domain=args.domain,
         )
     )

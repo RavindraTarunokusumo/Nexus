@@ -1,0 +1,19 @@
+{
+  "started_at": "2026-07-03T16:33:18.827533+00:00",
+  "finished_at": "2026-07-03T17:13:42.822497+00:00",
+  "git_rev": "233b7b8",
+  "domain": "personal_ai_tech",
+  "k": 5,
+  "t1_model": "BAAI/bge-small-en-v1.5",
+  "t2_model": "qwen3.6-flash",
+  "t3_model": "qwen3.7-max",
+  "llm_base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+  "doc_count": 14,
+  "question_count": 22,
+  "cross_doc_relations": {
+    "candidate_pairs": 121,
+    "classified_pairs": 60,
+    "relations_created": 27,
+    "skipped_existing": 0
+  }
+}
