@@ -490,10 +490,6 @@ def compute_hybrid_score(
     return sem + dom + auth + rec + sal + rel + evid
 
 
-def _validate_shape(shape: str) -> str:
-    return shape if shape in QUESTION_SHAPES else "general"
-
-
 async def _run_classify_intent(state: dict, client: Any) -> dict:
     pack = state.get("pack")
     if pack is None:
@@ -508,7 +504,7 @@ async def _run_classify_intent(state: dict, client: Any) -> dict:
             run_type="chat_classify_intent",
         )
         intent = result.intent if result.intent in intent_names else "general"
-        shape = _validate_shape(result.shape)
+        shape = result.shape if result.shape in QUESTION_SHAPES else "general"
     except LLMError:
         intent = "general"
         shape = "general"

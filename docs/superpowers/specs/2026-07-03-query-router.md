@@ -47,7 +47,10 @@ Nothing about candidate breadth, score weighting, or answer instructions adapts 
 New module `app/intelligence/router.py`:
 
 ```python
-class RetrievalStrategy(BaseModel):
+# Amended post-/simplify: frozen dataclass (repo precedent: projection.py), and
+# QUESTION_SHAPES is derived as tuple(STRATEGIES) so the registry is the single
+# source of truth (prompt enumeration, validation, resolution all read from it).
+class RetrievalStrategy:  # @dataclass(frozen=True)
     weight_overrides: dict[str, float] = {}   # merged over pack hybrid_score_weights
     fetch_k_multiplier: int = 3               # fetch_k = top_k * multiplier (today: 3)
     top_k_delta: int = 0                      # effective top_k = state top_k + delta

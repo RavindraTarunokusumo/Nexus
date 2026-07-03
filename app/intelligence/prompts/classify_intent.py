@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from app.intelligence.router import QUESTION_SHAPES
+
 
 class IntentClassification(BaseModel):
     intent: str
@@ -12,7 +14,7 @@ SYSTEM_PROMPT = (
     "Classify the user's question into exactly one query intent from the provided list. "
     "Return JSON with keys 'intent' and 'shape'. "
     "The 'intent' value must be an intent name exactly as listed, or 'general' if none fits. "
-    "The 'shape' value must be one of: factoid, multi_doc, current_state, conflict, general. "
+    f"The 'shape' value must be one of: {', '.join(QUESTION_SHAPES)}. "
     "Shape definitions: "
     "factoid — single-fact lookup (date, number, name, score); "
     "multi_doc — aggregation or comparison across sources; "

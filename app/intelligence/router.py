@@ -1,18 +1,11 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
-
-QUESTION_SHAPES: tuple[str, ...] = (
-    "factoid",
-    "multi_doc",
-    "current_state",
-    "conflict",
-    "general",
-)
+from dataclasses import dataclass, field
 
 
-class RetrievalStrategy(BaseModel):
-    weight_overrides: dict[str, float] = {}
+@dataclass(frozen=True)
+class RetrievalStrategy:
+    weight_overrides: dict[str, float] = field(default_factory=dict)
     fetch_k_multiplier: int = 3
     top_k_delta: int = 0
     answer_hint: str = ""
@@ -44,6 +37,8 @@ STRATEGIES: dict[str, RetrievalStrategy] = {
     ),
     "general": RetrievalStrategy(),
 }
+
+QUESTION_SHAPES: tuple[str, ...] = tuple(STRATEGIES)
 
 
 def resolve_strategy(shape: str) -> RetrievalStrategy:
