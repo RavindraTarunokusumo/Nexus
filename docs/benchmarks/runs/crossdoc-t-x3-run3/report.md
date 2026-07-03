@@ -1,0 +1,95 @@
+# Memory Benchmark Report
+
+## Overall
+
+| Metric | Value |
+| --- | --- |
+| answer_correctness | 0.553 |
+| forbidden_violation | 0.000 |
+| evidence_recall_at_k | 0.315 |
+| citation_precision | 0.550 |
+| citation_faithfulness | 1.000 |
+| temporal_correctness | 0.500 |
+| supersession_correctness | 0.333 |
+| abstention_accuracy | 0.636 |
+| latency_p50_s | 15.445 |
+| latency_p95_s | 28.542 |
+| total_tokens_used | 49298.000 |
+
+## Category: abstention
+
+| Metric | Value |
+| --- | --- |
+| answer_correctness | 1.000 |
+| forbidden_violation | 0.000 |
+| evidence_recall_at_k | None |
+| citation_precision | None |
+| citation_faithfulness | 1.000 |
+| temporal_correctness | None |
+| supersession_correctness | None |
+| abstention_accuracy | 1.000 |
+
+## Category: authority_conflict
+
+| Metric | Value |
+| --- | --- |
+| answer_correctness | 0.167 |
+| forbidden_violation | 0.000 |
+| evidence_recall_at_k | 0.000 |
+| citation_precision | None |
+| citation_faithfulness | 1.000 |
+| temporal_correctness | None |
+| supersession_correctness | None |
+| abstention_accuracy | 0.000 |
+
+## Category: multi_doc
+
+| Metric | Value |
+| --- | --- |
+| answer_correctness | 0.500 |
+| forbidden_violation | 0.000 |
+| evidence_recall_at_k | 0.250 |
+| citation_precision | 0.500 |
+| citation_faithfulness | 1.000 |
+| temporal_correctness | None |
+| supersession_correctness | None |
+| abstention_accuracy | 0.500 |
+
+## Category: superseded
+
+| Metric | Value |
+| --- | --- |
+| answer_correctness | 0.444 |
+| forbidden_violation | 0.000 |
+| evidence_recall_at_k | 0.333 |
+| citation_precision | 0.500 |
+| citation_faithfulness | 1.000 |
+| temporal_correctness | None |
+| supersession_correctness | 0.333 |
+| abstention_accuracy | 0.667 |
+
+## Category: thesis
+
+| Metric | Value |
+| --- | --- |
+| answer_correctness | 0.583 |
+| forbidden_violation | 0.000 |
+| evidence_recall_at_k | 0.417 |
+| citation_precision | 0.375 |
+| citation_faithfulness | 1.000 |
+| temporal_correctness | None |
+| supersession_correctness | None |
+| abstention_accuracy | 1.000 |
+
+## Category: timeline
+
+| Metric | Value |
+| --- | --- |
+| answer_correctness | 0.500 |
+| forbidden_violation | 0.000 |
+| evidence_recall_at_k | 0.500 |
+| citation_precision | 1.000 |
+| citation_faithfulness | 1.000 |
+| temporal_correctness | 0.500 |
+| supersession_correctness | None |
+| abstention_accuracy | 0.500 |
