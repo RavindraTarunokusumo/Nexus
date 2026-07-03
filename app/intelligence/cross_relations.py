@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from itertools import combinations
 from typing import Any
 
@@ -12,7 +14,7 @@ from pydantic import BaseModel, computed_field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.db.models import SemanticCapsule, SemanticRelation
+from app.db.models import Document, SemanticCapsule, SemanticRelation
 from app.domain_packs.loader import DomainPack
 from app.intelligence.extraction import _CANONICAL_RELATION_TYPES
 from app.intelligence.lifecycle import _primary_actor
@@ -52,9 +54,13 @@ def _canonical_pair_key(id_a: uuid.UUID, id_b: uuid.UUID) -> tuple[uuid.UUID, uu
     return (id_a, id_b) if id_a < id_b else (id_b, id_a)
 
 
-def _newer_older(cap_a: SemanticCapsule, cap_b: SemanticCapsule) -> OrderedCapsulePair:
-    if cap_a.created_at != cap_b.created_at:
-        if cap_a.created_at > cap_b.created_at:
+def _newer_older(
+    cap_a: SemanticCapsule,
+    cap_b: SemanticCapsule,
+    ts: Callable[[SemanticCapsule], datetime],
+) -> OrderedCapsulePair:
+    if ts(cap_a) != ts(cap_b):
+        if ts(cap_a) > ts(cap_b):
             return OrderedCapsulePair(newer=cap_a, older=cap_b)
         return OrderedCapsulePair(newer=cap_b, older=cap_a)
     if cap_a.id > cap_b.id:
@@ -62,15 +68,21 @@ def _newer_older(cap_a: SemanticCapsule, cap_b: SemanticCapsule) -> OrderedCapsu
     return OrderedCapsulePair(newer=cap_b, older=cap_a)
 
 
-def _pair_order_key(pair: OrderedCapsulePair) -> tuple:
-    return (-pair.newer.created_at.timestamp(), str(pair.newer.id), str(pair.older.id))
-
-
 def build_cross_doc_pairs(
     capsules: list[SemanticCapsule],
     existing_pair_keys: set[tuple[uuid.UUID, uuid.UUID]],
+    effective_ts: dict[uuid.UUID, datetime] | None = None,
 ) -> tuple[list[OrderedCapsulePair], int]:
-    """Group by family+actor, emit cross-document pairs, dedup, and order."""
+    """Group by family+actor, emit cross-document pairs, dedup, and order.
+
+    effective_ts maps capsule id -> document publication time; capsules absent from
+    the map fall back to created_at (ingestion time). Direction and priority follow
+    the effective timestamp so ingestion order can't invert supersedes edges.
+    """
+
+    def ts(cap: SemanticCapsule) -> datetime:
+        return (effective_ts or {}).get(cap.id) or cap.created_at
+
     groups: dict[tuple[str, str], list[SemanticCapsule]] = {}
     for cap in capsules:
         actor = _primary_actor(cap.facets)
@@ -92,9 +104,9 @@ def build_cross_doc_pairs(
             if pair_key in existing_pair_keys:
                 skipped += 1
                 continue
-            pairs.append(_newer_older(cap_a, cap_b))
+            pairs.append(_newer_older(cap_a, cap_b, ts))
 
-    pairs.sort(key=_pair_order_key)
+    pairs.sort(key=lambda p: (-ts(p.newer).timestamp(), str(p.newer.id), str(p.older.id)))
     return pairs, skipped
 
 
@@ -110,18 +122,18 @@ async def classify_cross_document_relations(
 ) -> CrossDocReport:
     existing_pair_keys: set[tuple[uuid.UUID, uuid.UUID]] = set()
     async with session_factory() as session:
-        capsules = (
-            (
-                await session.execute(
-                    select(SemanticCapsule).where(
-                        SemanticCapsule.domain == domain,
-                        SemanticCapsule.lifecycle_state.in_(_NON_TERMINAL_STATES),
-                    )
+        rows = (
+            await session.execute(
+                select(SemanticCapsule, Document.published_at)
+                .join(Document, SemanticCapsule.document_id == Document.id)
+                .where(
+                    SemanticCapsule.domain == domain,
+                    SemanticCapsule.lifecycle_state.in_(_NON_TERMINAL_STATES),
                 )
             )
-            .scalars()
-            .all()
-        )
+        ).all()
+        capsules = [cap for cap, _ in rows]
+        effective_ts = {cap.id: published for cap, published in rows if published is not None}
         cap_ids = {c.id for c in capsules}
         if cap_ids:
             existing_rels = (
@@ -142,7 +154,7 @@ async def classify_cross_document_relations(
                 for rel in existing_rels
             }
 
-    pairs, skipped_existing = build_cross_doc_pairs(capsules, existing_pair_keys)
+    pairs, skipped_existing = build_cross_doc_pairs(capsules, existing_pair_keys, effective_ts)
     candidate_pairs = len(pairs)
 
     to_classify = pairs[:max_pairs] if not dry_run and max_pairs > 0 else []

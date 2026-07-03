@@ -30,9 +30,12 @@ never created, so:
    (either direction). Re-running the pass creates no duplicates.
 4. Bounded cost: hard cap on classified pairs per invocation (`max_pairs`, default 60),
    applied after dedup, deterministic order.
-5. Directionality: within a pair, A = the **newer** capsule (by `created_at`, tie-break by
-   id) so "A supersedes B" is the natural reading for the lifecycle's incoming-supersedes
-   check on B.
+5. Directionality: within a pair, A = the **newer** capsule so "A supersedes B" is the
+   natural reading for the lifecycle's incoming-supersedes check on B. *(Amended per
+   PR #27 review:)* "newer" is decided by the document's `published_at` (falling back to
+   capsule `created_at` when absent, tie-break by id) — `created_at` is ingestion order
+   and can invert real temporal order when the corpus ingests out of publication
+   sequence, which would persist inverted supersedes edges.
 6. `dry_run` support (classify nothing, report the candidate pairs) mirroring
    lifecycle/consolidation workers.
 7. CLI command + benchmark-runner integration (between extraction and lifecycle).
@@ -100,6 +103,10 @@ the pack like the benchmark does).
   still a normal run).
 - Existing relation with `target_thesis_id` set (unary) does NOT block a capsule pair —
   only capsule↔capsule rows count for dedup.
+- Per-pair commit semantics (PR #27 review, accepted as v1): each relation commits
+  individually, matching the per-doc pass; a mid-run failure leaves a partial pass whose
+  persisted rows are dedup'd on rerun. Pairs that classified as "none" are not recorded
+  and will be re-sent on rerun — a pair-attempt ledger/cursor is logged in `TODO.md`.
 
 ## Success criteria
 

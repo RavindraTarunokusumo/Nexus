@@ -30,9 +30,26 @@ def test_relations_run_help_works():
     assert "-domain" in _strip_ansi(result.stdout)
 
 
-def test_relations_run_missing_domain_errors():
-    result = runner.invoke(app, ["relations", "run"])
-    assert result.exit_code != 0
+def test_relations_run_defaults_domain_to_pack(monkeypatch, db_url):
+    captured: dict = {}
+
+    async def fake_classify(*args, **kwargs):
+        captured.update(kwargs)
+        return CrossDocReport(
+            candidate_pairs=0, classified_pairs=0, relation_ids=[], skipped_existing=0
+        )
+
+    monkeypatch.setattr(
+        "app.cli.relations.classify_cross_document_relations",
+        fake_classify,
+    )
+
+    result = runner.invoke(app, ["relations", "run", "--json", "--db-url", db_url])
+    assert result.exit_code == 0, result.stdout
+    from app.config import settings
+    from app.domain_packs.loader import load_pack
+
+    assert captured["domain"] == load_pack(settings.default_pack_id).metadata.domain
 
 
 def test_relations_run_json_zero_counts(monkeypatch, db_url):

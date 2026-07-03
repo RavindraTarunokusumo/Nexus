@@ -151,7 +151,9 @@ def test_build_cross_doc_pairs_newer_first_direction() -> None:
 def _make_session_factory(
     capsules: list[SemanticCapsule],
     existing_rels: list[SemanticRelation] | None = None,
+    published_at_by_id: dict[uuid.UUID, datetime] | None = None,
 ) -> MagicMock:
+    published_at_by_id = published_at_by_id or {}
     state: dict = {"exec_n": 0, "added": []}
 
     class SessionCM:
@@ -160,11 +162,14 @@ def _make_session_factory(
             session.add = lambda obj: state["added"].append(obj)
             session.commit = AsyncMock()
 
-            async def execute(_stmt):
+            async def execute(stmt):
                 state["exec_n"] += 1
+                state.setdefault("stmts", []).append(stmt)
                 result = MagicMock()
                 if state["exec_n"] == 1:
-                    result.scalars.return_value.all.return_value = capsules
+                    result.all.return_value = [
+                        (cap, published_at_by_id.get(cap.id)) for cap in capsules
+                    ]
                 elif state["exec_n"] == 2:
                     result.scalars.return_value.all.return_value = existing_rels or []
                 else:
@@ -405,3 +410,88 @@ async def test_classify_skipped_existing_from_db() -> None:
     assert report.candidate_pairs == 0
     assert report.skipped_existing == 1
     client.complete_json.assert_not_called()
+
+
+def test_build_cross_doc_pairs_publication_date_overrides_ingestion_order() -> None:
+    doc_a, doc_b = uuid.uuid4(), uuid.uuid4()
+    ingested_late_but_published_early = _cap(
+        document_id=doc_a,
+        created_at=datetime(2026, 6, 2, tzinfo=timezone.utc),
+    )
+    ingested_early_but_published_late = _cap(
+        document_id=doc_b,
+        created_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+    )
+    effective_ts = {
+        ingested_late_but_published_early.id: datetime(2025, 11, 1, tzinfo=timezone.utc),
+        ingested_early_but_published_late.id: datetime(2026, 2, 1, tzinfo=timezone.utc),
+    }
+
+    pairs, _ = build_cross_doc_pairs(
+        [ingested_late_but_published_early, ingested_early_but_published_late],
+        set(),
+        effective_ts,
+    )
+
+    assert len(pairs) == 1
+    assert pairs[0].newer.id == ingested_early_but_published_late.id
+    assert pairs[0].older.id == ingested_late_but_published_early.id
+
+
+@pytest.mark.asyncio
+async def test_classify_uses_published_at_for_direction() -> None:
+    doc_a, doc_b = uuid.uuid4(), uuid.uuid4()
+    ingested_first = _cap(
+        document_id=doc_a,
+        created_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+    )
+    ingested_second = _cap(
+        document_id=doc_b,
+        created_at=datetime(2026, 6, 2, tzinfo=timezone.utc),
+    )
+    sf = _make_session_factory(
+        [ingested_first, ingested_second],
+        published_at_by_id={
+            ingested_first.id: datetime(2026, 2, 1, tzinfo=timezone.utc),
+            ingested_second.id: datetime(2025, 11, 1, tzinfo=timezone.utc),
+        },
+    )
+    client = AsyncMock()
+    result = MagicMock()
+    result.relation_type = "supersedes"
+    result.polarity = None
+    result.strength = 0.9
+    result.rationale = "newer supersedes older"
+    client.complete_json = AsyncMock(return_value=(result, 10))
+
+    await classify_cross_document_relations(
+        sf,
+        client,
+        domain=_DOMAIN,
+        pack=_make_pack(),
+        model="test-model",
+    )
+
+    rel = sf._state["added"][0]
+    assert rel.source_capsule_id == ingested_first.id
+    assert rel.target_capsule_id == ingested_second.id
+
+
+@pytest.mark.asyncio
+async def test_classify_capsule_query_filters_non_terminal_states() -> None:
+    sf = _make_session_factory([])
+    client = AsyncMock()
+
+    await classify_cross_document_relations(
+        sf,
+        client,
+        domain=_DOMAIN,
+        pack=_make_pack(),
+        model="test-model",
+    )
+
+    load_stmt = str(sf._state["stmts"][0])
+    assert "lifecycle_state IN" in load_stmt
+    from app.intelligence.cross_relations import _NON_TERMINAL_STATES
+
+    assert _NON_TERMINAL_STATES == frozenset({"candidate", "active", "confirmed", "qualified"})

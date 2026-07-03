@@ -40,7 +40,11 @@ def _run(coro):
 
 @relations_app.command("run")
 def run(
-    domain: str = typer.Option(..., "--domain", help="Domain to process."),
+    domain: Optional[str] = typer.Option(
+        None,
+        "--domain",
+        help="Domain to process (defaults to the pack's domain).",
+    ),
     pack: Optional[str] = typer.Option(
         None,
         "--pack",
@@ -59,6 +63,12 @@ def run(
     """Classify cross-document capsule relations for a domain."""
     pack_id = pack or settings.default_pack_id
     domain_pack = load_pack(pack_id)
+    resolved_domain = domain or domain_pack.metadata.domain
+    if domain and domain != domain_pack.metadata.domain and not json_output:
+        console.print(
+            f"[yellow]Warning:[/yellow] --domain {domain!r} differs from the pack's "
+            f"domain {domain_pack.metadata.domain!r}."
+        )
     resolved_model = model or _resolve_t2_model(domain_pack, settings.t2_model)
 
     cfg = CLISettings(**{"database_url": db_url} if db_url else {})
@@ -75,7 +85,7 @@ def run(
         classify_cross_document_relations(
             sf,
             client,
-            domain=domain,
+            domain=resolved_domain,
             pack=domain_pack,
             model=resolved_model,
             max_pairs=max_pairs,
