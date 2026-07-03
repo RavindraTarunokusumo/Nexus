@@ -10,7 +10,9 @@
   - Deliverable: `evals/memory/longmemeval/` adapter + a baseline report under `docs/benchmarks/` with per-category Nexus scores next to published reference numbers → feeds directly into H3's benchmark asset.
   Spec: `docs/superpowers/specs/2026-07-03-longmemeval-adapter.md`. Plan: `docs/superpowers/plans/2026-07-03-longmemeval-adapter.md`.
   - [x] T-L1 — `scripts/benchmarks/run_longmemeval.py` adapter (session→document mapping, per-instance DB truncation, full pipeline, T3 QA judge per the official protocol, `hypotheses.jsonl` for the official scorer) + 13 pure-helper unit tests + dataset README/.gitignore. (Grok implementer; 550 passed / 6 pre-existing; date parser verified against the real `2023/04/10 (Mon) 23:07` format.)
-  - [ ] T-L2 — Download oracle dataset, live run (knowledge-update + temporal-reasoning, limit 20) on scratch DB `nexus_lme`; check capsules-per-doc for the pack-mismatch risk; write `docs/benchmarks/longmemeval-baseline-2026-07-03.md`.
+  - [x] T-L2 — Run 1 complete: 0/20 (all abstentions) — pack-mismatch CONFIRMED (9/20 instances zero capsules, 31/43 docs empty; surviving capsules tech-adjacent, not the queried personal facts). Architecture ran end-to-end correctly; the number measures the pack. Run: `docs/benchmarks/runs/longmemeval-t-l2/`. Also found: dataset order not category-interleaved (slice was 100% temporal-reasoning).
+  - [ ] T-L3 — `conversation_v1` domain pack (personal facts/preferences/plans/possessions; salience admits personal state; supersession on same-actor personal state; Qwen model ids) + `--pack` flag on the adapter threaded through ingestion and pipeline stages.
+  - [ ] T-L4 — Before/after rerun per category (knowledge-update limit 10, temporal-reasoning limit 10) with `conversation_v1`; write `docs/benchmarks/longmemeval-baseline-2026-07-03.md` with both pack results + judge/oracle caveats.
 
 - [X] H0 — Register/verify Qwen Cloud access, API key, voucher credits, and model availability from the deployment environment.
 - [x] H1 — Route **T2 and above** through Qwen Cloud / Model Studio models; keep model names configurable by environment and domain pack. (PR #25 D3/G4)

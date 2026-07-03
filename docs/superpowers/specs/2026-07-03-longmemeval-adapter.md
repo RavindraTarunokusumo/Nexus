@@ -116,6 +116,17 @@ Async pipeline reuses existing app internals exactly as `run_memory_benchmark.py
   Extraction may under-extract personal facts. v1 accepts this and reports it; if the
   live run shows evidence sessions yielding zero relevant capsules, a minimal
   `longmemeval_v1` pack is the documented follow-up, not an in-scope fix.
+  **Amendment (T-L2 run 1, confirmed):** 0/20 accuracy, all abstentions; 9/20 instances
+  extracted zero capsules (31/43 documents empty), and surviving capsules were
+  tech-adjacent fragments, not the queried personal facts. The pack fix is hereby
+  **promoted in-scope** (user-endorsed): new task T-L3 drafts a `conversation_v1`
+  domain pack (personal facts / preferences / plans / possessions object families,
+  salience admitting mundane personal state, supersession rules on same-actor personal
+  state, Qwen model ids — never deepseek) plus a `--pack` flag on the adapter threaded
+  through ingestion (`Document.domain_pack`) and all pipeline stages; T-L4 reruns
+  per-category (two runs: knowledge-update and temporal-reasoning, limit 10 each — the
+  run-1 slice also exposed that dataset order is not category-interleaved) for the
+  before/after comparison that doubles as the pack-scalability demonstration.
 - Cost bounded by `--limit` default 20 (~1–5 oracle docs per instance ≈ well under the
   synthetic benchmark's per-run spend).
 - No edits to `run_memory_benchmark.py`, `extraction.py`, `chat.py`, or pack YAMLs.
