@@ -62,6 +62,44 @@ Risk: rate-limit 429s → semaphore + existing retry path; budget counters
 - Same for the judge's rationale.
 Small per call, ×199+ calls per run. No architectural change.
 
+## Amendment — landing now for T-L5d (user-directed 2026-07-04)
+
+The post-T-L5 full-211 rerun projects ~6h; user directed a speed-up (batches, no
+reasoning, faster/cheaper extraction). Live probe: qwen3.6-flash / qwen-flash /
+qwen-turbo all answer a structured-extraction call in 1.2–1.4s — the model is NOT the
+bottleneck; serial round-trips are. Q0 (thinking off) already covers "disable
+reasoning" at every call site (`complete_json` default, no opt-ins). Landing:
+
+- **W1 — adapter instance parallelism (biggest lever, zero product risk).**
+  `run_longmemeval.py` gains `--workers N` (default 1 = today's behavior) +
+  `--db-url-template` (`...nexus_lme_w{n}`). Instances shard round-robin; each worker
+  owns an engine/session_factory/LLMClient/graphs against its own scratch DB (the
+  existing TRUNCATE isolation, multiplied); shared partial-file append under an
+  asyncio.Lock; final results restored to dataset order; `run_meta.workers` recorded.
+  Orchestrator provisions the worker DBs (createdb + alembic upgrade head).
+  Expected ≈N× on the whole pipeline.
+- **W2 — Q2 concurrency for the remaining serial loops.** Same semaphore+gather
+  pattern `extract_spans` already uses: relation-pair classification in
+  `_run_classify_relations`, capsule-judge loop in `judge_capsules`, cross-doc pair
+  loop in `classify_cross_document_relations`. Classify concurrently (semaphore 4),
+  keep DB writes sequential after the gather. Pair lists are budget-sliced before
+  dispatch, so `t2_calls_used` accounting stays exact.
+- **W3 — client-side resilience, prerequisite for W1×W2 fan-out.** `LLMClient` has no
+  retry today; a 429 under concurrency = silently dropped pair. `complete_json` gets
+  a bounded retry (2 attempts, exponential backoff + jitter) on HTTP 429/5xx and
+  transient network errors only — never on schema/validation errors. No signature
+  change.
+- **W4 — Q1 extraction-model override (user-directed).** New setting
+  `t2_model_force` (env `T2_MODEL_FORCE`, default empty = no change): when set,
+  `_resolve_t2_model` returns it, winning over pack `models.t2`. The T-L5d rerun sets
+  `T2_MODEL_FORCE=qwen-flash` (id verified live on the account; cheaper tier than
+  qwen3.6-flash, JSON-clean on probe). Quality risk is acknowledged and the report
+  must state the extraction-model change as a confound in the before/after
+  comparison.
+
+Non-goals now: M1 span batching (own contract + regression run — the wall-clock win
+is already covered by W1/W2), M2 caching, M3 pre-filter, M4 domain-scoped retrieval.
+
 ## Tier 1 — Medium (a day each; post-deadline unless the demo needs them)
 
 ### M1. Span batching in extraction
