@@ -26,17 +26,13 @@ export default function App() {
 
   const activeSummary = sessions.find((s) => s.id === activeId) ?? null
 
-  const onSessionUpdate = useCallback(() => {
-    // No-op: message state is already updated by useChatSession
-  }, [])
-
   const handleAnswerReceived = useCallback((meta: AnswerMeta) => {
     setLastAnswerMeta(meta)
   }, [])
 
   const { detail, loading, sending, error, sendMessage, clearError } = useChatSession(
     activeId,
-    onSessionUpdate,
+    undefined,
     handleAnswerReceived,
   )
 

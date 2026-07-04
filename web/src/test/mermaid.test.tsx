@@ -3,12 +3,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { CitationList } from '../components/CitationList'
 import { HowItWorks } from '../components/HowItWorks'
 import { MermaidBlock } from '../components/MermaidBlock'
+import type { CapsuleProvenance } from '../api/client'
 import {
   buildPipelineDiagram,
   buildProvenanceDiagram,
   sanitizeLabel,
   type AnswerMeta,
-  type ProvenanceData,
 } from '../lib/mermaid'
 
 vi.mock('mermaid', () => ({
@@ -29,15 +29,27 @@ const SAMPLE_META: AnswerMeta = {
   ],
 }
 
-const SAMPLE_PROVENANCE: ProvenanceData = {
-  capsule: { id: 'cap-1', text: 'GPT-5 released', lifecycle_state: 'active' },
-  document: { id: 'doc-1', title: 'Release notes' },
+const SAMPLE_PROVENANCE: CapsuleProvenance = {
+  capsule: {
+    id: 'cap-1',
+    text: 'GPT-5 released',
+    object_family: 'fact',
+    domain_object_type: 'claim',
+    core_type: 'semantic',
+    lifecycle_state: 'active',
+    salience: 0.9,
+    confidence: 0.8,
+    created_at: '2026-01-01T00:00:00Z',
+  },
+  document: { id: 'doc-1', title: 'Release notes', url: null, published_at: null },
   spans: [{ id: 'span-1', span_index: 0, text_excerpt: 'On July 1…' }],
   relations: [
     {
       id: 'rel-1',
       direction: 'out',
       relation_type: 'supersedes',
+      polarity: null,
+      strength: 0.9,
       other_capsule: { id: 'cap-2', text_excerpt: 'GPT-4 context', lifecycle_state: 'superseded' },
     },
   ],
@@ -86,8 +98,18 @@ describe('buildProvenanceDiagram', () => {
 
   it('handles empty spans, relations, and theses', () => {
     const diagram = buildProvenanceDiagram({
-      capsule: { id: 'c', text: 'solo', lifecycle_state: 'candidate' },
-      document: { id: 'd', title: null },
+      capsule: {
+        id: 'c',
+        text: 'solo',
+        object_family: 'fact',
+        domain_object_type: 'claim',
+        core_type: 'semantic',
+        lifecycle_state: 'candidate',
+        salience: 0.5,
+        confidence: 0.5,
+        created_at: '2026-01-01T00:00:00Z',
+      },
+      document: { id: 'd', title: null, url: null, published_at: null },
       spans: [],
       relations: [],
       theses: [],
@@ -148,7 +170,7 @@ describe('HowItWorks', () => {
   })
 })
 
-describe('MermaidBlock error boundary', () => {
+describe('MermaidBlock async fallback', () => {
   it('falls back to raw diagram text when mermaid render fails', async () => {
     const diagram = 'flowchart LR\n  A --> B'
     render(<MermaidBlock diagram={diagram} />)

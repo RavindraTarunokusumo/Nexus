@@ -1,4 +1,4 @@
-import type { ChatCitation } from '../api/client'
+import type { CapsuleProvenance, ChatCitation } from '../api/client'
 
 // Source of truth: app/intelligence/router.py STRATEGIES
 export const SHAPE_STRATEGIES: Record<string, string> = {
@@ -15,47 +15,6 @@ export type AnswerMeta = {
   query_intent: string
   tokens_used: number
   citations: ChatCitation[]
-}
-
-export type ProvenanceCapsule = {
-  id: string
-  text: string
-  lifecycle_state: string
-}
-
-export type ProvenanceDocument = {
-  id: string
-  title: string | null
-}
-
-export type ProvenanceSpan = {
-  id: string
-  span_index: number
-  text_excerpt: string
-}
-
-export type ProvenanceRelation = {
-  id: string
-  direction: string
-  relation_type: string
-  other_capsule: {
-    id: string
-    text_excerpt: string
-    lifecycle_state: string
-  }
-}
-
-export type ProvenanceThesis = {
-  id: string
-  statement_excerpt: string
-}
-
-export type ProvenanceData = {
-  capsule: ProvenanceCapsule
-  document: ProvenanceDocument
-  spans: ProvenanceSpan[]
-  relations: ProvenanceRelation[]
-  theses: ProvenanceThesis[]
 }
 
 const MERMAID_SPECIAL = /[[\](){}|"#;:<>\\]/g
@@ -121,7 +80,7 @@ function lifecycleClass(state: string | null | undefined): string {
   return 'default_lc'
 }
 
-export function buildProvenanceDiagram(prov: ProvenanceData): string {
+export function buildProvenanceDiagram(prov: CapsuleProvenance): string {
   const lines: string[] = ['flowchart LR']
   const classAssignments: string[] = []
 

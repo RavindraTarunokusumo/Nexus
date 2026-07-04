@@ -1,12 +1,9 @@
 import { useState } from 'react'
 import type { ChatCitation } from '../api/client'
+import { shortId } from '../lib/ids'
 
 type Props = {
   citations: ChatCitation[]
-}
-
-function shortId(id: string): string {
-  return id.slice(0, 8)
 }
 
 function urlHost(url: string | null): string {

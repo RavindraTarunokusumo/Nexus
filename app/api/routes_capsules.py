@@ -28,6 +28,21 @@ def _excerpt(text: str, max_len: int = _EXCERPT_MAX) -> str:
     return text[:max_len]
 
 
+def _relation_out(rel: SemanticRelation, direction: str, other: SemanticCapsule) -> RelationOut:
+    return RelationOut(
+        id=rel.id,
+        direction=direction,
+        relation_type=rel.relation_type,
+        polarity=rel.polarity,
+        strength=rel.strength,
+        other_capsule=OtherCapsuleOut(
+            id=other.id,
+            text_excerpt=_excerpt(other.text),
+            lifecycle_state=other.lifecycle_state,
+        ),
+    )
+
+
 class CapsuleOut(BaseModel):
     id: uuid.UUID
     text: str
@@ -155,39 +170,13 @@ async def capsule_provenance(capsule_id: uuid.UUID, db: DbSession) -> Provenance
         other = other_capsules.get(target_id)
         if other is None:
             continue
-        relations.append(
-            RelationOut(
-                id=rel.id,
-                direction="out",
-                relation_type=rel.relation_type,
-                polarity=rel.polarity,
-                strength=rel.strength,
-                other_capsule=OtherCapsuleOut(
-                    id=other.id,
-                    text_excerpt=_excerpt(other.text),
-                    lifecycle_state=other.lifecycle_state,
-                ),
-            )
-        )
+        relations.append(_relation_out(rel, "out", other))
 
     for rel in incoming:
         other = other_capsules.get(rel.source_capsule_id)
         if other is None:
             continue
-        relations.append(
-            RelationOut(
-                id=rel.id,
-                direction="in",
-                relation_type=rel.relation_type,
-                polarity=rel.polarity,
-                strength=rel.strength,
-                other_capsule=OtherCapsuleOut(
-                    id=other.id,
-                    text_excerpt=_excerpt(other.text),
-                    lifecycle_state=other.lifecycle_state,
-                ),
-            )
-        )
+        relations.append(_relation_out(rel, "in", other))
 
     thesis_rows = (
         (

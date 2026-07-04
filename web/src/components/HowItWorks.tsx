@@ -1,24 +1,16 @@
 import { useCallback, useState } from 'react'
-import { api, normalizeApiError } from '../api/client'
-import {
-  buildPipelineDiagram,
-  buildProvenanceDiagram,
-  type AnswerMeta,
-  type ProvenanceData,
-} from '../lib/mermaid'
+import { api, normalizeApiError, type CapsuleProvenance } from '../api/client'
+import { buildPipelineDiagram, buildProvenanceDiagram, type AnswerMeta } from '../lib/mermaid'
+import { shortId } from '../lib/ids'
 import { MermaidBlock } from './MermaidBlock'
 
 type Props = {
   lastAnswerMeta: AnswerMeta | null
 }
 
-function shortId(id: string): string {
-  return id.slice(0, 8)
-}
-
 export function HowItWorks({ lastAnswerMeta }: Props) {
   const [capsuleId, setCapsuleId] = useState('')
-  const [provenance, setProvenance] = useState<ProvenanceData | null>(null)
+  const [provenance, setProvenance] = useState<CapsuleProvenance | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -34,20 +26,7 @@ export function HowItWorks({ lastAnswerMeta }: Props) {
     setProvenance(null)
     try {
       const data = await api.getCapsuleProvenance(trimmed)
-      setProvenance({
-        capsule: {
-          id: data.capsule.id,
-          text: data.capsule.text,
-          lifecycle_state: data.capsule.lifecycle_state,
-        },
-        document: {
-          id: data.document.id,
-          title: data.document.title,
-        },
-        spans: data.spans,
-        relations: data.relations,
-        theses: data.theses,
-      })
+      setProvenance(data)
       setCapsuleId(trimmed)
     } catch (err) {
       const apiErr = normalizeApiError(err)
