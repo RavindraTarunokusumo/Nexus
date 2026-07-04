@@ -19,10 +19,10 @@
     - [x] T-L5c (`4056ef9`) — `_judge_answer` retries once on LLM error before recording null.
     - [ ] T-L5d — Rerun the 211-question slice post-fix; before/after table in the H7 report (orchestrator; first rerun killed at 5/211, user directed a speed-up first — see H8 amendment W1–W4).
 - [ ] **H8-W — Rerun speed-up (user-directed 2026-07-04; spec amendment in `2026-07-03-inference-optimization.md`).** ~6h projected → target well under 1h via structure, not model swap (probe: fast tiers all ~1.3s/call).
-  - [ ] W1 — Adapter `--workers N` + `--db-url-template`: round-robin instance sharding, per-worker engine/client/graphs on own scratch DB, lock-guarded partial appends, dataset-order results, `run_meta.workers`.
-  - [ ] W2 — Semaphore+gather (pattern of `extract_spans`) for `_run_classify_relations` pairs, `judge_capsules` loop, `classify_cross_document_relations` pairs; DB writes stay sequential post-gather.
-  - [ ] W3 — `LLMClient.complete_json` bounded retry (2 attempts, backoff+jitter) on 429/5xx/transient network only.
-  - [ ] W4 — `t2_model_force` setting (env `T2_MODEL_FORCE`) overriding pack t2; rerun uses `qwen-flash` (live-verified); report must flag the extraction-model confound.
+  - [x] W1 (`a197466`) — Adapter `--workers N` + `--db-url-template`: round-robin instance sharding, per-worker engine/client/graphs on own scratch DB, lock-guarded partial appends, dataset-order results, `run_meta.workers`.
+  - [x] W2 (`81ddfe5`, with W4) — Semaphore+gather (pattern of `extract_spans`) for `_run_classify_relations` pairs, `judge_capsules` loop, `classify_cross_document_relations` pairs; DB writes stay sequential post-gather.
+  - [x] W3 (`0f56d2e`) — `LLMClient.complete_json` bounded retry (2 attempts, backoff+jitter) on 429/5xx/transient network only.
+  - [x] W4 (`81ddfe5`, with W2 — shared extraction.py) — `t2_model_force` setting (env `T2_MODEL_FORCE`) overriding pack t2; rerun uses `qwen-flash` (live-verified); report must flag the extraction-model confound.
 
 - [X] H0 — Register/verify Qwen Cloud access, API key, voucher credits, and model availability from the deployment environment.
 - [x] H1 — Route **T2 and above** through Qwen Cloud / Model Studio models; keep model names configurable by environment and domain pack. (PR #25 D3/G4)
