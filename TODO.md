@@ -15,8 +15,8 @@
   - [ ] T-L4 — Before/after rerun per category (knowledge-update limit 10, temporal-reasoning limit 10) with `conversation_v1`; write `docs/benchmarks/longmemeval-baseline-2026-07-03.md` with both pack results + judge/oracle caveats. Superseded in part by the full-211 run (in flight) — the report should use the 211 numbers.
   - [ ] T-L5 — Answer-path temporal grounding + conflict resolution (spec amendment 2026-07-04; full-211 partial showed TR 0.224 with 74 abstentions despite full retrieval — answer path is time-blind).
     - [x] T-L5a (`8d91038`) — `as_of` question-time anchor through `run_chat_with_context` → chat state → `build_user_prompt` (`Current date:` line); `Document.published_at` selected in both capsule queries, copied onto context blocks, rendered as per-block `Date:` line; adapter passes `question_date`. Unit tests for prompt rendering.
-    - [ ] T-L5b — `SYSTEM_PROMPT` conflict-resolution instruction (resolve via supersession/lifecycle/dates, single answer — never report "conflicting evidence"); `multi_doc` strategy `top_k_delta` 3→5 + enumerate-and-count hint.
-    - [ ] T-L5c — `_judge_answer` retries once on LLM error before recording null.
+    - [x] T-L5b (`d0a314f`) — `SYSTEM_PROMPT` conflict-resolution instruction (resolve via supersession/lifecycle/dates, single answer — never report "conflicting evidence"); `multi_doc` strategy `top_k_delta` 3→5 + enumerate-and-count hint.
+    - [x] T-L5c (`4056ef9`) — `_judge_answer` retries once on LLM error before recording null.
     - [ ] T-L5d — Rerun the 211-question slice post-fix; before/after table in the H7 report (orchestrator, needs baseline run finished).
 
 - [X] H0 — Register/verify Qwen Cloud access, API key, voucher credits, and model availability from the deployment environment.
