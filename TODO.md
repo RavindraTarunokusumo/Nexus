@@ -20,6 +20,8 @@
   - [x] T-U2 — Frontend: tab shell (Dashboard | Chat | How it works, no router lib) + Dashboard (count cards, lifecycle distribution bar, model-usage table; latest-benchmark-scores card as stretch). Consumes T-U1.
   - [x] T-U3 — Frontend: "How it works" Mermaid views — pipeline routing flowchart of the last answer (classify → strategy → retrieval → context blocks → answer, annotated with actual models/shape/values) and provenance chain view (click a citation or pick a capsule; lifecycle-state color coding, cross-doc supersedes/contradicts edges). Client-side `buildMermaid()` over the JSON payloads (server stays diagram-format-agnostic); new dep `mermaid`. Plus chat citation enrichment: role badges (primary/counter_evidence/supersession) + epistemic-note tooltip, "explain this answer" routing disclosure. T-U2/T-U3 parallelizable after T-U1.
 
+- [ ] **UI display-consistency refactors (H6 /simplify, deferred)** — unify the citation-role vocabulary (badge class/label/diagram counts) and the lifecycle-state palette (CitationList dots / dashboard swatches / mermaid classDefs) into single frontend maps; shared `excerpt()` util for `routes_capsules._excerpt` vs `chat.py`'s span-excerpt shaping (cross-module). Query-merging on `/stats/overview`/provenance skipped: sub-10ms on demo-scale data.
+
 ### Phase C — Reasoning Layer
 
 Complete. Thesis writer, decision artefact writer, and DB integration tests shipped in
