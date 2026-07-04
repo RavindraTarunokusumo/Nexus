@@ -1,0 +1,612 @@
+# conversation_v1.yaml — v3 purpose-grammar domain pack
+# Telos-semantic extraction scheme for personal-assistant conversation memory.
+# Tracks the user's personal facts, preferences, plans, possessions, and activities.
+
+metadata:
+  pack_id: conversation_v1
+  domain: conversation_v1
+  version: 1.0.0
+  description: >-
+    Purpose-grammar domain pack for personal-assistant chat sessions. Covers user
+    facts, preferences, plans, events, possessions, health, and routine activities.
+  supported_source_types:
+    - chat_session
+    - personal_note
+  default_language: en
+  model_policy_version: nexus_tiers_v1
+  owner: null
+
+telos:
+  primary_purposes:
+    - Track the user's personal facts, preferences, plans, possessions, and activities.
+    - Record how the user's personal state changes over time (updates, switches, repairs).
+    - Preserve dated events the user attended, completed, or experienced.
+    - Capture durable preferences, opinions, and intentions the user expresses.
+    - Maintain a retrievable timeline of the user's personal life context.
+  secondary_purposes:
+    - Summarize or reflect back what the user shared in conversation.
+    - Offer suggestions, reminders, or follow-up questions about user context.
+    - Compare options or tradeoffs the user is considering.
+    - Help the user plan or organize around stated goals.
+  anti_purposes:
+    - Not every greeting or pleasantry is a durable personal fact.
+    - Not every assistant suggestion becomes the user's preference unless accepted.
+    - Not every hypothetical or joke reflects the user's actual state.
+    - Not every third-party anecdote is about the user unless clearly attributed.
+    - Not every vague mention implies a confirmed plan or possession.
+  reader_goals:
+    - Recall what the user owns, prefers, plans, or has done.
+    - Answer temporal questions about when events happened or states changed.
+    - Detect when a newer user statement updates an older personal fact.
+    - Ground answers in user-stated evidence, not assistant invention.
+    - Separate confirmed user facts from assistant boilerplate or smalltalk.
+  producer_incentives:
+    - Be helpful and responsive to the user's immediate question.
+    - Maintain conversational warmth without inventing user facts.
+    - Offer general advice that may not reflect user-specific context.
+
+source_type_profiles:
+  chat_session:
+    structural_features:
+      - alternating user and assistant turns
+      - user statements about personal life, plans, or preferences
+      - assistant acknowledgments, suggestions, or follow-up questions
+      - occasional dates, places, or named entities in user turns
+    high_value_sections:
+      - user turn stating a personal fact, event, preference, or plan
+      - user turn describing a state change or update to prior information
+      - user turn naming a possession, activity, appointment, or workshop attended
+      - user turn with explicit dates or temporal anchors
+    low_value_sections:
+      - greetings and pleasantries without personal content
+      - assistant boilerplate or generic advice without user-specific facts
+      - user filler ("thanks", "ok", "sounds good") without new information
+      - assistant restatements that add no new user facts
+    expected_semantic_families:
+      - personal_event
+      - personal_state
+      - preference_opinion
+      - possession_asset
+      - plan_intention
+      - activity_habit
+      - health_wellness
+    default_processing_mode: balanced
+    url_domains: []
+    title_regex: []
+
+  personal_note:
+    structural_features:
+      - first-person statements about the user's life
+      - dated entries or timeline references
+      - lists of plans, possessions, or preferences
+    high_value_sections:
+      - explicit personal facts with actor and date
+      - preference or plan statements
+      - possession or activity descriptions
+    low_value_sections:
+      - template headers without content
+      - copied assistant text without user attribution
+    expected_semantic_families:
+      - personal_event
+      - personal_state
+      - preference_opinion
+      - possession_asset
+      - plan_intention
+      - activity_habit
+    default_processing_mode: balanced
+    url_domains: []
+    title_regex: []
+
+semantic_object_families:
+  personal_event:
+    purpose: Preserve dated or time-anchored events the user attended, completed, or experienced.
+    object_types:
+      - event_attended
+      - event_completed
+      - appointment
+      - trip_or_visit
+      - milestone
+      - social_occasion
+    core_type_mapping:
+      event_attended: event
+      event_completed: event
+      appointment: event
+      trip_or_visit: event
+      milestone: event
+      social_occasion: event
+    mvp_claim_type:
+      event_attended: other
+      event_completed: other
+      appointment: other
+      trip_or_visit: other
+      milestone: funding_event
+      social_occasion: other
+    required_fields:
+      - people facet must include 'user' as the speaker/protagonist (plus any named third parties)
+      - event description
+      - date or relative timing when present
+      - source refs
+
+  personal_state:
+    purpose: Preserve the user's current or changed personal circumstances and status updates.
+    object_types:
+      - status_update
+      - living_situation
+      - relationship_status
+      - employment_status
+      - repair_or_problem
+      - switch_or_replacement
+    core_type_mapping:
+      status_update: state_change
+      living_situation: state_change
+      relationship_status: state_change
+      employment_status: state_change
+      repair_or_problem: state_change
+      switch_or_replacement: state_change
+    mvp_claim_type:
+      status_update: other
+      living_situation: infrastructure_update
+      relationship_status: other
+      employment_status: other
+      repair_or_problem: security_issue
+      switch_or_replacement: product_launch
+    required_fields:
+      - people facet must include 'user' as the speaker/protagonist (plus any named third parties)
+      - what changed or current state
+      - prior state when an update is described
+      - date or relative timing when present
+      - source refs
+
+  preference_opinion:
+    purpose: Preserve the user's likes, dislikes, opinions, and stated preferences.
+    object_types:
+      - like_or_preference
+      - dislike_or_aversion
+      - opinion
+      - brand_or_product_preference
+      - communication_preference
+      - food_or_diet_preference
+    core_type_mapping:
+      like_or_preference: claim
+      dislike_or_aversion: claim
+      opinion: argument
+      brand_or_product_preference: claim
+      communication_preference: claim
+      food_or_diet_preference: claim
+    mvp_claim_type:
+      like_or_preference: other
+      dislike_or_aversion: other
+      opinion: research_finding
+      brand_or_product_preference: product_launch
+      communication_preference: other
+      food_or_diet_preference: other
+    required_fields:
+      - people facet must include 'user' as the speaker/protagonist (plus any named third parties)
+      - preference or opinion target
+      - strength or certainty when stated
+      - source refs
+
+  possession_asset:
+    purpose: Preserve facts about things the user owns, uses, or is responsible for.
+    object_types:
+      - owned_item
+      - vehicle
+      - device_or_gadget
+      - pet
+      - subscription_or_service
+      - property_or_home
+    core_type_mapping:
+      owned_item: description
+      vehicle: description
+      device_or_gadget: description
+      pet: description
+      subscription_or_service: description
+      property_or_home: description
+    mvp_claim_type:
+      owned_item: other
+      vehicle: other
+      device_or_gadget: product_launch
+      pet: other
+      subscription_or_service: pricing_change
+      property_or_home: infrastructure_update
+    required_fields:
+      - people facet must include 'user' as the speaker/protagonist (plus any named third parties)
+      - possession name or category
+      - relevant attributes (model, color, condition) when stated
+      - source refs
+
+  plan_intention:
+    purpose: Preserve the user's future plans, goals, intentions, and scheduled intentions.
+    object_types:
+      - future_plan
+      - goal
+      - scheduled_intention
+      - travel_plan
+      - purchase_intention
+      - career_intention
+    core_type_mapping:
+      future_plan: claim
+      goal: claim
+      scheduled_intention: event
+      travel_plan: claim
+      purchase_intention: claim
+      career_intention: claim
+    mvp_claim_type:
+      future_plan: forecast
+      goal: forecast
+      scheduled_intention: other
+      travel_plan: forecast
+      purchase_intention: forecast
+      career_intention: forecast
+    required_fields:
+      - people facet must include 'user' as the speaker/protagonist (plus any named third parties)
+      - plan or goal description
+      - timeframe when stated
+      - source refs
+
+  activity_habit:
+    purpose: Preserve the user's routines, hobbies, workouts, and recurring activities.
+    object_types:
+      - routine
+      - workout_or_exercise
+      - hobby
+      - skill_practice
+      - habit_change
+      - frequency_pattern
+    core_type_mapping:
+      routine: description
+      workout_or_exercise: description
+      hobby: description
+      skill_practice: description
+      habit_change: state_change
+      frequency_pattern: observation
+    mvp_claim_type:
+      routine: other
+      workout_or_exercise: benchmark_result
+      hobby: other
+      skill_practice: other
+      habit_change: model_release
+      frequency_pattern: other
+    required_fields:
+      - people facet must include 'user' as the speaker/protagonist (plus any named third parties)
+      - activity description
+      - frequency or schedule when stated
+      - location when stated
+      - source refs
+
+  health_wellness:
+    purpose: Preserve the user's health conditions, treatments, wellness activities, and medical context.
+    object_types:
+      - health_condition
+      - symptom
+      - treatment_or_medication
+      - wellness_activity
+      - dietary_restriction
+      - fitness_metric
+    core_type_mapping:
+      health_condition: observation
+      symptom: observation
+      treatment_or_medication: state_change
+      wellness_activity: description
+      dietary_restriction: constraint
+      fitness_metric: result
+    mvp_claim_type:
+      health_condition: regulation
+      symptom: other
+      treatment_or_medication: other
+      wellness_activity: other
+      dietary_restriction: other
+      fitness_metric: benchmark_result
+    required_fields:
+      - people facet must include 'user' as the speaker/protagonist (plus any named third parties)
+      - health or wellness topic
+      - status or measurement when stated
+      - source refs
+
+salience_policy:
+  min_floor: 0.3
+  preserve_if:
+    - The user states a personal fact about themselves (possession, event, preference, plan, activity, health).
+    - The user reports a change or update to prior personal information.
+    - The user names a dated event, appointment, workshop, trip, or milestone.
+    - The user describes a problem, repair, switch, or replacement affecting their possessions or routines.
+    - The user expresses a durable preference, opinion, goal, or intention.
+    - The text includes concrete dates, places, names, or quantities tied to the user.
+  ignore_if:
+    - The text is a greeting, farewell, or pleasantry without personal content.
+    - The text is assistant boilerplate, disclaimers, or generic advice without user-specific facts.
+    - The text is user filler ("thanks", "ok", "got it") without new information.
+    - The text is a hypothetical, joke, or third-party story not about the user.
+    - The text repeats a prior user statement without adding detail.
+  downgrade_if:
+    - The user mentions something vaguely without confirming it as fact.
+    - The assistant paraphrases the user but adds no new grounded detail.
+    - The claim lacks actor, object, or context needed for durable retrieval.
+    - The statement is a transient mood without a durable fact anchor.
+  escalate_if:
+    - The user gives conflicting dates or counts for the same event.
+    - A state change contradicts a prior explicit user fact in the same session.
+    - Health or safety details are ambiguous but potentially important.
+    - A plan references a hard deadline but timing is unclear.
+
+facet_policy:
+  generic_facets:
+    - people
+    - orgs
+    - places
+    - dates
+  domain_facets:
+    - possessions
+    - activities
+    - events
+    - preferences
+    - health_topics
+    - relationships
+    - vehicles
+    - locations
+  preserve_unknown_salient_terms: true
+  canonicalization_required: false
+  external_id_sources: []
+
+relation_grammar:
+  core_relations:
+    - supports
+    - contradicts
+    - refines
+    - qualifies
+    - weakens
+    - strengthens
+    - explains
+    - causes
+    - duplicates
+    - supersedes
+    - insufficient_evidence
+  domain_relations:
+    - updates_preference
+    - replaces_activity
+    - attends_event
+    - owns_possession
+  relation_constraints: {}
+  escalation_rules:
+    - A newer user state_change on the same topic may supersede an older personal_state object when dates or explicit update language align.
+    - A habit_change should supersede or qualify prior activity_habit routine objects from the same user.
+    - A preference shift should qualify or supersede prior preference_opinion objects on the same target.
+    - An updated plan_intention should supersede an earlier plan on the same goal when the user revises it.
+
+epistemic_policy:
+  source_authority_rules:
+    primary: Direct user statement in a user turn.
+    secondary: Assistant paraphrase clearly attributed to the user.
+    tertiary: Assistant inference or suggestion not confirmed by the user.
+    unknown: Speaker attribution cannot be determined.
+  status_rules:
+    user_stated_facts: asserted_by_source
+    user_preferences_and_plans: asserted_by_source
+    assistant_suggestions: inferred unless the user accepts them
+    hypothetical_or_joke: speculative
+  confidence_rules:
+    raise_when:
+      - statement is in a user turn with explicit first-person attribution
+      - object has a direct quote or exact span evidence
+      - event includes date and activity description
+      - state change names prior and new state
+    lower_when:
+      - statement is assistant-only without user confirmation
+      - claim is vague or hedged ("maybe", "thinking about")
+      - date or actor is missing for a time-sensitive fact
+      - preference is implied rather than stated
+  contradiction_policy:
+    first_action: Attempt to refine scope before marking contradiction; different time periods, contexts, or partial updates may explain apparent conflict.
+    supersession: If the same user reports a newer value for the same personal object, mark older state_change superseded.
+    high_authority_conflict: If two user statements disagree on a dated event or possession attribute, preserve both evidence paths.
+    rumor_handling: Do not treat unconfirmed assistant guesses as user facts.
+  uncertainty_policy:
+    store_in: uncertainty field of epistemic block
+    required_for: plans without dates, preferences stated tentatively, health details without diagnosis context
+  escalation_policy:
+    escalate_to_t3:
+      - cross-turn contradictions on dated events or possession attributes
+      - ambiguous health or safety statements
+      - unclear temporal ordering between related user facts
+    escalate_to_t4:
+      - integrity audit
+      - major contradiction reports
+      - domain-pack blind spot review
+
+model_routing_policy:
+  default_route:
+    segmenting: T0
+    basic_facets: T1
+    semantic_compression_easy: T1
+    semantic_compression_ambiguous: T2
+    relation_classification_easy: T2
+    synthesis: T3
+    audit_or_high_impact: T4
+  models:
+    T1:
+      extractor: GLiNER2-style NER extractor for facet and entity extraction
+      embeddings: bge-small for dense retrieval and near-duplicate detection
+      classifier: DeBERTa-xsmall for domain/topic classification
+      fallback_lm: Qwen 0.5B for low-stakes compression and labeling
+    T2: qwen3.6-flash
+    T3: qwen3.7-max
+
+budgets:
+  max_segments_per_source: 500
+  max_semantic_objects_per_source: 80
+  max_semantic_objects_per_segment: 5
+  max_relations_per_object: 8
+  max_facets_per_object: 24
+  max_t2_calls_per_source: 20
+  max_t3_calls_per_source: 2
+  force_escalation_if_budget_exceeded: false
+  per_source_type:
+    chat_session:
+      max_semantic_objects_per_source: 30
+    personal_note:
+      max_semantic_objects_per_source: 40
+
+retention_policy:
+  hot_window_hours: 168
+  warm_window_days: 45
+  cold_after_days: 365
+  archive_after_days: null
+  decay_by_object_type:
+    event_attended: historical event; salience cools but record is permanent
+    status_update: active until superseded by newer user state_change
+    habit_change: supersedes older activity_habit routine objects
+    future_plan: stale after stated timeframe passes without confirmation
+    repair_or_problem: active until resolved or superseded
+    preference_or_opinion: active; qualified when user revises preference
+  refresh_triggers:
+    - new user statement updating the same personal topic
+    - supersession event detected from same user actor
+    - contradiction between user turns on the same fact
+  stale_conditions:
+    - plan timeframe has elapsed without user confirmation
+    - state_change has been superseded by a newer user update
+    - event date is far in the past and no longer queried
+  supersession_rules:
+    - Same actor (user) + same personal object + newer date = supersedes prior state_change
+    - Explicit preference or habit change supersedes prior preference_opinion or activity_habit objects
+    - Revised plan_intention supersedes earlier plan on the same goal when the user states an update
+
+retrieval_policy:
+  query_intents:
+    personal_timeline:
+      description: Retrieve dated personal events, milestones, and chronological user facts.
+      retrieval_priorities:
+        - personal_event
+        - personal_state
+        - activity_habit
+        - plan_intention
+    preference_lookup:
+      description: Retrieve user likes, dislikes, opinions, and stated preferences.
+      retrieval_priorities:
+        - preference_opinion
+        - possession_asset
+        - activity_habit
+    state_change_lookup:
+      description: Retrieve user status updates, switches, repairs, and superseded personal states.
+      retrieval_priorities:
+        - personal_state
+        - activity_habit
+        - possession_asset
+        - preference_opinion
+    event_details:
+      description: Retrieve specifics of workshops, appointments, trips, and attended events.
+      retrieval_priorities:
+        - personal_event
+        - plan_intention
+        - activity_habit
+    possession_lookup:
+      description: Retrieve owned items, vehicles, devices, pets, and subscriptions.
+      retrieval_priorities:
+        - possession_asset
+        - personal_state
+        - personal_event
+    plan_lookup:
+      description: Retrieve future plans, goals, and scheduled intentions.
+      retrieval_priorities:
+        - plan_intention
+        - personal_event
+        - activity_habit
+    activity_lookup:
+      description: Retrieve workouts, hobbies, routines, and habit changes.
+      retrieval_priorities:
+        - activity_habit
+        - health_wellness
+        - personal_state
+  hybrid_score_weights:
+    semantic_similarity: 0.35
+    domain_object_type_match: 0.20
+    source_authority: 0.12
+    recency: 0.12
+    salience: 0.11
+    relation_relevance: 0.07
+    evidence_quality: 0.03
+  retrieval_priorities: {}
+
+context_assembly:
+  include:
+    - highest_salience_relevant_objects
+    - counter_evidence_and_caveats
+    - superseding_or_superseded_objects
+    - source_refs_and_excerpts
+    - epistemic_notes
+  ordering: evidence_strength
+  max_tokens_by_tier:
+    T2: 2000
+    T3: 8000
+    T4: 12000
+
+evaluation_contract:
+  object_extraction_metrics:
+    - semantic object schema validity
+    - grounded object rate
+    - salient object precision
+    - salient object recall
+    - unsupported object rate
+    - MVP claim-type projection accuracy
+  relation_metrics:
+    - relation accuracy
+    - contradiction recall
+    - supersession accuracy
+    - evidence sufficiency accuracy
+  epistemic_metrics:
+    - status assignment accuracy
+    - confidence calibration
+    - escalation recall on hard cases
+    - overconfidence rate on personal facts
+  retrieval_metrics:
+    - relevant semantic object recall
+    - counter-evidence inclusion
+    - citation grounding rate
+    - stale/superseded object handling
+  minimum_thresholds:
+    semantic_object_schema_validity: "> 95%"
+    grounded_object_rate: "> 95%"
+    unsupported_object_rate: "< 5%"
+    mvp_claim_type_projection_accuracy: "> 90%"
+    escalation_recall_on_hard_cases: "> 85%"
+    citation_grounding_rate: "> 95%"
+
+# ---------------------------------------------------------------------------
+# Legacy top-level keys — preserved for back-compat until A6 cuts over.
+# ---------------------------------------------------------------------------
+
+id: conversation_v1
+name: Personal Conversation Memory
+
+topics:
+  - personal facts
+  - preferences
+  - plans and goals
+  - possessions
+  - events and appointments
+  - activities and habits
+  - health and wellness
+  - life updates
+
+claim_types:
+  - model_release
+  - benchmark_result
+  - product_launch
+  - pricing_change
+  - research_finding
+  - infrastructure_update
+  - security_issue
+  - funding_event
+  - regulation
+  - forecast
+  - other
+
+brief_sections:
+  - recent_updates
+  - upcoming_plans
+  - preferences
+  - watch_next
+
+models:
+  t2: qwen3.6-flash
+  t3: qwen3.7-max

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from collections.abc import Callable
@@ -14,6 +15,7 @@ from pydantic import BaseModel, computed_field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.config import settings
 from app.db.models import Document, SemanticCapsule, SemanticRelation
 from app.domain_packs.loader import DomainPack
 from app.intelligence.extraction import _CANONICAL_RELATION_TYPES
@@ -161,26 +163,38 @@ async def classify_cross_document_relations(
     classified_pairs = len(to_classify)
 
     relation_ids: list[uuid.UUID] = []
+    semaphore = asyncio.Semaphore(settings.t2_concurrency)
 
-    for pair in to_classify:
+    async def classify_pair(pair):
         cap_a = pair.newer
         cap_b = pair.older
-        try:
-            classification, _ = await client.complete_json(
-                model=model,
-                system=SYSTEM_PROMPT,
-                user=build_relation_prompt(cap_a, cap_b, pack),
-                response_model=RelationClassification,
-                run_type="classify_relation",
-            )
-        except LLMError as exc:
-            logger.warning(
-                "Cross-doc relation classification failed (%s → %s): %s",
-                cap_a.id,
-                cap_b.id,
-                exc,
-            )
+        async with semaphore:
+            try:
+                classification, _ = await client.complete_json(
+                    model=model,
+                    system=SYSTEM_PROMPT,
+                    user=build_relation_prompt(cap_a, cap_b, pack),
+                    response_model=RelationClassification,
+                    run_type="classify_relation",
+                )
+            except LLMError as exc:
+                logger.warning(
+                    "Cross-doc relation classification failed (%s → %s): %s",
+                    cap_a.id,
+                    cap_b.id,
+                    exc,
+                )
+                return None
+            return pair, classification
+
+    classifications = await asyncio.gather(*[classify_pair(p) for p in to_classify])
+
+    for item in classifications:
+        if item is None:
             continue
+        pair, classification = item
+        cap_a = pair.newer
+        cap_b = pair.older
 
         if not classification.relation_type or classification.relation_type == "none":
             continue

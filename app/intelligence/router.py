@@ -23,13 +23,19 @@ STRATEGIES: dict[str, RetrievalStrategy] = {
         ),
     ),
     "multi_doc": RetrievalStrategy(
-        top_k_delta=3,
+        top_k_delta=5,
         fetch_k_multiplier=4,
-        answer_hint="Synthesize across all relevant context blocks and cite every block you draw from.",
+        answer_hint=(
+            "Synthesize across all relevant context blocks and cite every block you draw from. "
+            "When the question asks how many, enumerate and count every distinct matching "
+            "occurrence across all context blocks."
+        ),
     ),
-    # current_state deliberately has no recency override: capsule created_at is
-    # ingestion order, not publication date, so boosting it buries past-dated facts
-    # (T-X3 finding — it dropped release-date capsules out of top-k entirely).
+    # current_state deliberately has no recency override. Recency now scores on
+    # published_at when set (T-L6 R3), but current_state wants the most up-to-date
+    # fact regardless of session date — boosting recency would bury an older
+    # session's still-current fact behind a newer session's stale one (T-X3
+    # finding — it dropped release-date capsules out of top-k entirely).
     # The supersession aux blocks + answer hint carry this shape's intent instead.
     "current_state": RetrievalStrategy(
         answer_hint="Prefer the most recent superseding fact; explicitly note the fact it replaced.",
@@ -39,6 +45,14 @@ STRATEGIES: dict[str, RetrievalStrategy] = {
         answer_hint=(
             "Distinguish verified primary-source evidence from rumor or unverified reports; "
             "state the authority of your sources."
+        ),
+    ),
+    "temporal": RetrievalStrategy(
+        top_k_delta=7,
+        fetch_k_multiplier=6,
+        answer_hint=(
+            "Derive event ordering and durations from the per-block 'Date:' lines and "
+            "the 'Current date:' line; state the arithmetic briefly."
         ),
     ),
     "general": RetrievalStrategy(),

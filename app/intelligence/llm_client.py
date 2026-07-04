@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import random
 from typing import Any, Literal, TypeVar
 
 import httpx
@@ -12,6 +14,9 @@ from app.observability.tracer import record_agent_run
 _BASE_URL = "https://openrouter.ai/api/v1"
 _TIMEOUT = httpx.Timeout(60.0)
 _COST_PER_TOKEN_USD = 0.14 / 1_000_000
+_MAX_JSON_ATTEMPTS = 3
+_RETRY_BACKOFF_SECONDS = (1.0, 4.0)
+_RETRY_JITTER_FRACTION = 0.25
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -54,6 +59,7 @@ class LLMClient:
         temperature: float = 0.1,
         max_tokens: int = 2000,
         run_type: str = "claim_extraction",
+        thinking: bool = False,
     ) -> tuple[T, int]:
         """Call OpenRouter and return (validated_result, total_tokens).
 
@@ -62,7 +68,7 @@ class LLMClient:
         Raises LLMSchemaError if the response fails Pydantic validation.
         Always records an agent_runs row (even on failure).
         """
-        payload = {
+        payload: dict[str, Any] = {
             "model": model,
             "messages": [
                 {"role": "system", "content": system},
@@ -72,75 +78,140 @@ class LLMClient:
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        if "dashscope" in self._base_url:
+            # qwen3 hybrid models think by default on DashScope; that cost 3-24x
+            # completion tokens and wall-clock on JSON tasks with identical output
+            # (H8 Q0 A/B). Callers needing reasoning must opt in. Gated to
+            # DashScope only — an unrecognized field on another OpenAI-compatible
+            # provider (e.g. OpenRouter) risks a 4xx rather than being ignored.
+            payload["enable_thinking"] = thinking
 
         raw_output: str | None = None
         total_tokens = 0
         prompt_tokens: int | None = None
         completion_tokens: int | None = None
         call_status = "success"
+        validated: T | None = None
 
-        try:
-            async with httpx.AsyncClient(
-                base_url=self._base_url,
-                headers={
-                    "Authorization": f"Bearer {self._api_key}",
-                    "Content-Type": "application/json",
-                },
-                timeout=_TIMEOUT,
-            ) as http:
-                resp = await http.post("/chat/completions", json=payload)
+        async with httpx.AsyncClient(
+            base_url=self._base_url,
+            headers={
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=_TIMEOUT,
+        ) as http:
+            for attempt in range(_MAX_JSON_ATTEMPTS):
+                raw_output = None
+                total_tokens = 0
+                prompt_tokens = None
+                completion_tokens = None
+                call_status = "success"
+                try:
+                    resp = await http.post("/chat/completions", json=payload)
 
-            if resp.status_code >= 500:
-                call_status = f"http_{resp.status_code}"
-                raise LLMNetworkError(f"OpenRouter {resp.status_code}: {resp.text[:300]}")
+                    if resp.status_code == 429 or resp.status_code >= 500:
+                        call_status = f"http_{resp.status_code}"
+                        if attempt < _MAX_JSON_ATTEMPTS - 1:
+                            await _retry_backoff(attempt)
+                            continue
+                        raise LLMNetworkError(f"OpenRouter {resp.status_code}: {resp.text[:300]}")
 
-            if resp.status_code >= 400:
-                call_status = f"http_{resp.status_code}"
-                raise LLMError(f"OpenRouter {resp.status_code}: {resp.text[:300]}")
+                    if resp.status_code >= 400:
+                        call_status = f"http_{resp.status_code}"
+                        raise LLMError(f"OpenRouter {resp.status_code}: {resp.text[:300]}")
 
-            data = resp.json()
-            try:
-                raw_output = data["choices"][0]["message"]["content"]
-            except (KeyError, IndexError, TypeError) as exc:
-                call_status = "malformed_response"
-                raise LLMError(f"Malformed OpenRouter response: {exc}") from exc
+                    data = resp.json()
+                    try:
+                        raw_output = data["choices"][0]["message"]["content"]
+                    except (KeyError, IndexError, TypeError) as exc:
+                        call_status = "malformed_response"
+                        raise LLMError(f"Malformed OpenRouter response: {exc}") from exc
 
-            usage = data.get("usage", {})
-            total_tokens = usage.get("total_tokens", 0)
-            prompt_tokens = usage.get("prompt_tokens")
-            completion_tokens = usage.get("completion_tokens")
+                    usage = data.get("usage", {})
+                    total_tokens = usage.get("total_tokens", 0)
+                    prompt_tokens = usage.get("prompt_tokens")
+                    completion_tokens = usage.get("completion_tokens")
 
-            if raw_output is None:
-                call_status = "schema_error"
-                raise LLMSchemaError("LLM returned null content", raw_output="")
+                    if raw_output is None:
+                        call_status = "schema_error"
+                        raise LLMSchemaError("LLM returned null content", raw_output="")
 
-            try:
-                validated = response_model.model_validate_json(raw_output)
-            except (ValueError, ValidationError) as exc:
-                call_status = "schema_error"
-                raise LLMSchemaError(
-                    f"Schema validation failed: {exc}. Raw: {raw_output[:200]}",
+                    try:
+                        validated = response_model.model_validate_json(raw_output)
+                    except (ValueError, ValidationError) as exc:
+                        call_status = "schema_error"
+                        raise LLMSchemaError(
+                            f"Schema validation failed: {exc}. Raw: {raw_output[:200]}",
+                            raw_output=raw_output,
+                        ) from exc
+
+                except httpx.HTTPError as exc:
+                    call_status = "network_error"
+                    if attempt < _MAX_JSON_ATTEMPTS - 1:
+                        await _retry_backoff(attempt)
+                        continue
+                    await record_agent_run(
+                        self._session_factory,
+                        run_type=run_type,
+                        model=model,
+                        input_payload={"system": system, "user": user},
+                        raw_output=raw_output,
+                        total_tokens=total_tokens,
+                        status=call_status,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                    )
+                    raise LLMNetworkError(str(exc)) from exc
+                except LLMSchemaError:
+                    await record_agent_run(
+                        self._session_factory,
+                        run_type=run_type,
+                        model=model,
+                        input_payload={"system": system, "user": user},
+                        raw_output=raw_output,
+                        total_tokens=total_tokens,
+                        status=call_status,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                    )
+                    raise
+                except LLMError as exc:
+                    await record_agent_run(
+                        self._session_factory,
+                        run_type=run_type,
+                        model=model,
+                        input_payload={"system": system, "user": user},
+                        raw_output=raw_output,
+                        total_tokens=total_tokens,
+                        status=call_status,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                    )
+                    raise exc
+
+                await record_agent_run(
+                    self._session_factory,
+                    run_type=run_type,
+                    model=model,
+                    input_payload={"system": system, "user": user},
                     raw_output=raw_output,
-                ) from exc
+                    total_tokens=total_tokens,
+                    status=call_status,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                )
+                return validated, total_tokens
 
-        except httpx.HTTPError as exc:
-            call_status = "network_error"
-            raise LLMNetworkError(str(exc)) from exc
+        raise AssertionError("unreachable: retry loop should have returned")
 
-        finally:
-            await record_agent_run(
-                self._session_factory,
-                run_type=run_type,
-                model=model,
-                input_payload={"system": system, "user": user},
-                raw_output=raw_output,
-                total_tokens=total_tokens,
-                status=call_status,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-            )
 
-        return validated, total_tokens
+async def _retry_backoff(attempt: int) -> None:
+    base = _RETRY_BACKOFF_SECONDS[attempt]
+    jitter = 1.0 + random.uniform(  # noqa: S311
+        -_RETRY_JITTER_FRACTION, _RETRY_JITTER_FRACTION
+    )
+    await asyncio.sleep(base * jitter)
 
 
 # ---------------------------------------------------------------------------

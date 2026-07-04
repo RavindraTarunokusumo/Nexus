@@ -1,0 +1,55 @@
+{"question_id": "gpt4_2655b836", "hypothesis": "The user's car GPS system had an issue, which led to it being replaced at the dealership on March 22nd."}
+{"question_id": "gpt4_2487a7cb", "hypothesis": "The 'Effective Time Management' workshop was attended last Saturday (approximately May 21, 2023), while the 'Data Analysis using Python' webinar was attended two months ago (approximately March 28, 2023). Therefore, you attended the 'Data Analysis using Python' webinar first."}
+{"question_id": "gpt4_76048e76", "hypothesis": "You took care of the bike first. The bike required repairs in mid-February, whereas the car (Corolla) was washed on Monday, February 27th."}
+{"question_id": "gpt4_2312f94c", "hypothesis": "I do not have enough evidence to answer that from the current corpus."}
+{"question_id": "0bb5a684", "hypothesis": "7"}
+{"question_id": "08f4fc43", "hypothesis": "30 days"}
+{"question_id": "2c63a862", "hypothesis": "It took 15 days. The user started working with Rachel on February 15th C1 and viewed a house they loved (that checked all boxes) on March 1st C2."}
+{"question_id": "gpt4_385a5000", "hypothesis": "The marigolds were started first. The user started marigold seeds that arrived on March 3rd, and there is no information provided about when tomato seeds were started."}
+{"question_id": "2a1811e2", "hypothesis": "21 days"}
+{"question_id": "bbf86515", "hypothesis": "4"}
+{"question_id": "gpt4_5dcc0aab", "hypothesis": "I do not have enough evidence to answer that from the current corpus."}
+{"question_id": "gpt4_0b2f1d21", "hypothesis": "I do not have enough evidence to answer that from the current corpus."}
+{"question_id": "f0853d11", "hypothesis": "24"}
+{"question_id": "gpt4_6ed717ea", "hypothesis": "I do not have enough evidence to answer that from the current corpus."}
+{"question_id": "gpt4_70e84552", "hypothesis": "I do not have enough evidence to answer that from the current corpus."}
+{"question_id": "a3838d2b", "hypothesis": "1"}
+{"question_id": "gpt4_93159ced", "hypothesis": "I do not have enough evidence to answer that from the current corpus."}
+{"question_id": "gpt4_2d58bcd6", "hypothesis": "I do not have enough evidence to answer that from the current corpus."}
+{"question_id": "gpt4_65aabe59", "hypothesis": "The smart thermostat was set up first. According to the context, the user owns a smart thermostat that was set up one month ago C5, whereas the mesh network system upgrade occurred recently (implied to be more recent than the one-month mark given the 'recently' descriptor in C3 relative to the specific 'one month ago' timestamp for the thermostat), or simply that the thermostat has a specific past timestamp of 'one month ago' while the mesh network is described as an upgrade without a specific earlier date, but typically 'recently' implies a shorter timeframe than 'one month ago' in these types of logs, or more directly, C5 explicitly states 'set up one month ago' for the thermostat. However, looking strictly at the provided text: C5 says the thermostat was set up 'one month ago'. C1 and C3 discuss the mesh network/router upgrade. C3 says the router was upgraded '3 weeks ago'. Since one month (approx 4 weeks) is longer than 3 weeks, the thermostat was set up before the mesh network system."}
+{"question_id": "982b5123", "hypothesis": "three months"}
+{"question_id": "b9cfe692", "hypothesis": "The user took three weeks to finish 'The Nightingale' and two and a half weeks to finish 'The Seven Husbands of Evelyn Hugo', for a combined total of five and a half weeks."}
+{"question_id": "gpt4_4edbafa2", "hypothesis": "June 3rd"}
+{"question_id": "c8090214", "hypothesis": "I do not have enough evidence to answer that from the current corpus."}
+{"question_id": "gpt4_483dd43c", "hypothesis": "You started watching 'Game of Thrones' first. According to the context, you started watching 'Game of Thrones' about a month ago (relative to May 20, 2023), whereas the evidence for 'The Crown' only indicates that you completed binge-watching season 3 recently, without specifying when you started."}
+{"question_id": "e4e14d04", "hypothesis": "three weeks"}
+{"question_id": "c9f37c46", "hypothesis": "I do not have enough evidence to answer that from the current corpus."}
+{"question_id": "gpt4_2c50253f", "hypothesis": "The user wakes up at 6:45 AM on Tuesdays and Thursdays."}
+{"question_id": "dcfa8644", "hypothesis": "24"}
+{"question_id": "gpt4_b4a80587", "hypothesis": "I do not have enough evidence to answer that from the current corpus."}
+{"question_id": "gpt4_9a159967", "hypothesis": "United Airlines"}
+{"question_id": "cc6d1ec1", "hypothesis": "about three months"}
+{"question_id": "gpt4_8c8961ae", "hypothesis": "The solo trip to Thailand"}
+{"question_id": "gpt4_d9af6064", "hypothesis": "The new router"}
+{"question_id": "gpt4_7de946e7", "hypothesis": "The skin tag removal occurred on February 22nd, while the follow-up appointment for the persistent cough was on March 1st. Therefore, you dealt with the skin tag removal first."}
+{"question_id": "d01c6aa8", "hypothesis": "I do not have enough evidence to answer that from the current corpus."}
+{"question_id": "993da5e2", "hypothesis": "The provided context does not specify how long the user had been using the new area rug when they rearranged their living room furniture. It only states that the user possesses a new area rug (C3) and rearranged their furniture three weeks ago (C1), but it does not link the duration of rug usage to the date of the furniture rearrangement."}
+{"question_id": "a3045048", "hypothesis": "7"}
+{"question_id": "gpt4_d31cdae3", "hypothesis": "The narrator took the solo trip to Europe first. The context states that the user took a solo trip to Europe last summer C4 and visited Germany last summer C1, whereas the family road trip across the American Southwest occurred a few years ago C2."}
+{"question_id": "gpt4_cd90e484", "hypothesis": "I do not have enough evidence to answer that from the current corpus."}
+{"question_id": "gpt4_88806d6e", "hypothesis": "You met Mark and Sarah first. You met them on a beach trip about a month ago, whereas you met the freelance writer last week."}
+{"question_id": "gpt4_4cd9eba1", "hypothesis": "The user was accepted on March 20th C2 and started attending pre-departure orientation sessions on March 27th C1. The time between these two dates is exactly one week."}
+{"question_id": "gpt4_93f6379c", "hypothesis": "I do not have enough evidence to answer that from the current corpus."}
+{"question_id": "b29f3365", "hypothesis": "The provided context does not state how long the user had been taking guitar lessons when they bought the new guitar amp. It only mentions that the user acquired a new guitar amplifier two weeks ago C3 C4 C5 and attended music workshops C1 C2, but it does not link the duration of lessons to the purchase date."}
+{"question_id": "gpt4_2f56ae70", "hypothesis": "Disney+"}
+{"question_id": "6613b389", "hypothesis": "2"}
+{"question_id": "gpt4_78cf46a3", "hypothesis": "The narrator lost their phone charger first. The context states the user lost their old phone charger approximately two weeks ago, while they acquired their new phone case approximately one month ago."}
+{"question_id": "gpt4_0a05b494", "hypothesis": "You met the tourist from Australia first. You met the Australian tourist last Thursday, whereas you met the woman selling jam (jam maker) two weeks ago."}
+{"question_id": "gpt4_1a1dc16d", "hypothesis": "The meeting with Rachel happened first. The user had a meeting with mentor Rachel on April 10th, while the pride parade took place on May 1st."}
+{"question_id": "gpt4_2f584639", "hypothesis": "I do not have enough evidence to answer that from the current corpus."}
+{"question_id": "gpt4_213fd887", "hypothesis": "I do not have enough evidence to answer that from the current corpus."}
+{"question_id": "gpt4_5438fa52", "hypothesis": "The start of your Spanish classes happened first. You have been taking Spanish classes for the past three months, whereas you attended a cultural festival yesterday."}
+{"question_id": "gpt4_c27434e8", "hypothesis": "I do not have enough evidence to answer that from the current corpus."}
+{"question_id": "gpt4_fe651585", "hypothesis": "It is not possible to determine who became a parent first based on the provided context. The context states that Rachel has twins (Jackson and Julia) [C1, C5] and that Alex adopted a baby girl in January [C2, C3]. However, the specific birth or adoption dates for Rachel's twins are not provided, only that they are 'growing up fast.' Without knowing when Rachel became a parent, we cannot compare the timelines."}
+{"question_id": "8c18457d", "hypothesis": "7"}
+{"question_id": "gpt4_70e84552_abs", "hypothesis": "I do not have enough evidence to answer that from the current corpus."}

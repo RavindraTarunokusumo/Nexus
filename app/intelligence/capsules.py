@@ -9,11 +9,14 @@ to ``SemanticCapsule`` + ``CapsuleSegment`` rows lives in exactly one place.
 from __future__ import annotations
 
 import hashlib
+import logging
 import uuid
 
 from app.db.models import CapsuleSegment, SemanticCapsule
 from app.intelligence.embedder import Embedder
 from app.intelligence.llm_client import SemanticObject
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "get_embedder",
@@ -144,7 +147,16 @@ def build_capsule_row(
 
     segments: list[CapsuleSegment] = []
     for ref in obj.source_refs:
-        span_uuid = uuid.UUID(ref) if isinstance(ref, str) else ref
+        if isinstance(ref, str):
+            try:
+                span_uuid = uuid.UUID(ref)
+            except ValueError:
+                # LLM occasionally echoes a non-UUID span ref (same class as the
+                # extraction.py evidence guard); drop the segment, keep the capsule.
+                logger.warning("Skipping non-UUID source ref %r", ref)
+                continue
+        else:
+            span_uuid = ref
         raw_role = roles.get(span_uuid, "grounds")
         role = _EVIDENCE_ROLE_TO_SEGMENT_ROLE.get(raw_role, raw_role)
         segments.append(
