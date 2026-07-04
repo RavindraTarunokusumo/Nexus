@@ -68,7 +68,7 @@ class LLMClient:
         Raises LLMSchemaError if the response fails Pydantic validation.
         Always records an agent_runs row (even on failure).
         """
-        payload = {
+        payload: dict[str, Any] = {
             "model": model,
             "messages": [
                 {"role": "system", "content": system},
@@ -77,11 +77,14 @@ class LLMClient:
             "response_format": {"type": "json_object"},
             "temperature": temperature,
             "max_tokens": max_tokens,
+        }
+        if "dashscope" in self._base_url:
             # qwen3 hybrid models think by default on DashScope; that cost 3-24x
             # completion tokens and wall-clock on JSON tasks with identical output
-            # (H8 Q0 A/B). Callers needing reasoning must opt in.
-            "enable_thinking": thinking,
-        }
+            # (H8 Q0 A/B). Callers needing reasoning must opt in. Gated to
+            # DashScope only — an unrecognized field on another OpenAI-compatible
+            # provider (e.g. OpenRouter) risks a 4xx rather than being ignored.
+            payload["enable_thinking"] = thinking
 
         raw_output: str | None = None
         total_tokens = 0

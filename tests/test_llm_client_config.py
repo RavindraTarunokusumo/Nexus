@@ -117,7 +117,13 @@ async def test_complete_json_disables_thinking_by_default(fake_session_factory):
     class _SimpleOutput(BaseModel):
         value: str
 
-    client = LLMClient("test-key", fake_session_factory)
+    # enable_thinking is DashScope-specific (gated on base_url); use the real
+    # production DashScope endpoint so this test exercises that gate.
+    client = LLMClient(
+        "test-key",
+        fake_session_factory,
+        base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    )
 
     with patch("httpx.AsyncClient") as mock_client_cls:
         mock_http = AsyncMock()
@@ -156,3 +162,40 @@ async def test_complete_json_disables_thinking_by_default(fake_session_factory):
             )
             payload = mock_http.post.call_args.kwargs["json"]
             assert payload["enable_thinking"] is True
+
+
+@pytest.mark.asyncio
+async def test_complete_json_omits_enable_thinking_for_non_dashscope_base_url(
+    fake_session_factory,
+):
+    from pydantic import BaseModel
+
+    class _SimpleOutput(BaseModel):
+        value: str
+
+    client = LLMClient("test-key", fake_session_factory)  # default (OpenRouter) base_url
+
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_http = AsyncMock()
+        mock_http.post = AsyncMock(
+            return_value=AsyncMock(
+                status_code=200,
+                json=lambda: {
+                    "choices": [{"message": {"content": '{"value": "ok"}'}}],
+                    "usage": {"total_tokens": 1},
+                },
+            )
+        )
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=None)
+        mock_client_cls.return_value = mock_http
+
+        with patch(
+            "app.intelligence.llm_client.record_agent_run",
+            new=AsyncMock(),
+        ):
+            await client.complete_json(
+                model="some-model", system="s", user="u", response_model=_SimpleOutput
+            )
+            payload = mock_http.post.call_args.kwargs["json"]
+            assert "enable_thinking" not in payload

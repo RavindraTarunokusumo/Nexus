@@ -15,6 +15,7 @@ from pydantic import BaseModel, computed_field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.config import settings
 from app.db.models import Document, SemanticCapsule, SemanticRelation
 from app.domain_packs.loader import DomainPack
 from app.intelligence.extraction import _CANONICAL_RELATION_TYPES
@@ -162,7 +163,7 @@ async def classify_cross_document_relations(
     classified_pairs = len(to_classify)
 
     relation_ids: list[uuid.UUID] = []
-    semaphore = asyncio.Semaphore(4)
+    semaphore = asyncio.Semaphore(settings.t2_concurrency)
 
     async def classify_pair(pair):
         cap_a = pair.newer

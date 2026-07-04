@@ -139,6 +139,9 @@ def _load_spans_failure(error_msg: str) -> dict:
     }
 
 
+_t2_model_force_warned = False
+
+
 def _resolve_t2_model(pack: DomainPack, fallback: str) -> str:
     """Extract the T2 model string from pack.model_extra['models']['t2'].
 
@@ -148,6 +151,14 @@ def _resolve_t2_model(pack: DomainPack, fallback: str) -> str:
     (dict: use 'extractor' or 'model' sub-key).
     """
     if settings.t2_model_force:
+        global _t2_model_force_warned
+        if not _t2_model_force_warned:
+            logger.warning(
+                "T2_MODEL_FORCE=%s overrides every pack's T2 model for this process "
+                "(benchmark-only escape hatch — unset it in production .env)",
+                settings.t2_model_force,
+            )
+            _t2_model_force_warned = True
         return settings.t2_model_force
     extra = getattr(pack, "model_extra", {}) or {}
     top_models = extra.get("models") or {}
@@ -428,7 +439,7 @@ async def _run_classify_relations(
     pairs = pairs[:remaining_budget]
 
     relation_ids: list[uuid.UUID] = []
-    semaphore = asyncio.Semaphore(4)
+    semaphore = asyncio.Semaphore(settings.t2_concurrency)
 
     async def classify_pair(cap_a, cap_b):
         async with semaphore:
@@ -791,7 +802,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
 
         judge_results: list[dict] = []
         calls_made = 0
-        semaphore = asyncio.Semaphore(4)
+        semaphore = asyncio.Semaphore(settings.t2_concurrency)
 
         async def judge_one(capsule):
             async with semaphore:

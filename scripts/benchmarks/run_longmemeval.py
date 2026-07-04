@@ -241,7 +241,7 @@ def _instance_to_corpus(instance: dict[str, Any]) -> list[dict[str, Any]]:
     dates = instance.get("haystack_dates", [])
     sessions = instance.get("haystack_sessions", [])
     corpus: list[dict[str, Any]] = []
-    for idx, (session_id, turns) in enumerate(zip(session_ids, sessions, strict=False)):
+    for idx, (session_id, turns) in enumerate(zip(session_ids, sessions, strict=True)):
         text = render_session_text(turns)
         if not text.strip():
             print(f"WARNING: skipping empty session {session_id} for {question_id}")
@@ -516,6 +516,13 @@ async def _run_single_instance(
             session_factory, corpus_urls
         )
 
+        instance_as_of = _parse_longmemeval_date(instance.get("question_date"))
+        if instance_as_of is None:
+            print(
+                f"WARNING: {instance['question_id']} has no parseable question_date — "
+                "answering as_of=now() instead of the benchmark's intended question time"
+            )
+
         start = time.monotonic()
         final = await run_chat_with_context(
             chat_graph,
@@ -523,7 +530,7 @@ async def _run_single_instance(
             t2_model,
             top_k=k,
             pack=pack_obj,
-            as_of=_parse_longmemeval_date(instance.get("question_date")),
+            as_of=instance_as_of,
         )
         latency_s = time.monotonic() - start
 
@@ -580,7 +587,6 @@ async def _run_worker(
     shard: list[tuple[int, dict[str, Any]]],
     *,
     db_url: str,
-    embedder: Embedder,
     pack_id: str,
     pack_obj: Any,
     resolved_domain: str,
@@ -593,6 +599,11 @@ async def _run_worker(
     engine = make_engine(db_url)
     engines.append(engine)
     session_factory = make_session_factory(engine)
+    # Each worker gets its own Embedder: SentenceTransformer.encode() is a
+    # blocking synchronous call with no internal await point, so a shared
+    # instance would serialize every worker's embedding calls (and the DB/LLM
+    # I/O of every OTHER worker) behind whichever one is mid-encode.
+    embedder = Embedder(settings.t1_model)
     client = LLMClient(settings.llm_api_key, session_factory, base_url=settings.llm_base_url)
     chat_graph = make_chat_graph(session_factory, client, embedder)
 
@@ -659,14 +670,15 @@ async def run_longmemeval(
     resolved_domain = pack_obj.metadata.domain
     t2_model = _resolve_t2_model(pack_obj, settings.t2_model)
 
-    embedder = Embedder(settings.t1_model)
     judge_errors = 0
     instance_errors = 0
     partial_path = out_dir / "results.partial.jsonl"
     engines: list[Any] = []
+    rows: list[dict[str, Any]] = []
 
     try:
         if workers == 1:
+            embedder = Embedder(settings.t1_model)
             engine = make_engine(settings.database_url)
             engines.append(engine)
             session_factory = make_session_factory(engine)
@@ -706,7 +718,6 @@ async def run_longmemeval(
                         worker_index,
                         shard_instances(instances, workers=workers, worker_index=worker_index),
                         db_url=db_url_template.format(n=worker_index),
-                        embedder=embedder,
                         pack_id=pack_id,
                         pack_obj=pack_obj,
                         resolved_domain=resolved_domain,
