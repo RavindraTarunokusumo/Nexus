@@ -194,6 +194,17 @@ together. Ranking is date-blind: recency scoring uses capsule `created_at`
 Non-goals here: R2 sub-query union retrieval for comparison shapes — held until
 post-R1 numbers justify it.
 
+- **R4 — render span evidence in the answer prompt (2026-07-04).** Span retrieval
+  exists end-to-end (`_build_evidence_map`, pack `source_refs_and_excerpts`,
+  `block["evidence"]`) but `build_user_prompt` never renders it — excerpts reach only
+  the API citations payload, so the answer model has never seen a span. Failure Mode 1
+  (relative dates in capsule text anchored to the wrong "now") needs the raw local
+  utterance next to the block's session date. Fix: when a block carries `evidence`,
+  render up to 2 excerpts under the capsule text as `Excerpt: <text>` lines
+  (existing 280-char caps apply; no new config). Keeps the pack date-normalization
+  idea (extraction-time absolute dates) as a held alternative — prompt rendering is
+  cheaper and needs no re-ingestion.
+
 **Success criteria:** classifier routes ordering/duration questions to `temporal`
 (spot-check via agent_runs); 55-subset run shows accuracy at or above the 0.385
 matched baseline with abstentions still ≤ ~15%.
