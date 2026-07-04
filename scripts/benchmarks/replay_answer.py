@@ -71,6 +71,10 @@ COT_SYSTEM = (
     "near match; abstain with the insufficient-evidence sentence.\n"
     "Keep 'notes' short. Put only the final user-facing response in 'answer'."
 )
+# Fail fast if chat_answer.py's schema sentence changed and the .replace() above
+# silently no-op'd — otherwise every cot* variant would run the wrong schema.
+if "notes, answer, citations" not in COT_SYSTEM:
+    raise RuntimeError("SYSTEM_PROMPT schema sentence changed; update COT_SYSTEM's replace target.")
 
 
 @dataclass(frozen=True)
@@ -133,7 +137,7 @@ def _build_lean_prompt(
             lines.append(f"Role: {b['role']}")
         lines.append(b["text"])
         evidence = b.get("evidence") or []
-        if evidence:
+        if evidence and evidence[0].get("text"):
             lines.append(f"Excerpt: {evidence[0]['text']}")
         blocks.append("\n".join(lines))
     parts: list[str] = []
@@ -247,8 +251,32 @@ async def _run_variant(
     client: LLMClient, variant: Variant, cache: list[dict[str, Any]], concurrency: int
 ) -> dict[str, Any]:
     sem = asyncio.Semaphore(concurrency)
-    rows = await asyncio.gather(*[_answer_one(client, variant, r, sem) for r in cache])
+    # return_exceptions: one malformed row or unexpected error must not abort a
+    # whole variant mid-sweep. Errored rows get autoeval_label=None (excluded from
+    # accuracy, same as a judge error) and are counted in the summary.
+    settled = await asyncio.gather(
+        *[_answer_one(client, variant, r, sem) for r in cache], return_exceptions=True
+    )
+    rows: list[dict[str, Any]] = []
+    errors = 0
+    for src, res in zip(cache, settled, strict=True):
+        if isinstance(res, Exception):
+            errors += 1
+            print(f"  row error {src.get('question_id', '?')}: {res!r}"[:160])
+            rows.append(
+                {
+                    "question_id": src.get("question_id", "?"),
+                    "question_type": src.get("question_type", "?"),
+                    "autoeval_label": None,
+                    "abstained": False,
+                    "tokens_used": 0,
+                    "hypothesis": "",
+                }
+            )
+        else:
+            rows.append(res)
     summary = _summarize(variant.name, rows)
+    summary["errors"] = errors
     return {"summary": summary, "rows": rows}
 
 
@@ -300,7 +328,20 @@ def main() -> None:
     parser.add_argument("--concurrency", type=int, default=8)
     parser.add_argument("--out", type=str, default=None)
     args = parser.parse_args()
-    cache = [json.loads(line) for line in Path(args.cache).read_text().splitlines() if line.strip()]
+    raw = [json.loads(line) for line in Path(args.cache).read_text().splitlines() if line.strip()]
+    # Only rows carrying a "context_blocks" key came from a --dump-context run;
+    # error-path rows omit it, and a plain benchmark results.jsonl has none at all.
+    # Skipping keyless rows avoids scoring failed instances as no-evidence
+    # abstentions and turns "wrong file" into a loud error, not silent 0.0 accuracy.
+    cache = [r for r in raw if "context_blocks" in r]
+    skipped = len(raw) - len(cache)
+    if not cache:
+        raise SystemExit(
+            f"{args.cache}: no rows contain 'context_blocks' — rebuild the cache with "
+            "`run_longmemeval.py --dump-context`."
+        )
+    if skipped:
+        print(f"Skipped {skipped} row(s) without context_blocks (instance errors / non-dump).")
     if args.limit:
         cache = cache[: args.limit]
     asyncio.run(main_async(args, cache))
