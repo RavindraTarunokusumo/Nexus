@@ -54,6 +54,7 @@ class LLMClient:
         temperature: float = 0.1,
         max_tokens: int = 2000,
         run_type: str = "claim_extraction",
+        thinking: bool = False,
     ) -> tuple[T, int]:
         """Call OpenRouter and return (validated_result, total_tokens).
 
@@ -71,6 +72,10 @@ class LLMClient:
             "response_format": {"type": "json_object"},
             "temperature": temperature,
             "max_tokens": max_tokens,
+            # qwen3 hybrid models think by default on DashScope; that cost 3-24x
+            # completion tokens and wall-clock on JSON tasks with identical output
+            # (H8 Q0 A/B). Callers needing reasoning must opt in.
+            "enable_thinking": thinking,
         }
 
         raw_output: str | None = None

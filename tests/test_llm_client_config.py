@@ -102,3 +102,51 @@ async def test_llm_client_uses_passed_base_url_in_httpx_client(fake_session_fact
 def test_llm_client_default_base_url_is_openrouter(fake_session_factory):
     client = LLMClient("test-key", fake_session_factory)
     assert client._base_url == _BASE_URL
+
+
+@pytest.mark.asyncio
+async def test_complete_json_disables_thinking_by_default(fake_session_factory):
+    from pydantic import BaseModel
+
+    class _SimpleOutput(BaseModel):
+        value: str
+
+    client = LLMClient("test-key", fake_session_factory)
+
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_http = AsyncMock()
+        mock_http.post = AsyncMock(
+            return_value=AsyncMock(
+                status_code=200,
+                json=lambda: {
+                    "choices": [{"message": {"content": '{"value": "ok"}'}}],
+                    "usage": {"total_tokens": 1},
+                },
+            )
+        )
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=None)
+        mock_client_cls.return_value = mock_http
+
+        with patch(
+            "app.intelligence.llm_client.record_agent_run",
+            new=AsyncMock(),
+        ):
+            await client.complete_json(
+                model="qwen3.6-flash",
+                system="s",
+                user="u",
+                response_model=_SimpleOutput,
+            )
+            payload = mock_http.post.call_args.kwargs["json"]
+            assert payload["enable_thinking"] is False
+
+            await client.complete_json(
+                model="qwen3.7-max",
+                system="s",
+                user="u",
+                response_model=_SimpleOutput,
+                thinking=True,
+            )
+            payload = mock_http.post.call_args.kwargs["json"]
+            assert payload["enable_thinking"] is True

@@ -10,6 +10,19 @@ are the targets.
 
 ## Tier 0 — Quick wins (hours each; candidates to land pre-deadline)
 
+### Q0. Disable default thinking mode on Qwen calls (**found 2026-07-04; landing immediately**)
+
+Diagnosis: `agent_runs` showed completion tokens wildly exceeding useful output
+(classify_relation: 445 prompt → 1,261 completion for ~60 tokens of JSON;
+chat_classify_intent: 931 completion for two enums). qwen3 hybrid models have thinking
+enabled by default on DashScope and the client never disabled it. Live A/B on real
+Nexus calls (same outputs both sides): extraction 25.9s/3,935 completion → **7.1s/1,020**
+(3.6×); relation classify 13.0s/1,598 → **1.1s/67** (12×). Fix: `complete_json` gains
+`thinking: bool = False` and sends `enable_thinking` in the payload; no caller opts in
+today (T3 judge/synthesis may later). This one flag dominates every other Tier-0 item
+and reorders the priority table: Q0 first, then concurrency (Q2), whose relative gain
+shrinks but still stacks.
+
 ### Q1. Per-task T2 model routing (cheaper model for classification tasks)
 
 Extraction needs the strongest T2 (structured multi-field output). But
