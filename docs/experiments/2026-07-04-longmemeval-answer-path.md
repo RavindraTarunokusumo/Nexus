@@ -103,6 +103,15 @@ calls and **51.7 relation-classify calls per question** (cross-doc pairing). Tha
 is outside this experiment's answer-path scope but is the obvious next target
 (logged as H9c).
 
+**Caveat — the 69k is a benchmark artifact.** Each LongMemEval instance ingests a
+*fresh* corpus to ask *one* question, so the whole one-time ingestion cost is
+charged to a single query. In real memory usage you ingest once and answer many
+queries, so per-query cost amortizes toward the ~2.4k answer call. Whether
+ingestion optimization (H9c) or answer-path efficiency matters more therefore
+depends on the write-heavy (benchmark-like) vs read-heavy (production) mix — but
+since ingestion is 96% of tokens whenever writes happen, it is still the first
+place to cut.
+
 ## Conclusions
 
 1. **Chain-of-Note is the biggest single lever:** +14 pts (0.692→0.829) for ~+460
