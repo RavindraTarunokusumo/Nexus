@@ -13,15 +13,10 @@ def _make_pack(intent_keys: list[str]) -> MagicMock:
     return pack
 
 
-def _intent_result(
-    intent: str,
-    shape: str = "general",
-    sub_queries: list[str] | None = None,
-) -> MagicMock:
+def _intent_result(intent: str, shape: str = "general") -> MagicMock:
     result = MagicMock()
     result.intent = intent
     result.shape = shape
-    result.sub_queries = sub_queries if sub_queries is not None else []
     return result
 
 
@@ -36,11 +31,7 @@ async def test_classify_intent_matched() -> None:
 
     result = await _run_classify_intent(state, client)
 
-    assert result == {
-        "query_intent": "technical_deep_dive",
-        "question_shape": "factoid",
-        "sub_queries": [],
-    }
+    assert result == {"query_intent": "technical_deep_dive", "question_shape": "factoid"}
 
 
 @pytest.mark.asyncio
@@ -54,7 +45,7 @@ async def test_classify_intent_unknown_falls_back_to_general() -> None:
 
     result = await _run_classify_intent(state, client)
 
-    assert result == {"query_intent": "general", "question_shape": "multi_doc", "sub_queries": []}
+    assert result == {"query_intent": "general", "question_shape": "multi_doc"}
 
 
 @pytest.mark.asyncio
@@ -68,7 +59,7 @@ async def test_classify_intent_empty_pack_intents_still_classifies_shape() -> No
 
     result = await _run_classify_intent(state, client)
 
-    assert result == {"query_intent": "general", "question_shape": "factoid", "sub_queries": []}
+    assert result == {"query_intent": "general", "question_shape": "factoid"}
     client.complete_json.assert_called_once()
 
 
@@ -83,7 +74,7 @@ async def test_classify_intent_llm_error_falls_back_to_general() -> None:
 
     result = await _run_classify_intent(state, client)
 
-    assert result == {"query_intent": "general", "question_shape": "general", "sub_queries": []}
+    assert result == {"query_intent": "general", "question_shape": "general"}
 
 
 @pytest.mark.asyncio
@@ -97,25 +88,4 @@ async def test_classify_intent_schema_error_falls_back_to_general() -> None:
 
     result = await _run_classify_intent(state, client)
 
-    assert result == {"query_intent": "general", "question_shape": "general", "sub_queries": []}
-
-
-@pytest.mark.asyncio
-async def test_classify_intent_sanitizes_sub_queries() -> None:
-    from app.intelligence.chat import _run_classify_intent
-
-    client = AsyncMock()
-    client.complete_json.return_value = (
-        _intent_result(
-            "general",
-            "temporal",
-            ["  event A  ", "", "event B", "event C", "event D", "event E"],
-        ),
-        50,
-    )
-    pack = _make_pack(["general"])
-    state = {"question": "Which happened first?", "model": "deepseek/test", "pack": pack}
-
-    result = await _run_classify_intent(state, client)
-
-    assert result["sub_queries"] == ["event A", "event B", "event C", "event D"]
+    assert result == {"query_intent": "general", "question_shape": "general"}
