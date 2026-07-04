@@ -358,25 +358,27 @@ async def _judge_answer(
     question_type: str,
     abstention: bool,
 ) -> tuple[bool | None, int]:
-    try:
-        verdict, tokens = await client.complete_json(
-            model=settings.t3_model,
-            system=_JUDGE_SYSTEM,
-            user=build_judge_prompt(
-                question,
-                gold_answer,
-                hypothesis,
-                abstention=abstention,
-                question_type=question_type,
-            ),
-            response_model=LongMemEvalJudgeVerdict,
-            temperature=0.0,
-            max_tokens=256,
-            run_type="longmemeval_judge",
-        )
-    except (LLMError, LLMNetworkError, LLMSchemaError):
-        return None, 0
-    return verdict.correct, tokens
+    for _ in range(2):
+        try:
+            verdict, tokens = await client.complete_json(
+                model=settings.t3_model,
+                system=_JUDGE_SYSTEM,
+                user=build_judge_prompt(
+                    question,
+                    gold_answer,
+                    hypothesis,
+                    abstention=abstention,
+                    question_type=question_type,
+                ),
+                response_model=LongMemEvalJudgeVerdict,
+                temperature=0.0,
+                max_tokens=256,
+                run_type="longmemeval_judge",
+            )
+            return verdict.correct, tokens
+        except (LLMError, LLMNetworkError, LLMSchemaError):
+            continue
+    return None, 0
 
 
 def _accuracy(rows: list[dict[str, Any]]) -> float | None:
