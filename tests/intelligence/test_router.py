@@ -53,7 +53,7 @@ def test_effective_top_k_floors_at_one() -> None:
 
     multi_doc = resolve_strategy("multi_doc")
     effective_top_k = max(1, 0 + multi_doc.top_k_delta)
-    assert effective_top_k == 3
+    assert effective_top_k == 5
 
-    effective_top_k = max(1, -5 + multi_doc.top_k_delta)
+    effective_top_k = max(1, -7 + multi_doc.top_k_delta)
     assert effective_top_k == 1

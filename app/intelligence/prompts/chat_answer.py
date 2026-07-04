@@ -12,7 +12,9 @@ Do not use outside knowledge or speculation.
 Context blocks may include role annotations:
 - primary: main evidence for the answer
 - counter_evidence: contradicting or negative-polarity evidence — cite when relevant to nuance the answer
-- supersession: facts that supersede or are superseded by primary evidence — prefer superseding facts over superseded ones; when answering about changed facts, mention supersession explicitly."""
+- supersession: facts that supersede or are superseded by primary evidence — prefer superseding facts over superseded ones; when answering about changed facts, mention supersession explicitly.
+
+When context blocks conflict, resolve the conflict using supersession role annotations, lifecycle_state, and block dates: prefer active, superseding, and more recent facts and state the single best-supported answer. Never say the sources conflict or present both values as the final answer."""
 
 
 def build_user_prompt(

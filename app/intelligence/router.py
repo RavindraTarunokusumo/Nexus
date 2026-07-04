@@ -23,9 +23,13 @@ STRATEGIES: dict[str, RetrievalStrategy] = {
         ),
     ),
     "multi_doc": RetrievalStrategy(
-        top_k_delta=3,
+        top_k_delta=5,
         fetch_k_multiplier=4,
-        answer_hint="Synthesize across all relevant context blocks and cite every block you draw from.",
+        answer_hint=(
+            "Synthesize across all relevant context blocks and cite every block you draw from. "
+            "When the question asks how many, enumerate and count every distinct matching "
+            "occurrence across all context blocks."
+        ),
     ),
     # current_state deliberately has no recency override: capsule created_at is
     # ingestion order, not publication date, so boosting it buries past-dated facts
