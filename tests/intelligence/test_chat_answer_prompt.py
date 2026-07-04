@@ -51,3 +51,57 @@ def test_build_user_prompt_omits_date_line_when_published_at_missing():
 
     assert "Current date: 2024-01-01 (Mon)" in prompt
     assert "Date:" not in prompt
+
+
+def test_build_user_prompt_renders_up_to_two_evidence_excerpts():
+    blocks = [
+        {
+            **_BASE_BLOCK,
+            "evidence": [
+                {"text": "first excerpt"},
+                {"text": "second excerpt"},
+                {"text": "third excerpt"},
+            ],
+        }
+    ]
+
+    prompt = build_user_prompt("What car did I buy?", blocks)
+
+    assert prompt.count("Excerpt:") == 2
+    assert "Excerpt: first excerpt" in prompt
+    assert "Excerpt: second excerpt" in prompt
+    assert "Excerpt: third excerpt" not in prompt
+
+
+def test_build_user_prompt_omits_excerpts_when_evidence_missing_or_empty():
+    blocks_no_key = [dict(_BASE_BLOCK)]
+    blocks_empty = [{**_BASE_BLOCK, "evidence": []}]
+
+    prompt_no_key = build_user_prompt("What car did I buy?", blocks_no_key)
+    prompt_empty = build_user_prompt("What car did I buy?", blocks_empty)
+
+    assert "Excerpt:" not in prompt_no_key
+    assert "Excerpt:" not in prompt_empty
+
+
+def test_build_user_prompt_places_excerpts_after_capsule_before_next_block():
+    blocks = [
+        {
+            **_BASE_BLOCK,
+            "label": "C1",
+            "text": "Capsule one.",
+            "evidence": [{"text": "span for C1"}],
+        },
+        {
+            **_BASE_BLOCK,
+            "label": "C2",
+            "text": "Capsule two.",
+            "evidence": [{"text": "span for C2"}],
+        },
+    ]
+
+    prompt = build_user_prompt("What car did I buy?", blocks)
+
+    c1_section = prompt.split("[C2]")[0]
+    assert c1_section.index("Capsule one.") < c1_section.index("Excerpt: span for C1")
+    assert "Excerpt: span for C2" in prompt.split("[C2]")[1]

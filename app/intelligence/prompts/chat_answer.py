@@ -47,6 +47,10 @@ def build_user_prompt(
         if epistemic_note:
             lines.append(f"Epistemic note: {epistemic_note}")
         lines.extend(["Capsule:", block["text"]])
+        evidence = block.get("evidence")
+        if evidence:
+            for item in evidence[:2]:
+                lines.append(f"Excerpt: {item['text']}")
         blocks.append("\n".join(lines))
     parts: list[str] = []
     if as_of is not None:
