@@ -697,10 +697,17 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                     )
                 )
                 for ev_span in projected.evidence_span_ids:
+                    try:
+                        ev_span_id = uuid.UUID(ev_span)
+                    except ValueError:
+                        # The LLM occasionally echoes a non-UUID span ref; drop the
+                        # evidence link rather than aborting the whole document.
+                        logger.warning("Skipping non-UUID evidence span ref %r", ev_span)
+                        continue
                     all_rows.append(
                         ClaimEvidence(
                             claim_id=claim_id,
-                            span_id=uuid.UUID(ev_span),
+                            span_id=ev_span_id,
                             evidence_role="support",
                             confidence=projected.confidence,
                         )

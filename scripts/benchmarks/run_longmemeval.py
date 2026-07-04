@@ -488,75 +488,96 @@ async def run_longmemeval(
 
     rows: list[dict[str, Any]] = []
     judge_errors = 0
+    instance_errors = 0
 
     try:
         chat_graph = make_chat_graph(session_factory, client, embedder)
         for instance in instances:
-            await _truncate_memory_tables(session_factory)
-            corpus = _instance_to_corpus(instance)
-            corpus_urls = [normalize_url(doc["url"]) for doc in corpus]
+            try:
+                await _truncate_memory_tables(session_factory)
+                corpus = _instance_to_corpus(instance)
+                corpus_urls = [normalize_url(doc["url"]) for doc in corpus]
 
-            await _ingest_corpus(corpus, session_factory, embedder, pack_id)
-            await _extract_documents(corpus, session_factory, client, t2_model=t2_model)
-            await classify_cross_document_relations(
-                session_factory,
-                client,
-                domain=resolved_domain,
-                pack=pack_obj,
-                model=t2_model,
-            )
-            async with session_factory() as session:
-                await apply_lifecycle_transitions(session, domain=resolved_domain, pack=pack_obj)
-            async with session_factory() as session:
-                await consolidate_domain(session, domain=resolved_domain, pack=pack_obj)
+                await _ingest_corpus(corpus, session_factory, embedder, pack_id)
+                await _extract_documents(corpus, session_factory, client, t2_model=t2_model)
+                await classify_cross_document_relations(
+                    session_factory,
+                    client,
+                    domain=resolved_domain,
+                    pack=pack_obj,
+                    model=t2_model,
+                )
+                async with session_factory() as session:
+                    await apply_lifecycle_transitions(
+                        session, domain=resolved_domain, pack=pack_obj
+                    )
+                async with session_factory() as session:
+                    await consolidate_domain(session, domain=resolved_domain, pack=pack_obj)
 
-            doc_count, capsule_count, relation_count, zero_capsule_docs = await _instance_stats(
-                session_factory, corpus_urls
-            )
+                doc_count, capsule_count, relation_count, zero_capsule_docs = await _instance_stats(
+                    session_factory, corpus_urls
+                )
 
-            start = time.monotonic()
-            final = await run_chat_with_context(
-                chat_graph,
-                instance["question"],
-                t2_model,
-                top_k=k,
-                pack=pack_obj,
-            )
-            latency_s = time.monotonic() - start
+                start = time.monotonic()
+                final = await run_chat_with_context(
+                    chat_graph,
+                    instance["question"],
+                    t2_model,
+                    top_k=k,
+                    pack=pack_obj,
+                )
+                latency_s = time.monotonic() - start
 
-            hypothesis = final.get("answer") or INSUFFICIENT_EVIDENCE_ANSWER
-            abstained = hypothesis == INSUFFICIENT_EVIDENCE_ANSWER
-            abstention_q = is_abstention(instance["question_id"])
+                hypothesis = final.get("answer") or INSUFFICIENT_EVIDENCE_ANSWER
+                abstained = hypothesis == INSUFFICIENT_EVIDENCE_ANSWER
+                abstention_q = is_abstention(instance["question_id"])
 
-            autoeval_label, judge_tokens = await _judge_answer(
-                client,
-                question=instance["question"],
-                gold_answer=instance["answer"],
-                hypothesis=hypothesis,
-                question_type=instance["question_type"],
-                abstention=abstention_q,
-            )
-            if autoeval_label is None:
-                judge_errors += 1
+                autoeval_label, judge_tokens = await _judge_answer(
+                    client,
+                    question=instance["question"],
+                    gold_answer=instance["answer"],
+                    hypothesis=hypothesis,
+                    question_type=instance["question_type"],
+                    abstention=abstention_q,
+                )
+                if autoeval_label is None:
+                    judge_errors += 1
 
-            rows.append(
-                {
-                    "question_id": instance["question_id"],
-                    "question_type": instance["question_type"],
-                    "question": instance["question"],
-                    "gold_answer": instance["answer"],
-                    "hypothesis": hypothesis,
-                    "autoeval_label": autoeval_label,
-                    "abstained": abstained,
-                    "latency_s": latency_s,
-                    "tokens_used": final.get("tokens_used", 0),
-                    "judge_tokens_used": judge_tokens,
-                    "doc_count": doc_count,
-                    "capsule_count": capsule_count,
-                    "relation_count": relation_count,
-                    "zero_capsule_docs": zero_capsule_docs,
-                }
-            )
+                rows.append(
+                    {
+                        "question_id": instance["question_id"],
+                        "question_type": instance["question_type"],
+                        "question": instance["question"],
+                        "gold_answer": instance["answer"],
+                        "hypothesis": hypothesis,
+                        "autoeval_label": autoeval_label,
+                        "abstained": abstained,
+                        "latency_s": latency_s,
+                        "tokens_used": final.get("tokens_used", 0),
+                        "judge_tokens_used": judge_tokens,
+                        "doc_count": doc_count,
+                        "capsule_count": capsule_count,
+                        "relation_count": relation_count,
+                        "zero_capsule_docs": zero_capsule_docs,
+                    }
+                )
+            except Exception as exc:  # noqa: BLE001 — one bad instance must not kill a 200-instance run
+                instance_errors += 1
+                print(f"ERROR instance {instance['question_id']}: {exc!r}")
+                rows.append(
+                    {
+                        "question_id": instance["question_id"],
+                        "question_type": instance["question_type"],
+                        "question": instance["question"],
+                        "gold_answer": instance["answer"],
+                        "hypothesis": None,
+                        "autoeval_label": None,
+                        "abstained": False,
+                        "error": repr(exc)[:300],
+                    }
+                )
+                continue
+
     finally:
         await engine.dispose()
 
@@ -577,6 +598,7 @@ async def run_longmemeval(
         "llm_base_url": settings.llm_base_url,
         "instance_count": len(instances),
         "judge_errors": judge_errors,
+        "instance_errors": instance_errors,
         "domain": resolved_domain,
         "pack_id": pack_id,
     }
@@ -587,6 +609,7 @@ async def run_longmemeval(
         "accuracy": _accuracy(rows),
         "instance_count": len(rows),
         "judge_errors": judge_errors,
+        "instance_errors": instance_errors,
     }
 
 
