@@ -18,6 +18,11 @@
     - [x] T-L5b (`d0a314f`) — `SYSTEM_PROMPT` conflict-resolution instruction (resolve via supersession/lifecycle/dates, single answer — never report "conflicting evidence"); `multi_doc` strategy `top_k_delta` 3→5 + enumerate-and-count hint.
     - [x] T-L5c (`4056ef9`) — `_judge_answer` retries once on LLM error before recording null.
     - [ ] T-L5d — Rerun post-fix; before/after table in the H7 report. **Working subset cut to 55 (`--limit 55`, ~10% of full 500; user-directed 2026-07-04)** — deterministic dataset prefix, ~15 min at 6 workers. 6-worker run stopped at 55/211 (user); matched-pair assessment on those 55 (all TR): abstentions 25→7 but accuracy 0.385→0.345 (11 right→wrong regressions) — T2_MODEL_FORCE=qwen-flash confound suspected; needs an answer-fixes-only run (no force) on the 55 subset to isolate.
+  - [ ] T-L6 — Retrieval fixes for temporal reasoning (spec Amendment 2, user-approved 2026-07-04):
+    - [ ] R1 — `temporal` question shape: router strategy (top_k_delta=7, fetch_k 6, date-arithmetic hint) + classifier shape definition, narrowing `factoid`'s "when/what past events" wording.
+    - [ ] R3 — recency scoring uses `published_at` (fallback `created_at`) in `compute_hybrid_score` + min/max at call site.
+    - [ ] R2 (held) — sub-query union retrieval for comparison shapes; only if post-R1 numbers demand it.
+    - [ ] Extraction-model matrix on the 55 subset: qwen-flash 0.345 (done); qwen3.5-flash + qwen3.6-flash runs in flight — pick per results (user rule: 3.5-flash if it holds, else 3.6-flash).
 - [ ] **H8-W — Rerun speed-up (user-directed 2026-07-04; spec amendment in `2026-07-03-inference-optimization.md`).** ~6h projected → target well under 1h via structure, not model swap (probe: fast tiers all ~1.3s/call).
   - [x] W1 (`a197466`) — Adapter `--workers N` + `--db-url-template`: round-robin instance sharding, per-worker engine/client/graphs on own scratch DB, lock-guarded partial appends, dataset-order results, `run_meta.workers`.
   - [x] W2 (`81ddfe5`, with W4) — Semaphore+gather (pattern of `extract_spans`) for `_run_classify_relations` pairs, `judge_capsules` loop, `classify_cross_document_relations` pairs; DB writes stay sequential post-gather.

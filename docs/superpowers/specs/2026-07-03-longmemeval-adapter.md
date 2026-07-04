@@ -167,3 +167,33 @@ no re-ingestion (documents already carry `published_at`).
 **Success criteria:** full suite green (known pre-existing failures only); rerun of the
 same 211-question slice shows temporal-reasoning materially above the 0.224 baseline
 with abstentions substantially reduced; before/after table in the H7 report.
+
+## Amendment 2 — retrieval fixes R1/R3 (2026-07-04, user-approved)
+
+Evidence (55-question working subset, all temporal-reasoning): matched-pair vs
+baseline showed abstentions 25→7 but accuracy 0.385→0.345 under `qwen-flash`
+extraction; `agent_runs` shape audit showed **55/61 classify calls routed to
+`factoid`** — whose strategy (semantic_similarity 0.6, `top_k_delta=0`) is tuned for
+single-fact lookup while these questions need two-plus dated events retrieved
+together. Ranking is date-blind: recency scoring uses capsule `created_at`
+(ingestion order — noise when a corpus is ingested in one batch).
+
+- **R1 — `temporal` question shape.** `router.py` gains
+  `STRATEGIES["temporal"] = RetrievalStrategy(top_k_delta=7, fetch_k_multiplier=6,
+  answer_hint=<compute orderings/durations from the block Date lines and the Current
+  date; state the arithmetic>)`. `QUESTION_SHAPES` picks it up automatically.
+  `classify_intent.py` SYSTEM_PROMPT adds the shape definition (event ordering,
+  duration, elapsed-time, date-arithmetic questions) **and narrows `factoid`** — its
+  current wording claims "when/what questions about past events", which would keep
+  swallowing temporal questions.
+- **R3 — event-time recency.** `compute_hybrid_score` and its `recency_min/max`
+  computation in `_run_retrieve_capsules` use `published_at` when the candidate has
+  one, falling back to `created_at`. Candidates already carry `published_at`
+  (T-L5a).
+
+Non-goals here: R2 sub-query union retrieval for comparison shapes — held until
+post-R1 numbers justify it.
+
+**Success criteria:** classifier routes ordering/duration questions to `temporal`
+(spot-check via agent_runs); 55-subset run shows accuracy at or above the 0.385
+matched baseline with abstentions still ≤ ~15%.
