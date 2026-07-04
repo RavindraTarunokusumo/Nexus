@@ -15,6 +15,7 @@ This repository is bootstrapped with an agent harness and supporting docs. Use t
 - [Commands](commands.md)
 - [Nexus CLI](cli.md)
 - [Memory Benchmark Plan](benchmarks/memory-benchmark-plan.md)
+- [LongMemEval Benchmark Report](benchmarks/longmemeval-2026-07-04.md) — external benchmark (H7), 0.355→0.709 accuracy
 - [Changelog](changelog.md)
 - [Insights](insights.md)
 - [CI docs](ci/README.md)
@@ -84,7 +85,7 @@ CLI entry point: `app/cli/eval.py` — `nexus eval` sub-app. See [Commands](comm
 | `tests/intelligence/test_cross_relations.py` | Unit (no DB) | Cross-doc relation pass — (family, actor) pairing, same-doc exclusion, dedup, published_at direction (incl. permuted ingestion order), max_pairs cap, dry-run, LLM-error continuation |
 | `tests/test_relations_cli.py` | Unit (no DB) | `nexus relations run` — help, pack-domain default, `--json` zero-count output |
 
-Benchmark fixtures: [`evals/memory/nexus_synthetic/`](../evals/memory/nexus_synthetic/README.md). First live baseline: [`docs/benchmarks/baseline-2026-07-02.md`](benchmarks/baseline-2026-07-02.md). Router validation run (PR #26): [`docs/benchmarks/runs/router-t-r2/`](benchmarks/runs/router-t-r2/report.md).
+Benchmark fixtures: [`evals/memory/nexus_synthetic/`](../evals/memory/nexus_synthetic/README.md). First live baseline: [`docs/benchmarks/baseline-2026-07-02.md`](benchmarks/baseline-2026-07-02.md). Router validation run (PR #26): [`docs/benchmarks/runs/router-t-r2/`](benchmarks/runs/router-t-r2/report.md). External benchmark (PR #29, H7): [LongMemEval fixtures](../evals/memory/longmemeval/README.md), [`tests/benchmarks/test_longmemeval_adapter.py`](../tests/benchmarks/test_longmemeval_adapter.py), report at [`docs/benchmarks/longmemeval-2026-07-04.md`](benchmarks/longmemeval-2026-07-04.md).
 
 ## Working Notes
 

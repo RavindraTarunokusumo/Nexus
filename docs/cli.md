@@ -125,6 +125,19 @@ nexus eval memory report --run-id <timestamp>
 
 Runs the Phase F memory benchmark end to end: ingest fixture corpus (`evals/memory/<benchmark>/`) → extract → classify relations → `nexus lifecycle run` → `nexus consolidation run` → answer each fixture question via the chat graph → score (answer correctness, evidence recall@k, citation precision/faithfulness, temporal/supersession correctness, abstention accuracy, latency, token cost) → write `report.md` / `results.jsonl` / `run_meta.json` under `--out` (default `docs/benchmarks/runs/<UTC timestamp>/`). `--skip-ingest` assumes the corpus is already ingested. `eval memory report` prints a previously written run's `report.md`. See [docs/benchmarks/memory-benchmark-plan.md](benchmarks/memory-benchmark-plan.md) and the [README demo guide](../README.md#demo-guide).
 
+### `python -m scripts.benchmarks.run_longmemeval` (H7 — external benchmark, standalone script)
+
+```sh
+python -m scripts.benchmarks.run_longmemeval \
+  --dataset evals/memory/longmemeval/longmemeval_oracle.json \
+  --categories knowledge-update,temporal-reasoning --limit 55 --k 5 \
+  --pack conversation_v1 --workers 6 \
+  --db-url-template 'postgresql+asyncpg://nexus:nexus@localhost:5432/nexus_lme_w{n}' \
+  --out docs/benchmarks/runs/<name>
+```
+
+Runs the [LongMemEval](https://github.com/xiaowu0162/LongMemEval) (ICLR 2025) external benchmark against the same pipeline as `eval memory run`, deliberately kept as an independent script rather than a `nexus` subcommand or a shared module with `run_memory_benchmark.py` (see the adapter spec's constraints). Maps each haystack session to a Nexus document (session date → `Document.published_at`), truncates the memory tables between instances for isolation, and scores with the official LongMemEval QA-judge protocol (`hypotheses.jsonl` output is directly consumable by the paper's own `evaluate_qa.py` for judge-model-independent comparison). `--workers N` + `--db-url-template` shard instances across N scratch databases for ~Nx wall-clock (provision with `createdb` + `alembic upgrade head` per worker DB first). `--limit 55` is the fast iteration subset (~10 min at 6 workers); `--limit 0` runs the full selected category set. See [docs/benchmarks/longmemeval-2026-07-04.md](benchmarks/longmemeval-2026-07-04.md) and `evals/memory/longmemeval/README.md` for dataset setup.
+
 ## `runs` Subcommand Group
 
 The `runs` group exposes the `agent_runs` audit table (populated by `tracer.record_agent_run()` during claim extraction and chat answers). Both commands read Postgres directly — no server required.
