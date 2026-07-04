@@ -50,6 +50,29 @@ export type SendMessageResponse = {
   assistant_message: ChatMessage
 }
 
+export type StatsCounts = {
+  documents: number
+  spans: number
+  capsules: number
+  relations: number
+  theses: number
+}
+
+export type ModelUsageRow = {
+  run_type: string
+  model: string
+  calls: number
+  prompt_tokens: number
+  completion_tokens: number
+  cost_estimate_usd: number
+}
+
+export type StatsOverview = {
+  counts: StatsCounts
+  lifecycle: Record<string, number>
+  model_usage: ModelUsageRow[]
+}
+
 class ApiCallError extends Error {
   readonly apiError: ApiError
   constructor(apiError: ApiError, message: string) {
@@ -120,5 +143,9 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(patch),
     })
+  },
+
+  getStatsOverview(): Promise<StatsOverview> {
+    return request('/stats/overview')
   },
 }

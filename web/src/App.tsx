@@ -1,10 +1,17 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import './App.css'
 import { ChatPanel } from './components/ChatPanel'
+import { Dashboard } from './components/Dashboard'
+import { HowItWorks } from './components/HowItWorks'
 import { SessionSidebar } from './components/SessionSidebar'
 import { useChatSession } from './hooks/useChatSession'
 import { useSessions } from './hooks/useSessions'
 
+type Tab = 'dashboard' | 'chat' | 'how-it-works'
+
 export default function App() {
+  const [activeTab, setActiveTab] = useState<Tab>('chat')
+
   const {
     sessions,
     loading: sessionsLoading,
@@ -17,12 +24,9 @@ export default function App() {
 
   const activeSummary = sessions.find((s) => s.id === activeId) ?? null
 
-  const onSessionUpdate = useCallback(
-    (_id: string) => {
-      // No-op: message state is already updated by useChatSession
-    },
-    [],
-  )
+  const onSessionUpdate = useCallback(() => {
+    // No-op: message state is already updated by useChatSession
+  }, [])
 
   const { detail, loading, sending, error, sendMessage, clearError } = useChatSession(
     activeId,
@@ -63,27 +67,70 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
-      <SessionSidebar
-        sessions={sessions}
-        activeId={activeId}
-        loading={sessionsLoading}
-        onNewChat={handleNewChat}
-        onSelect={selectSession}
-      />
-      <main className="flex-1 flex min-w-0">
-        <ChatPanel
-          detail={detail}
-          activeSummary={activeSummary}
-          loading={loading}
-          sending={sending}
-          error={error}
-          onSend={handleSend}
-          onRename={handleRename}
-          onArchive={handleArchive}
-          onClearError={clearError}
-        />
-      </main>
+    <div className="app-shell">
+      <nav className="tab-bar" aria-label="Main navigation">
+        <button
+          type="button"
+          className={`tab-button${activeTab === 'dashboard' ? ' tab-button-active' : ''}`}
+          onClick={() => setActiveTab('dashboard')}
+          aria-current={activeTab === 'dashboard' ? 'page' : undefined}
+        >
+          Dashboard
+        </button>
+        <button
+          type="button"
+          className={`tab-button${activeTab === 'chat' ? ' tab-button-active' : ''}`}
+          onClick={() => setActiveTab('chat')}
+          aria-current={activeTab === 'chat' ? 'page' : undefined}
+        >
+          Chat
+        </button>
+        <button
+          type="button"
+          className={`tab-button${activeTab === 'how-it-works' ? ' tab-button-active' : ''}`}
+          onClick={() => setActiveTab('how-it-works')}
+          aria-current={activeTab === 'how-it-works' ? 'page' : undefined}
+        >
+          How it works
+        </button>
+      </nav>
+
+      {activeTab === 'chat' && (
+        <div className="chat-layout flex h-[calc(100vh-41px)] bg-gray-50 overflow-hidden">
+          <SessionSidebar
+            sessions={sessions}
+            activeId={activeId}
+            loading={sessionsLoading}
+            onNewChat={handleNewChat}
+            onSelect={selectSession}
+          />
+          <main className="flex-1 flex min-w-0">
+            <ChatPanel
+              detail={detail}
+              activeSummary={activeSummary}
+              loading={loading}
+              sending={sending}
+              error={error}
+              onSend={handleSend}
+              onRename={handleRename}
+              onArchive={handleArchive}
+              onClearError={clearError}
+            />
+          </main>
+        </div>
+      )}
+
+      {activeTab === 'dashboard' && (
+        <main className="tab-panel">
+          <Dashboard />
+        </main>
+      )}
+
+      {activeTab === 'how-it-works' && (
+        <main className="tab-panel">
+          <HowItWorks />
+        </main>
+      )}
     </div>
   )
 }
