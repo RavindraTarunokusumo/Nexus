@@ -4,11 +4,15 @@
 n=211) from the H7 baseline (0.709) toward ≥0.90, **or** ≥0.80 with significant
 token efficiency.
 
-**Result:** answer-path-only changes reach **0.834 at 1487 tokens/question**
-(from a 0.72 / 2346-token baseline) — **+11 pts accuracy AND −37% tokens**. The
-≥0.80-with-efficiency target is met decisively. **≥0.90 is not reachable on the
-answer path** (it plateaus at ~0.83); the residual is three retrieval-side walls,
-documented below for the follow-up.
+**Result:** answer-path-only changes reach **0.834 accuracy** (from a 0.72
+baseline) at **1487 answer-call tokens** (from 2346) — **+11 pts accuracy AND
+−37% answer-call tokens**. Accuracy clears 0.80 decisively. **Caveat on
+"efficiency":** the answer call is only **~3.4% of the end-to-end per-question
+token budget** (~69k tok/q; extraction + relation-classification are ~96%), so
+the −37% is ~1.3% end-to-end — real but small. The genuine token lever is the
+ingestion stage (see [Token accounting](#token-accounting--scope-and-the-real-lever-important)).
+**≥0.90 is not reachable on the answer path** (it plateaus at ~0.83); the residual
+is three retrieval-side walls, documented below for the follow-up.
 
 No app code changed in this experiment — findings are proven in the lab
 (`scripts/benchmarks/replay_answer.py`); productionization is a separate step.
@@ -69,6 +73,35 @@ baseline answer call: **prompt 2234 / completion 389** — prompt (context) is
 | cot_chrono_lean6 (drop blocks) | 0.668 | 1961 | 62 | 0.594 | 0.795 |
 
 Raw: [`data/2026-07-04-sweep{1,2,3}.json`](data/).
+
+## Token accounting — scope, and the real lever (important)
+
+**Every token figure in this report is the `chat_answer` generation call only** —
+the answer LLM given the context blocks. That is what the runner's
+`mean_tokens_used` measures, and it is a **mean per question**. It excludes the
+eval judge and, crucially, the **ingestion pipeline** (extraction, relation
+classification), which is where the tokens actually are.
+
+End-to-end per-question cost, measured from `agent_runs` across the six worker
+DBs over the cache-build window (÷211):
+
+| stage | calls/q | tokens/q | % of total |
+| --- | --- | --- | --- |
+| claim_extraction | 10.6 | 39,469 | 56.9% |
+| classify_relation | 51.7 | 26,884 | 38.8% |
+| **chat_answer** *(this report's number)* | 1.0 | **2,380** | **3.4%** |
+| chat_classify_intent | 1.0 | 249 | 0.4% |
+| longmemeval_judge *(eval-only)* | 1.0 | 368 | 0.5% |
+| **TOTAL** | 65.3 | **≈69,366** | 100% |
+
+So the −37% answer-path saving (2380→1487) trims ~0.9k off a **~69k** budget —
+**~1.3% end-to-end**. The answer-path efficiency win is real but small in
+absolute terms; the accuracy win (+11–14 pts) is the headline there. **The real
+token lever for this benchmark is the ingestion stage** — extraction (39.5k) +
+relation classification (26.9k) are ~96% of tokens, driven by 10.6 extraction
+calls and **51.7 relation-classify calls per question** (cross-doc pairing). That
+is outside this experiment's answer-path scope but is the obvious next target
+(logged as H9c).
 
 ## Conclusions
 
