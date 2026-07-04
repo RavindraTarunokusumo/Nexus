@@ -107,6 +107,64 @@ async def test_complete_json_accepts_chat_answer_run_type(client, fake_session_f
 
 
 @pytest.mark.asyncio
+async def test_complete_json_retries_on_429_then_succeeds(client, fake_session_factory):
+    openrouter_response = {
+        "choices": [{"message": {"content": '{"value": "hello"}'}}],
+        "usage": {"total_tokens": 50},
+    }
+    rate_limited = AsyncMock()
+    rate_limited.status_code = 429
+    rate_limited.text = "Rate limited"
+    success = AsyncMock()
+    success.status_code = 200
+    success.json = lambda: openrouter_response
+
+    with (
+        patch(
+            "httpx.AsyncClient.post", new=AsyncMock(side_effect=[rate_limited, success])
+        ) as mock_post,
+        patch("app.intelligence.llm_client._retry_backoff", new=AsyncMock()),
+    ):
+        result, tokens = await client.complete_json(
+            model="deepseek/deepseek-v4-flash",
+            system="s",
+            user="u",
+            response_model=_SimpleOutput,
+        )
+
+    assert result.value == "hello"
+    assert tokens == 50
+    assert mock_post.await_count == 2
+    agent_run = fake_session_factory.return_value.add.call_args[0][0]
+    assert agent_run.status == "success"
+
+
+@pytest.mark.asyncio
+async def test_complete_json_schema_error_does_not_retry(client, fake_session_factory):
+    openrouter_response = {
+        "choices": [{"message": {"content": "not-json"}}],
+        "usage": {"total_tokens": 10},
+    }
+    with patch("httpx.AsyncClient.post", new=AsyncMock()) as mock_post:
+        mock_resp = AsyncMock()
+        mock_resp.status_code = 200
+        mock_resp.json = lambda: openrouter_response
+        mock_post.return_value = mock_resp
+
+        with pytest.raises(LLMSchemaError):
+            await client.complete_json(
+                model="deepseek/deepseek-v4-flash",
+                system="s",
+                user="u",
+                response_model=_SimpleOutput,
+            )
+
+    assert mock_post.await_count == 1
+    agent_run = fake_session_factory.return_value.add.call_args[0][0]
+    assert agent_run.status == "schema_error"
+
+
+@pytest.mark.asyncio
 async def test_complete_json_5xx_raises_network_error(client):
     with patch("httpx.AsyncClient.post", new=AsyncMock()) as mock_post:
         mock_resp = AsyncMock()
