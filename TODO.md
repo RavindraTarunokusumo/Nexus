@@ -21,7 +21,7 @@
   - [ ] T-L6 — Retrieval fixes for temporal reasoning (spec Amendment 2, user-approved 2026-07-04):
     - [x] R1 (`881cd67`) — `temporal` question shape: router strategy (top_k_delta=7, fetch_k 6, date-arithmetic hint) + classifier shape definition, narrowing `factoid`'s "when/what past events" wording.
     - [x] R3 (`881cd67`) — recency scoring uses `published_at` (fallback `created_at`) in `compute_hybrid_score` + min/max at call site.
-    - [ ] R4 — render span evidence excerpts (≤2/block, existing 280-char cap) in `build_user_prompt` — spans were retrieved but never shown to the answer model; targets failure Mode 1 (relative-date anchoring) via raw utterance + block Date. Held alternative: extraction-time date normalization in the pack.
+    - [x] R4 — render span evidence excerpts (≤2/block, existing 280-char cap) in `build_user_prompt` — spans were retrieved but never shown to the answer model; targets failure Mode 1 (relative-date anchoring) via raw utterance + block Date. Held alternative: extraction-time date normalization in the pack.
     - [ ] R2 (held) — sub-query union retrieval for comparison shapes; only if post-R1 numbers demand it.
     - [x] Extraction-model matrix on 51 common ids (T-L5 fixes constant): baseline-pre-fixes 0.373 / qwen-flash 0.333 / qwen3.5-flash 0.353 / **qwen3.6-flash 0.431** → extraction stays qwen3.6-flash (per user rule, 3.5 does not hold); T-L5 answer fixes = +6pts de-confounded. Runs: `docs/benchmarks/runs/longmemeval-55-qwen3{5,6}flash/`. ~10 min per 55-question run at 6 workers.
 - [ ] **H8-W — Rerun speed-up (user-directed 2026-07-04; spec amendment in `2026-07-03-inference-optimization.md`).** ~6h projected → target well under 1h via structure, not model swap (probe: fast tiers all ~1.3s/call).
