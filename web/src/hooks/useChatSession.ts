@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, type ApiError, type ChatMessage, type ChatSessionDetail, normalizeApiError } from '../api/client'
+import {
+  api,
+  type ApiError,
+  type ChatMessage,
+  type ChatSessionDetail,
+  normalizeApiError,
+} from '../api/client'
+import type { AnswerMeta } from '../lib/mermaid'
 
 export type ChatSessionState = {
   detail: ChatSessionDetail | null
@@ -14,6 +21,7 @@ export type ChatSessionState = {
 export function useChatSession(
   sessionId: string | null,
   onSessionUpdate?: (id: string) => void,
+  onAnswerReceived?: (meta: AnswerMeta) => void,
 ): ChatSessionState {
   const [detail, setDetail] = useState<ChatSessionDetail | null>(null)
   const [loading, setLoading] = useState(false)
@@ -57,6 +65,13 @@ export function useChatSession(
       try {
         const resp = await api.sendMessage(sessionId, content, topK)
         onSessionUpdate?.(sessionId)
+        onAnswerReceived?.({
+          question: content,
+          question_shape: resp.assistant_message.question_shape ?? 'general',
+          query_intent: resp.assistant_message.query_intent ?? 'general',
+          tokens_used: resp.assistant_message.tokens_used ?? 0,
+          citations: resp.assistant_message.citations ?? [],
+        })
         setDetail((prev) => {
           if (!prev) return prev
           const withoutPending = prev.messages.filter((m) => m.id !== pending.id)
@@ -77,7 +92,7 @@ export function useChatSession(
         setSending(false)
       }
     },
-    [sessionId, onSessionUpdate],
+    [sessionId, onSessionUpdate, onAnswerReceived],
   )
 
   const clearError = useCallback(() => setError(null), [])

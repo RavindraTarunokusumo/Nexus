@@ -24,6 +24,18 @@ function lifecycleDotClass(state: string | null): string {
   return 'bg-gray-400'
 }
 
+function roleBadgeClass(role: string): string {
+  if (role === 'primary') return 'citation-role-primary'
+  if (role === 'counter_evidence') return 'citation-role-counter'
+  if (role === 'supersession') return 'citation-role-supersession'
+  return 'citation-role-default'
+}
+
+function roleLabel(role: string): string {
+  if (role === 'counter_evidence') return 'counter'
+  return role.replace(/_/g, ' ')
+}
+
 export function CitationList({ citations }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null)
 
@@ -38,11 +50,19 @@ export function CitationList({ citations }: Props) {
         <div key={c.capsule_id} className="border-b border-gray-100 last:border-0">
           <button
             onClick={() => setExpanded(expanded === c.capsule_id ? null : c.capsule_id)}
+            title={c.epistemic_note ?? undefined}
             className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center gap-2"
           >
             <span
               className={`lifecycle-dot inline-block w-2 h-2 rounded-full flex-shrink-0 ${lifecycleDotClass(c.lifecycle_state)}`}
             />
+            {c.role && (
+              <span
+                className={`citation-role-badge rounded px-1 py-0.5 uppercase tracking-wide text-[10px] flex-shrink-0 ${roleBadgeClass(c.role)}`}
+              >
+                {roleLabel(c.role)}
+              </span>
+            )}
             {c.object_type && (
               <span className="bg-blue-100 text-blue-700 rounded px-1 py-0.5 uppercase tracking-wide text-[10px] flex-shrink-0">
                 {c.object_type.toUpperCase()}

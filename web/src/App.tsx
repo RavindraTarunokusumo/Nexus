@@ -6,11 +6,13 @@ import { HowItWorks } from './components/HowItWorks'
 import { SessionSidebar } from './components/SessionSidebar'
 import { useChatSession } from './hooks/useChatSession'
 import { useSessions } from './hooks/useSessions'
+import type { AnswerMeta } from './lib/mermaid'
 
 type Tab = 'dashboard' | 'chat' | 'how-it-works'
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('chat')
+  const [lastAnswerMeta, setLastAnswerMeta] = useState<AnswerMeta | null>(null)
 
   const {
     sessions,
@@ -28,9 +30,14 @@ export default function App() {
     // No-op: message state is already updated by useChatSession
   }, [])
 
+  const handleAnswerReceived = useCallback((meta: AnswerMeta) => {
+    setLastAnswerMeta(meta)
+  }, [])
+
   const { detail, loading, sending, error, sendMessage, clearError } = useChatSession(
     activeId,
     onSessionUpdate,
+    handleAnswerReceived,
   )
 
   const pendingMessageRef = useRef<string | null>(null)
@@ -128,7 +135,7 @@ export default function App() {
 
       {activeTab === 'how-it-works' && (
         <main className="tab-panel">
-          <HowItWorks />
+          <HowItWorks lastAnswerMeta={lastAnswerMeta} />
         </main>
       )}
     </div>
