@@ -79,7 +79,12 @@ The baseline run took 5h51m serially. Instance sharding across 6 scratch DBs
 ## Remaining failure modes (final run, 21 residual failures on the 55-subset probe)
 
 1. Counting/aggregation recall ("how many X before Y") — needs all matching capsules
-   in context; R2 (sub-query union retrieval) is the specced-but-held fix.
+   in context. **Attempted and reverted same day**: sub-query union retrieval
+   (classifier emits per-entity sub-queries, retrieval pools their ANN candidates)
+   regressed the 55-subset from 0.611 to 0.574 accuracy (abstentions 5→8). Root cause:
+   pooling then reranking globally lets one comparandum's sub-query dominate the
+   shared top-k and starve the other side. A corrected design (guaranteed per-sub-query
+   slots before the shared rerank) is logged as a follow-up in the spec, not shipped.
 2. Date-arithmetic near-misses (off-by-one day/week) — partly judge-boundary noise.
 3. Residual relative-date anchoring where the capsule text carries the phrase but the
    span excerpt was not among the first 2 rendered. Held alternative: extraction-time

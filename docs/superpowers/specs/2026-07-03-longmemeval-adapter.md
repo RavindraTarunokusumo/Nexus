@@ -208,6 +208,20 @@ together. Ranking is date-blind: recency scoring uses capsule `created_at`
     Empty `sub_queries` ⇒ exactly today's single-vector path.
   - Embedding cost is local (bge-small); DB cost ≤ 5 ANN queries per question.
 
+**Outcome (2026-07-04): reverted.** Implemented (`bc8fe83`), full-suite validated, then
+55-subset benchmark-validated against the T-L6+R4 baseline it was meant to improve on
+— it regressed: accuracy 0.611→0.574, abstentions 5→8 (9 regressed vs 7 fixed).
+Root cause: the union pools all sub-query candidate rows into one set and reranks
+globally (single `scored = sorted(...)` → `_assemble_within_budget`) — for a
+comparison question, whichever entity's sub-query embedding matches more/closer
+capsules dominates the shared top-k budget and starves the other comparandum. 4/9
+regressions flipped straight to abstention (the losing side's evidence squeezed out
+entirely). Not an implementation bug; a design flaw in pool-then-global-rerank.
+Reverted (`ec1962a`). **Corrected design for a future attempt**: allocate a floor per
+sub-query before any shared rerank (e.g. `ceil(effective_top_k / (1 + len(sub_queries)))`
+guaranteed slots per vector, top-up the remainder by global score) so no comparandum
+can be crowded out. Not reattempted now — logged as a follow-up.
+
 - **R4 — render span evidence in the answer prompt (2026-07-04).** Span retrieval
   exists end-to-end (`_build_evidence_map`, pack `source_refs_and_excerpts`,
   `block["evidence"]`) but `build_user_prompt` never renders it — excerpts reach only
