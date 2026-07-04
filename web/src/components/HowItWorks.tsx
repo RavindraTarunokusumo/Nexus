@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { api, normalizeApiError, type CapsuleProvenance } from '../api/client'
 import { buildPipelineDiagram, buildProvenanceDiagram, type AnswerMeta } from '../lib/mermaid'
 import { shortId } from '../lib/ids'
@@ -13,6 +13,7 @@ export function HowItWorks({ lastAnswerMeta }: Props) {
   const [provenance, setProvenance] = useState<CapsuleProvenance | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const requestIdRef = useRef(0)
 
   const citationCapsuleIds = lastAnswerMeta
     ? [...new Set(lastAnswerMeta.citations.map((c) => c.capsule_id))]
@@ -21,18 +22,21 @@ export function HowItWorks({ lastAnswerMeta }: Props) {
   const fetchProvenance = useCallback(async (id: string) => {
     const trimmed = id.trim()
     if (!trimmed) return
+    const requestId = ++requestIdRef.current
     setLoading(true)
     setError(null)
     setProvenance(null)
     try {
       const data = await api.getCapsuleProvenance(trimmed)
+      if (requestId !== requestIdRef.current) return
       setProvenance(data)
       setCapsuleId(trimmed)
     } catch (err) {
+      if (requestId !== requestIdRef.current) return
       const apiErr = normalizeApiError(err)
       setError(apiErr.message)
     } finally {
-      setLoading(false)
+      if (requestId === requestIdRef.current) setLoading(false)
     }
   }, [])
 

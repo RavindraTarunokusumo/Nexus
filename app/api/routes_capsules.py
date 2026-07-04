@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime
 
@@ -16,6 +17,8 @@ from app.db.models import (
     Span,
     Thesis,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["capsules"])
 
@@ -169,12 +172,14 @@ async def capsule_provenance(capsule_id: uuid.UUID, db: DbSession) -> Provenance
             continue
         other = other_capsules.get(target_id)
         if other is None:
+            logger.warning("Skipping relation %s: other capsule row missing", rel.id)
             continue
         relations.append(_relation_out(rel, "out", other))
 
     for rel in incoming:
         other = other_capsules.get(rel.source_capsule_id)
         if other is None:
+            logger.warning("Skipping relation %s: other capsule row missing", rel.id)
             continue
         relations.append(_relation_out(rel, "in", other))
 

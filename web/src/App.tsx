@@ -38,6 +38,14 @@ export default function App() {
 
   const pendingMessageRef = useRef<string | null>(null)
 
+  // Reset during render on session change (React "adjust state" pattern) —
+  // an effect here trips the set-state-in-effect lint rule.
+  const [metaSessionId, setMetaSessionId] = useState<string | null>(activeId)
+  if (metaSessionId !== activeId) {
+    setMetaSessionId(activeId)
+    setLastAnswerMeta(null)
+  }
+
   useEffect(() => {
     if (activeId && pendingMessageRef.current) {
       const msg = pendingMessageRef.current

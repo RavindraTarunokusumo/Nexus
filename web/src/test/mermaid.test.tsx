@@ -96,6 +96,24 @@ describe('buildProvenanceDiagram', () => {
     expect(diagram).toContain('class cap active')
   })
 
+  it('reverses edge direction for incoming relations', () => {
+    const diagram = buildProvenanceDiagram({
+      ...SAMPLE_PROVENANCE,
+      relations: [
+        {
+          id: 'rel-in',
+          direction: 'in',
+          relation_type: 'supports',
+          polarity: 'positive',
+          strength: 0.8,
+          other_capsule: { id: 'cap-3', text_excerpt: 'Prior claim', lifecycle_state: 'active' },
+        },
+      ],
+    })
+    expect(diagram).toContain('other0 -->|supports| cap')
+    expect(diagram).not.toContain('cap -->|supports| other0')
+  })
+
   it('handles empty spans, relations, and theses', () => {
     const diagram = buildProvenanceDiagram({
       capsule: {

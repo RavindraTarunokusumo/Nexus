@@ -256,6 +256,8 @@ async def test_session_message_includes_question_shape_and_query_intent(
             "query_intent": "compare_models",
         }
 
+    # Relies on chat_router registering first; patching the shared intelligence
+    # boundary is the tracked follow-up.
     monkeypatch.setattr("app.api.routes_chat.run_session_turn", fake_run_session_turn)
 
     r = await client_with_embedder.post("/chat/sessions", json={})

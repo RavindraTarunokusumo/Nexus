@@ -8,6 +8,12 @@ type Props = {
 
 export function MessageBubble({ message, isPending = false }: Props) {
   const isUser = message.role === 'user'
+  const shape = message.question_shape ?? 'general'
+  const intent = message.query_intent ?? 'general'
+  const showExplain =
+    !isUser &&
+    !(shape === 'general' && intent === 'general') &&
+    (message.question_shape || message.query_intent || message.tokens_used)
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
@@ -22,8 +28,7 @@ export function MessageBubble({ message, isPending = false }: Props) {
         {!isUser && message.citations && message.citations.length > 0 && (
           <CitationList citations={message.citations} />
         )}
-        {!isUser &&
-          (message.question_shape || message.query_intent || message.tokens_used) && (
+        {showExplain && (
             <details className="message-explain mt-2 text-xs text-gray-500">
               <summary className="cursor-pointer hover:text-gray-700">Explain</summary>
               <dl className="mt-1 space-y-0.5 pl-1">

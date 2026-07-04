@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, normalizeApiError, type StatsOverview } from '../api/client'
 
 const COUNT_LABELS: { key: keyof StatsOverview['counts']; label: string }[] = [
@@ -24,38 +24,39 @@ export function Dashboard() {
   const [data, setData] = useState<StatsOverview | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const requestGenRef = useRef(0)
 
-  const fetchOverview = useCallback((signal: { cancelled: boolean }) => {
+  const fetchOverview = useCallback(() => {
+    const gen = ++requestGenRef.current
     return api
       .getStatsOverview()
       .then((overview) => {
-        if (signal.cancelled) return
+        if (gen !== requestGenRef.current) return
         setData(overview)
         setError(null)
       })
       .catch((err) => {
-        if (signal.cancelled) return
+        if (gen !== requestGenRef.current) return
         setError(normalizeApiError(err).message)
         setData(null)
       })
       .finally(() => {
-        if (!signal.cancelled) setLoading(false)
+        if (gen === requestGenRef.current) setLoading(false)
       })
   }, [])
 
   useEffect(() => {
-    const signal = { cancelled: false }
-    void fetchOverview(signal)
+    void fetchOverview()
+    const gen = requestGenRef
     return () => {
-      signal.cancelled = true
+      gen.current++
     }
   }, [fetchOverview])
 
   const handleRefresh = () => {
     setLoading(true)
     setError(null)
-    const signal = { cancelled: false }
-    void fetchOverview(signal)
+    void fetchOverview()
   }
 
   const lifecycle = data?.lifecycle ?? {}

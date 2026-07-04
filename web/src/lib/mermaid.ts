@@ -110,7 +110,11 @@ export function buildProvenanceDiagram(prov: CapsuleProvenance): string {
     const excerpt = sanitizeLabel(rel.other_capsule.text_excerpt)
     const state = rel.other_capsule.lifecycle_state
     lines.push(`  ${otherId}["${excerpt}\\n(${state})"]`)
-    lines.push(`  cap -->|${label}| ${otherId}`)
+    if (rel.direction === 'in') {
+      lines.push(`  ${otherId} -->|${label}| cap`)
+    } else {
+      lines.push(`  cap -->|${label}| ${otherId}`)
+    }
     classAssignments.push(`class ${otherId} ${lifecycleClass(state)}`)
   })
 

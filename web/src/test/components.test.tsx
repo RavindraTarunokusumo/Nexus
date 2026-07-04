@@ -95,7 +95,8 @@ describe('MessageBubble', () => {
   })
 
   it('shows token count in explain disclosure for assistant messages', async () => {
-    render(<MessageBubble message={ASSISTANT_MSG} />)
+    const msg: ChatMessage = { ...ASSISTANT_MSG, question_shape: 'factoid' }
+    render(<MessageBubble message={msg} />)
     await userEvent.click(screen.getByText('Explain'))
     expect(screen.getByText('100')).toBeInTheDocument()
   })
