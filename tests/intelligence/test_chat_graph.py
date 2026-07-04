@@ -11,6 +11,7 @@ def _make_session_factory(
     rows: list | None = None,
     has_sentinel: bool = True,
     evidence_rows: list | None = None,
+    candidate_calls: int = 1,
 ) -> MagicMock:
     mock_session = AsyncMock()
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -23,7 +24,9 @@ def _make_session_factory(
     candidate_result.all.return_value = rows or []
     evidence_result = MagicMock()
     evidence_result.all.return_value = evidence_rows or []
-    mock_session.execute = AsyncMock(side_effect=[candidate_result, empty_result, evidence_result])
+    mock_session.execute = AsyncMock(
+        side_effect=[candidate_result] * candidate_calls + [empty_result, evidence_result]
+    )
 
     sf = MagicMock()
     sf.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -101,6 +104,7 @@ async def test_classify_intent_writes_query_intent() -> None:
     result_mock = MagicMock()
     result_mock.intent = "technical_deep_dive"
     result_mock.shape = "general"
+    result_mock.sub_queries = []
     client.complete_json.return_value = (result_mock, 10)
 
     pack = MagicMock()
@@ -109,7 +113,11 @@ async def test_classify_intent_writes_query_intent() -> None:
 
     result = await _run_classify_intent(state, client)
 
-    assert result == {"query_intent": "technical_deep_dive", "question_shape": "general"}
+    assert result == {
+        "query_intent": "technical_deep_dive",
+        "question_shape": "general",
+        "sub_queries": [],
+    }
 
 
 @pytest.mark.asyncio
@@ -241,7 +249,7 @@ async def test_classify_intent_shape_fallback_on_llm_error() -> None:
 
     result = await _run_classify_intent(state, client)
 
-    assert result == {"query_intent": "general", "question_shape": "general"}
+    assert result == {"query_intent": "general", "question_shape": "general", "sub_queries": []}
 
 
 @pytest.mark.asyncio
@@ -252,6 +260,7 @@ async def test_classify_intent_shape_fallback_on_invalid_shape() -> None:
     result_mock = MagicMock()
     result_mock.intent = "general"
     result_mock.shape = "not_a_real_shape"
+    result_mock.sub_queries = []
     client.complete_json.return_value = (result_mock, 10)
 
     pack = MagicMock()
@@ -260,7 +269,7 @@ async def test_classify_intent_shape_fallback_on_invalid_shape() -> None:
 
     result = await _run_classify_intent(state, client)
 
-    assert result == {"query_intent": "general", "question_shape": "general"}
+    assert result == {"query_intent": "general", "question_shape": "general", "sub_queries": []}
 
 
 @pytest.mark.asyncio
@@ -364,3 +373,84 @@ async def test_retrieve_capsules_pack_none_skips_weight_overrides() -> None:
     with patch("app.intelligence.chat.compute_hybrid_score", return_value=1.0) as mock_score:
         await _run_retrieve_capsules(state, sf, _make_embedder())
     assert mock_score.call_args.args[1] == {}
+
+
+def test_union_rows_by_max_semantic_sim_keeps_highest_sim_per_capsule() -> None:
+    from app.intelligence.chat import _union_rows_by_max_semantic_sim
+
+    cap_a, cap_b = uuid.uuid4(), uuid.uuid4()
+
+    def _row(capsule_id: uuid.UUID, sim: float) -> MagicMock:
+        row = MagicMock()
+        row.id = capsule_id
+        row.semantic_sim = sim
+        return row
+
+    merged = _union_rows_by_max_semantic_sim(
+        [
+            [_row(cap_a, 0.5), _row(cap_b, 0.3)],
+            [_row(cap_a, 0.9), _row(cap_b, 0.2)],
+        ]
+    )
+    by_id = {r.id: float(r.semantic_sim) for r in merged}
+
+    assert len(merged) == 2
+    assert by_id[cap_a] == 0.9
+    assert by_id[cap_b] == 0.3
+
+
+@pytest.mark.asyncio
+async def test_retrieve_capsules_unions_sub_query_candidates() -> None:
+    from app.intelligence.chat import _run_retrieve_capsules
+
+    cap_main, cap_sub = uuid.uuid4(), uuid.uuid4()
+    row_main = _capsule_row(cap_main)
+    row_main.semantic_sim = 0.6
+    row_main.published_at = None
+    row_sub = _capsule_row(cap_sub)
+    row_sub.semantic_sim = 0.8
+    row_sub.published_at = None
+
+    candidate_result_question = MagicMock()
+    candidate_result_question.all.return_value = [row_main]
+    candidate_result_sub_a = MagicMock()
+    candidate_result_sub_a.all.return_value = [row_main]
+    candidate_result_sub_b = MagicMock()
+    candidate_result_sub_b.all.return_value = [row_sub]
+    empty_result = MagicMock()
+    empty_result.all.return_value = []
+    evidence_result = MagicMock()
+    evidence_result.all.return_value = []
+
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+    mock_session.scalar = AsyncMock(return_value=MagicMock())
+    mock_session.execute = AsyncMock(
+        side_effect=[
+            candidate_result_question,
+            candidate_result_sub_a,
+            candidate_result_sub_b,
+            empty_result,
+            evidence_result,
+        ]
+    )
+    sf = MagicMock()
+    sf.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    sf.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    embedder = _make_embedder()
+    state = {
+        "question": "Which happened first, A or B?",
+        "top_k": 5,
+        "query_intent": "general",
+        "question_shape": "temporal",
+        "sub_queries": ["event A", "event B"],
+        "pack": _make_pack(),
+    }
+
+    result = await _run_retrieve_capsules(state, sf, embedder)
+
+    assert embedder.embed_one.call_count == 3
+    returned_ids = {b["capsule_id"] for b in result["context_blocks"]}
+    assert returned_ids == {cap_main, cap_sub}

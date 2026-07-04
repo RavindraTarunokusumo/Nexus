@@ -57,6 +57,7 @@ class ChatState(TypedDict):
     run_id: uuid.UUID | None
     query_intent: str
     question_shape: str
+    sub_queries: list[str]
     pack: Any
     as_of: datetime
     context_blocks: list[dict[str, Any]]
@@ -385,6 +386,57 @@ def _normalize_citation_label(label: str) -> str:
     return label.strip().removeprefix("[").removesuffix("]").strip()
 
 
+_MAX_SUB_QUERIES = 4
+
+
+def _sanitize_sub_queries(raw: list[str] | None) -> list[str]:
+    if not raw:
+        return []
+    return [sq for sq in (s.strip() for s in raw) if sq][:_MAX_SUB_QUERIES]
+
+
+def _union_rows_by_max_semantic_sim(row_sets: list[list[Any]]) -> list[Any]:
+    best: dict[uuid.UUID, Any] = {}
+    for rows in row_sets:
+        for row in rows:
+            sim = float(row.semantic_sim)
+            existing = best.get(row.id)
+            if existing is None or sim > float(existing.semantic_sim):
+                best[row.id] = row
+    return list(best.values())
+
+
+async def _fetch_ann_candidate_rows(
+    session: Any, query_vec: list[float], fetch_k: int
+) -> list[Any]:
+    distance = SemanticCapsule.embedding.cosine_distance(query_vec)
+    return (
+        await session.execute(
+            select(
+                SemanticCapsule.id,
+                SemanticCapsule.document_id,
+                SemanticCapsule.text,
+                SemanticCapsule.domain_object_type,
+                SemanticCapsule.object_family,
+                SemanticCapsule.lifecycle_state,
+                SemanticCapsule.salience,
+                SemanticCapsule.created_at,
+                SemanticCapsule.epistemic_state,
+                SemanticCapsule.confidence,
+                (1 - distance).label("semantic_sim"),
+                Document.title.label("title"),
+                Document.url.label("url"),
+                Document.published_at.label("published_at"),
+            )
+            .join(Document, SemanticCapsule.document_id == Document.id)
+            .where(SemanticCapsule.embedding.isnot(None))
+            .where(SemanticCapsule.lifecycle_state.in_(_LIFECYCLE_RETRIEVAL_STATES))
+            .order_by(distance)
+            .limit(fetch_k)
+        )
+    ).all()
+
+
 def _row_to_candidate(row: Any, relation_count: int) -> dict[str, Any]:
     return {
         "id": row.id,
@@ -498,7 +550,7 @@ def compute_hybrid_score(
 async def _run_classify_intent(state: dict, client: Any) -> dict:
     pack = state.get("pack")
     if pack is None:
-        return {"query_intent": "general", "question_shape": "general"}
+        return {"query_intent": "general", "question_shape": "general", "sub_queries": []}
     intent_names = list(pack.retrieval_policy.query_intents.keys())
     try:
         result, _ = await client.complete_json(
@@ -510,10 +562,12 @@ async def _run_classify_intent(state: dict, client: Any) -> dict:
         )
         intent = result.intent if result.intent in intent_names else "general"
         shape = result.shape if result.shape in QUESTION_SHAPES else "general"
+        sub_queries = _sanitize_sub_queries(result.sub_queries)
     except LLMError:
         intent = "general"
         shape = "general"
-    return {"query_intent": intent, "question_shape": shape}
+        sub_queries = []
+    return {"query_intent": intent, "question_shape": shape, "sub_queries": sub_queries}
 
 
 async def _run_retrieve_capsules(
@@ -553,33 +607,11 @@ async def _run_retrieve_capsules(
         if sentinel is None:
             return {"context_blocks": []}
 
-        query_vec = embedder.embed_one(state["question"])
-        distance = SemanticCapsule.embedding.cosine_distance(query_vec)
-        rows = (
-            await session.execute(
-                select(
-                    SemanticCapsule.id,
-                    SemanticCapsule.document_id,
-                    SemanticCapsule.text,
-                    SemanticCapsule.domain_object_type,
-                    SemanticCapsule.object_family,
-                    SemanticCapsule.lifecycle_state,
-                    SemanticCapsule.salience,
-                    SemanticCapsule.created_at,
-                    SemanticCapsule.epistemic_state,
-                    SemanticCapsule.confidence,
-                    (1 - distance).label("semantic_sim"),
-                    Document.title.label("title"),
-                    Document.url.label("url"),
-                    Document.published_at.label("published_at"),
-                )
-                .join(Document, SemanticCapsule.document_id == Document.id)
-                .where(SemanticCapsule.embedding.isnot(None))
-                .where(SemanticCapsule.lifecycle_state.in_(_LIFECYCLE_RETRIEVAL_STATES))
-                .order_by(distance)
-                .limit(fetch_k)
-            )
-        ).all()
+        vectors = [embedder.embed_one(state["question"])] + [
+            embedder.embed_one(sq) for sq in state.get("sub_queries", [])
+        ]
+        row_sets = [await _fetch_ann_candidate_rows(session, vec, fetch_k) for vec in vectors]
+        rows = _union_rows_by_max_semantic_sim(row_sets)
 
         if not rows:
             return {"context_blocks": []}
@@ -781,6 +813,7 @@ async def run_chat_with_context(
                 "run_id": run_id,
                 "query_intent": "general",
                 "question_shape": "general",
+                "sub_queries": [],
                 "pack": pack,
                 "as_of": as_of,
                 "context_blocks": [],
