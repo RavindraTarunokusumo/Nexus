@@ -532,6 +532,7 @@ async def run_longmemeval(
                     t2_model,
                     top_k=k,
                     pack=pack_obj,
+                    as_of=_parse_longmemeval_date(instance.get("question_date")),
                 )
                 latency_s = time.monotonic() - start
 

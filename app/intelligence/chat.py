@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, TypedDict
 
 from langgraph.graph import END, StateGraph
@@ -58,6 +58,7 @@ class ChatState(TypedDict):
     query_intent: str
     question_shape: str
     pack: Any
+    as_of: datetime
     context_blocks: list[dict[str, Any]]
     answer: str
     citation_labels: list[str]
@@ -232,6 +233,7 @@ def _build_context_block(
         "capsule_id": cand["id"],
         "document_title": cand["title"],
         "url": cand["url"],
+        "published_at": cand.get("published_at"),
         "score": score,
         "text": cand["text"],
         "object_type": cand["object_type"],
@@ -396,6 +398,7 @@ def _row_to_candidate(row: Any, relation_count: int) -> dict[str, Any]:
         "semantic_sim": float(row.semantic_sim),
         "title": row.title,
         "url": row.url,
+        "published_at": row.published_at,
         "epistemic_state": row.epistemic_state or {},
         "confidence": row.confidence,
         "relation_count": relation_count,
@@ -423,6 +426,7 @@ async def _fetch_capsules_by_ids(
                 SemanticCapsule.confidence,
                 Document.title.label("title"),
                 Document.url.label("url"),
+                Document.published_at.label("published_at"),
             )
             .join(Document, SemanticCapsule.document_id == Document.id)
             .where(SemanticCapsule.id.in_(capsule_ids))
@@ -440,6 +444,7 @@ async def _fetch_capsules_by_ids(
             "created_at": row.created_at,
             "title": row.title,
             "url": row.url,
+            "published_at": row.published_at,
             "epistemic_state": row.epistemic_state or {},
             "confidence": row.confidence,
         }
@@ -566,6 +571,7 @@ async def _run_retrieve_capsules(
                     (1 - distance).label("semantic_sim"),
                     Document.title.label("title"),
                     Document.url.label("url"),
+                    Document.published_at.label("published_at"),
                 )
                 .join(Document, SemanticCapsule.document_id == Document.id)
                 .where(SemanticCapsule.embedding.isnot(None))
@@ -680,6 +686,7 @@ def make_chat_graph(session_factory: async_sessionmaker, client: Any, embedder: 
             state["question"],
             state["context_blocks"],
             hint=strategy.answer_hint,
+            as_of=state["as_of"],
         )
         try:
             result, tokens = await client.complete_json(
@@ -757,11 +764,14 @@ async def run_chat_with_context(
     *,
     top_k: int,
     pack: Any = None,
+    as_of: datetime | None = None,
 ) -> dict:
     if pack is None:
         from app.config import settings
 
         pack = load_pack(settings.default_pack_id)
+    if as_of is None:
+        as_of = datetime.now(timezone.utc)
     async with chat_run() as run_id:
         final = await graph.ainvoke(
             {
@@ -772,6 +782,7 @@ async def run_chat_with_context(
                 "query_intent": "general",
                 "question_shape": "general",
                 "pack": pack,
+                "as_of": as_of,
                 "context_blocks": [],
                 "answer": "",
                 "citation_labels": [],
