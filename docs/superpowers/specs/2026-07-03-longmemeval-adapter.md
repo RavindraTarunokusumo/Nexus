@@ -130,3 +130,40 @@ Async pipeline reuses existing app internals exactly as `run_memory_benchmark.py
 - Cost bounded by `--limit` default 20 (~1–5 oracle docs per instance ≈ well under the
   synthetic benchmark's per-run spend).
 - No edits to `run_memory_benchmark.py`, `extraction.py`, `chat.py`, or pack YAMLs.
+  **Superseded for `chat.py`/prompts by the T-L5 amendment below** (user-approved
+  2026-07-04); `run_memory_benchmark.py` and `extraction.py` stay untouched.
+
+## Amendment — T-L5 answer-path temporal grounding + conflict resolution (2026-07-04)
+
+Full-211 run (partial, 194/211): knowledge-update 0.564, temporal-reasoning 0.224,
+88 abstentions (74 on temporal-reasoning) despite 20–26 capsules per instance and zero
+empty docs — evidence is retrieved but the answer path is time-blind. Three approved
+fixes:
+
+1. **Question-time anchor.** `run_chat_with_context` gains keyword-only
+   `as_of: datetime | None = None`, threaded through chat state into `generate_answer`
+   and rendered by `build_user_prompt` as a `Current date: YYYY-MM-DD (Weekday)` line
+   ahead of the question. Adapter passes the instance's parsed `question_date`.
+   Existing callers (`answer_chat`, `_answer_node`, `run_memory_benchmark`) pass
+   nothing and get today's date injected (`datetime.now(timezone.utc)`) — relative-time
+   questions in production have the same anchoring need.
+2. **Dated context blocks.** Both capsule-candidate queries in `chat.py` (hybrid
+   retrieval + `_fetch_capsules_by_ids`) additionally select `Document.published_at`;
+   `_build_context_block` copies it onto the block; `build_user_prompt` renders
+   `Date: YYYY-MM-DD (Weekday)` (or omits the line when null). Weekday included because
+   temporal-reasoning questions reference "last Saturday"-style anchors.
+3. **Conflict resolution + aggregation recall.** `SYSTEM_PROMPT` in `chat_answer.py`
+   instructs: when blocks conflict, resolve via supersession roles, lifecycle_state and
+   dates and state the single best-supported answer — never report "conflicting
+   evidence" as the answer. `multi_doc` strategy: `top_k_delta` 3→5 and hint extended
+   to enumerate-and-count across all blocks for "how many" questions.
+
+Plus a robustness nit: judge call retries once on `LLMError`/`LLMNetworkError` before
+recording `autoeval_label: null`.
+
+**Non-goals:** no new question shape, no classifier prompt change, no schema change,
+no re-ingestion (documents already carry `published_at`).
+
+**Success criteria:** full suite green (known pre-existing failures only); rerun of the
+same 211-question slice shows temporal-reasoning materially above the 0.224 baseline
+with abstentions substantially reduced; before/after table in the H7 report.
