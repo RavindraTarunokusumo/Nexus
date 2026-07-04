@@ -5,7 +5,7 @@ Run with --noconftest to skip the DB fixture chain.
 """
 
 import uuid
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -30,6 +30,22 @@ def test_resolve_t2_model_uses_fallback_when_absent():
     pack.model_extra = {}
     result = _resolve_t2_model(pack, fallback="fallback-model")
     assert result == "fallback-model"
+
+
+def test_resolve_t2_model_force_overrides_pack():
+    pack = load_pack("personal_ai_tech")
+    with patch("app.intelligence.extraction.settings") as mock_settings:
+        mock_settings.t2_model_force = "qwen-flash"
+        result = _resolve_t2_model(pack, fallback="fallback-model")
+    assert result == "qwen-flash"
+
+
+def test_resolve_t2_model_empty_force_uses_pack():
+    pack = load_pack("personal_ai_tech")
+    with patch("app.intelligence.extraction.settings") as mock_settings:
+        mock_settings.t2_model_force = ""
+        result = _resolve_t2_model(pack, fallback="fallback-model")
+    assert result == "qwen3.6-flash"
 
 
 # ---------------------------------------------------------------------------

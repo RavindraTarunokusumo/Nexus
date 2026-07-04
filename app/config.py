@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     # Defaults are Qwen Cloud (DashScope) model ids; override per env.
     t1_model: str = "BAAI/bge-small-en-v1.5"
     t2_model: str = "qwen3.6-flash"
+    t2_model_force: str = ""
     t3_model: str = "qwen3.7-max"
 
     # Default domain pack loaded for /chat/answer and session turns.

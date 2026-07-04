@@ -46,6 +46,12 @@ def test_llm_api_key_empty_when_neither_set(settings_env):
     assert s.llm_api_key == ""
 
 
+def test_t2_model_force_reads_from_env(settings_env, monkeypatch):
+    monkeypatch.setenv("T2_MODEL_FORCE", "qwen-flash")
+    s = Settings()
+    assert s.t2_model_force == "qwen-flash"
+
+
 def test_settings_ignores_unknown_env(settings_env, monkeypatch):
     # extra="ignore": an unrecognised env var (e.g. the reserved EMBEDDING_MODEL,
     # not yet wired — T1 embeddings are local) must not crash startup.

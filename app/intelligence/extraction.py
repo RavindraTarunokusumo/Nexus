@@ -23,6 +23,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.config import settings
 from app.db.models import (
     Claim,
     ClaimEvidence,
@@ -141,10 +142,13 @@ def _load_spans_failure(error_msg: str) -> dict:
 def _resolve_t2_model(pack: DomainPack, fallback: str) -> str:
     """Extract the T2 model string from pack.model_extra['models']['t2'].
 
+    When settings.t2_model_force is non-empty it wins over the pack.
     Falls back to fallback when the pack has no top-level 'models' key
     or the T2 entry is missing.  Handles both string values and dict values
     (dict: use 'extractor' or 'model' sub-key).
     """
+    if settings.t2_model_force:
+        return settings.t2_model_force
     extra = getattr(pack, "model_extra", {}) or {}
     top_models = extra.get("models") or {}
     if isinstance(top_models, dict):
@@ -424,24 +428,34 @@ async def _run_classify_relations(
     pairs = pairs[:remaining_budget]
 
     relation_ids: list[uuid.UUID] = []
+    semaphore = asyncio.Semaphore(4)
 
-    for cap_a, cap_b in pairs:
-        try:
-            classification, _ = await client.complete_json(
-                model=t2_model,
-                system=CLASSIFY_SYSTEM_PROMPT,
-                user=build_relation_prompt(cap_a, cap_b, pack),
-                response_model=RelationClassification,
-                run_type="classify_relation",
-            )
-        except LLMError as exc:
-            logger.warning(
-                "Relation classification failed (%s → %s): %s",
-                cap_a.id,
-                cap_b.id,
-                exc,
-            )
+    async def classify_pair(cap_a, cap_b):
+        async with semaphore:
+            try:
+                classification, _ = await client.complete_json(
+                    model=t2_model,
+                    system=CLASSIFY_SYSTEM_PROMPT,
+                    user=build_relation_prompt(cap_a, cap_b, pack),
+                    response_model=RelationClassification,
+                    run_type="classify_relation",
+                )
+            except LLMError as exc:
+                logger.warning(
+                    "Relation classification failed (%s → %s): %s",
+                    cap_a.id,
+                    cap_b.id,
+                    exc,
+                )
+                return None
+            return cap_a, cap_b, classification
+
+    classifications = await asyncio.gather(*[classify_pair(a, b) for a, b in pairs])
+
+    for item in classifications:
+        if item is None:
             continue
+        cap_a, cap_b, classification = item
 
         if not classification.relation_type or classification.relation_type == "none":
             continue
@@ -777,20 +791,30 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
 
         judge_results: list[dict] = []
         calls_made = 0
+        semaphore = asyncio.Semaphore(4)
 
-        for capsule in to_judge:
-            obj = _capsule_to_obj_for_judge(capsule)
-            try:
-                verdict, _ = await client.complete_json(
-                    model=t2_model,
-                    system=JUDGE_SYSTEM_PROMPT,
-                    user=build_judge_prompt(obj, pack),
-                    response_model=JudgeVerdict,
-                    run_type="judge_capsule",
-                )
-            except LLMError as exc:
-                logger.warning("Judge failed for capsule %s: %s", capsule.id, exc)
+        async def judge_one(capsule):
+            async with semaphore:
+                obj = _capsule_to_obj_for_judge(capsule)
+                try:
+                    verdict, _ = await client.complete_json(
+                        model=t2_model,
+                        system=JUDGE_SYSTEM_PROMPT,
+                        user=build_judge_prompt(obj, pack),
+                        response_model=JudgeVerdict,
+                        run_type="judge_capsule",
+                    )
+                except LLMError as exc:
+                    logger.warning("Judge failed for capsule %s: %s", capsule.id, exc)
+                    return None
+                return capsule, verdict
+
+        verdicts = await asyncio.gather(*[judge_one(c) for c in to_judge])
+
+        for item in verdicts:
+            if item is None:
                 continue
+            capsule, verdict = item
 
             calls_made += 1
             relation_id = uuid.uuid4()
