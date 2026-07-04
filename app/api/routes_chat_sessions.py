@@ -65,6 +65,8 @@ class ChatMessageOut(BaseModel):
     retrieved_context_count: int | None = None
     tokens_used: int | None = None
     cost_estimate_usd: float | None = None
+    question_shape: str | None = None
+    query_intent: str | None = None
 
 
 class ChatSessionDetail(ChatSessionSummary):
@@ -338,10 +340,14 @@ async def send_message(  # noqa: C901
     )
 
     summary = await _session_summary(row, db)
+    assistant_out = _message_out(assistant_msg)
+    assistant_out.question_shape = result.get("question_shape") or "general"
+    assistant_out.query_intent = result.get("query_intent") or "general"
+
     return SendMessageResponse(
         session=summary,
         user_message=_message_out(user_msg),
-        assistant_message=_message_out(assistant_msg),
+        assistant_message=assistant_out,
     )
 
 

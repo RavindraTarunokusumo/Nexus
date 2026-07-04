@@ -10,12 +10,14 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.api.routes_capsules import router as capsules_router
 from app.api.routes_chat import router as chat_router
 from app.api.routes_chat_sessions import router as chat_sessions_router
 from app.api.routes_claims import router as claims_router
 from app.api.routes_documents import router as documents_router
 from app.api.routes_ingestion import router as ingestion_router
 from app.api.routes_sources import router as sources_router
+from app.api.routes_stats import router as stats_router
 from app.db.models import Base
 
 # ---------------------------------------------------------------------------
@@ -88,9 +90,9 @@ def run_migrations(db_url):
         text=True,
         cwd=os.path.dirname(os.path.dirname(__file__)),
     )
-    assert (
-        result.returncode == 0
-    ), f"Alembic migration failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+    assert result.returncode == 0, (
+        f"Alembic migration failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -135,6 +137,8 @@ def _build_app(async_engine, session_factory, embedder=None, memory_graph=None) 
     test_app.include_router(ingestion_router)
     test_app.include_router(documents_router)
     test_app.include_router(claims_router)
+    test_app.include_router(stats_router)
+    test_app.include_router(capsules_router)
     test_app.include_router(chat_router)
     test_app.include_router(chat_sessions_router)
     return test_app

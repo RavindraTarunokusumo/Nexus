@@ -61,6 +61,8 @@ class ChatAnswerResponse(BaseModel):
     run_id: uuid.UUID
     tokens_used: int
     cost_estimate_usd: float
+    question_shape: str = "general"
+    query_intent: str = "general"
 
 
 # ---------------------------------------------------------------------------
@@ -100,6 +102,8 @@ class MessageOut(BaseModel):
     retrieved_context_count: int | None = None
     tokens_used: int | None = None
     cost_estimate_usd: float | None = None
+    question_shape: str | None = None
+    query_intent: str | None = None
 
 
 class SessionDetail(SessionSummary):
@@ -225,6 +229,8 @@ async def answer_chat(payload: ChatAnswerRequest, request: Request) -> ChatAnswe
         run_id=final["run_id"],
         tokens_used=tokens,
         cost_estimate_usd=round(tokens * _COST_PER_TOKEN_USD, 6),
+        question_shape=final.get("question_shape") or "general",
+        query_intent=final.get("query_intent") or "general",
     )
 
 
@@ -477,5 +483,7 @@ async def send_message(
             retrieved_context_count=assistant_msg.retrieved_context_count,
             tokens_used=assistant_msg.tokens_used,
             cost_estimate_usd=assistant_msg.cost_estimate_usd,
+            question_shape=result.get("question_shape") or "general",
+            query_intent=result.get("query_intent") or "general",
         ),
     )
