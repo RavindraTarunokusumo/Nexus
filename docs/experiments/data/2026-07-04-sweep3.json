@@ -1,0 +1,50 @@
+[
+  {
+    "variant": "t3",
+    "n": 211,
+    "labeled": 211,
+    "accuracy": 0.81,
+    "mean_tokens": 2333.5,
+    "abstain": 27,
+    "per_type": {
+      "temporal-reasoning": 0.774,
+      "knowledge-update": 0.872
+    }
+  },
+  {
+    "variant": "leanprompt",
+    "n": 211,
+    "labeled": 211,
+    "accuracy": 0.72,
+    "mean_tokens": 1512.4,
+    "abstain": 21,
+    "per_type": {
+      "temporal-reasoning": 0.722,
+      "knowledge-update": 0.718
+    }
+  },
+  {
+    "variant": "cot_leanprompt",
+    "n": 211,
+    "labeled": 211,
+    "accuracy": 0.806,
+    "mean_tokens": 1919.1,
+    "abstain": 33,
+    "per_type": {
+      "temporal-reasoning": 0.797,
+      "knowledge-update": 0.821
+    }
+  },
+  {
+    "variant": "t3_leanprompt",
+    "n": 211,
+    "labeled": 211,
+    "accuracy": 0.834,
+    "mean_tokens": 1486.8,
+    "abstain": 26,
+    "per_type": {
+      "temporal-reasoning": 0.805,
+      "knowledge-update": 0.885
+    }
+  }
+]
