@@ -489,6 +489,13 @@ async def run_longmemeval(
     rows: list[dict[str, Any]] = []
     judge_errors = 0
     instance_errors = 0
+    out_dir.mkdir(parents=True, exist_ok=True)
+    partial_path = out_dir / "results.partial.jsonl"
+
+    def _append_partial(row: dict[str, Any]) -> None:
+        # A killed multi-hour run must not lose completed instances.
+        with partial_path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row) + "\n")
 
     try:
         chat_graph = make_chat_graph(session_factory, client, embedder)
@@ -561,6 +568,7 @@ async def run_longmemeval(
                         "zero_capsule_docs": zero_capsule_docs,
                     }
                 )
+                _append_partial(rows[-1])
             except Exception as exc:  # noqa: BLE001 — one bad instance must not kill a 200-instance run
                 instance_errors += 1
                 print(f"ERROR instance {instance['question_id']}: {exc!r}")
@@ -576,6 +584,7 @@ async def run_longmemeval(
                         "error": repr(exc)[:300],
                     }
                 )
+                _append_partial(rows[-1])
                 continue
 
     finally:
