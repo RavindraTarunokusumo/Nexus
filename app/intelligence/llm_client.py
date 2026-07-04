@@ -90,64 +90,103 @@ class LLMClient:
         call_status = "success"
         validated: T | None = None
 
-        for attempt in range(_MAX_JSON_ATTEMPTS):
-            raw_output = None
-            total_tokens = 0
-            prompt_tokens = None
-            completion_tokens = None
-            call_status = "success"
-            try:
-                async with httpx.AsyncClient(
-                    base_url=self._base_url,
-                    headers={
-                        "Authorization": f"Bearer {self._api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    timeout=_TIMEOUT,
-                ) as http:
+        async with httpx.AsyncClient(
+            base_url=self._base_url,
+            headers={
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=_TIMEOUT,
+        ) as http:
+            for attempt in range(_MAX_JSON_ATTEMPTS):
+                raw_output = None
+                total_tokens = 0
+                prompt_tokens = None
+                completion_tokens = None
+                call_status = "success"
+                try:
                     resp = await http.post("/chat/completions", json=payload)
 
-                if resp.status_code == 429 or resp.status_code >= 500:
-                    call_status = f"http_{resp.status_code}"
+                    if resp.status_code == 429 or resp.status_code >= 500:
+                        call_status = f"http_{resp.status_code}"
+                        if attempt < _MAX_JSON_ATTEMPTS - 1:
+                            await _retry_backoff(attempt)
+                            continue
+                        raise LLMNetworkError(f"OpenRouter {resp.status_code}: {resp.text[:300]}")
+
+                    if resp.status_code >= 400:
+                        call_status = f"http_{resp.status_code}"
+                        raise LLMError(f"OpenRouter {resp.status_code}: {resp.text[:300]}")
+
+                    data = resp.json()
+                    try:
+                        raw_output = data["choices"][0]["message"]["content"]
+                    except (KeyError, IndexError, TypeError) as exc:
+                        call_status = "malformed_response"
+                        raise LLMError(f"Malformed OpenRouter response: {exc}") from exc
+
+                    usage = data.get("usage", {})
+                    total_tokens = usage.get("total_tokens", 0)
+                    prompt_tokens = usage.get("prompt_tokens")
+                    completion_tokens = usage.get("completion_tokens")
+
+                    if raw_output is None:
+                        call_status = "schema_error"
+                        raise LLMSchemaError("LLM returned null content", raw_output="")
+
+                    try:
+                        validated = response_model.model_validate_json(raw_output)
+                    except (ValueError, ValidationError) as exc:
+                        call_status = "schema_error"
+                        raise LLMSchemaError(
+                            f"Schema validation failed: {exc}. Raw: {raw_output[:200]}",
+                            raw_output=raw_output,
+                        ) from exc
+
+                except httpx.HTTPError as exc:
+                    call_status = "network_error"
                     if attempt < _MAX_JSON_ATTEMPTS - 1:
                         await _retry_backoff(attempt)
                         continue
-                    raise LLMNetworkError(f"OpenRouter {resp.status_code}: {resp.text[:300]}")
-
-                if resp.status_code >= 400:
-                    call_status = f"http_{resp.status_code}"
-                    raise LLMError(f"OpenRouter {resp.status_code}: {resp.text[:300]}")
-
-                data = resp.json()
-                try:
-                    raw_output = data["choices"][0]["message"]["content"]
-                except (KeyError, IndexError, TypeError) as exc:
-                    call_status = "malformed_response"
-                    raise LLMError(f"Malformed OpenRouter response: {exc}") from exc
-
-                usage = data.get("usage", {})
-                total_tokens = usage.get("total_tokens", 0)
-                prompt_tokens = usage.get("prompt_tokens")
-                completion_tokens = usage.get("completion_tokens")
-
-                if raw_output is None:
-                    call_status = "schema_error"
-                    raise LLMSchemaError("LLM returned null content", raw_output="")
-
-                try:
-                    validated = response_model.model_validate_json(raw_output)
-                except (ValueError, ValidationError) as exc:
-                    call_status = "schema_error"
-                    raise LLMSchemaError(
-                        f"Schema validation failed: {exc}. Raw: {raw_output[:200]}",
+                    await record_agent_run(
+                        self._session_factory,
+                        run_type=run_type,
+                        model=model,
+                        input_payload={"system": system, "user": user},
                         raw_output=raw_output,
-                    ) from exc
+                        total_tokens=total_tokens,
+                        status=call_status,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                    )
+                    raise LLMNetworkError(str(exc)) from exc
+                except LLMSchemaError:
+                    await record_agent_run(
+                        self._session_factory,
+                        run_type=run_type,
+                        model=model,
+                        input_payload={"system": system, "user": user},
+                        raw_output=raw_output,
+                        total_tokens=total_tokens,
+                        status=call_status,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                    )
+                    raise
+                except LLMError as exc:
+                    await record_agent_run(
+                        self._session_factory,
+                        run_type=run_type,
+                        model=model,
+                        input_payload={"system": system, "user": user},
+                        raw_output=raw_output,
+                        total_tokens=total_tokens,
+                        status=call_status,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                    )
+                    raise exc
 
-            except httpx.HTTPError as exc:
-                call_status = "network_error"
-                if attempt < _MAX_JSON_ATTEMPTS - 1:
-                    await _retry_backoff(attempt)
-                    continue
                 await record_agent_run(
                     self._session_factory,
                     run_type=run_type,
@@ -159,46 +198,7 @@ class LLMClient:
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
                 )
-                raise LLMNetworkError(str(exc)) from exc
-            except LLMSchemaError:
-                await record_agent_run(
-                    self._session_factory,
-                    run_type=run_type,
-                    model=model,
-                    input_payload={"system": system, "user": user},
-                    raw_output=raw_output,
-                    total_tokens=total_tokens,
-                    status=call_status,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                )
-                raise
-            except LLMError as exc:
-                await record_agent_run(
-                    self._session_factory,
-                    run_type=run_type,
-                    model=model,
-                    input_payload={"system": system, "user": user},
-                    raw_output=raw_output,
-                    total_tokens=total_tokens,
-                    status=call_status,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                )
-                raise exc
-
-            await record_agent_run(
-                self._session_factory,
-                run_type=run_type,
-                model=model,
-                input_payload={"system": system, "user": user},
-                raw_output=raw_output,
-                total_tokens=total_tokens,
-                status=call_status,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-            )
-            return validated, total_tokens
+                return validated, total_tokens
 
         raise AssertionError("unreachable: retry loop should have returned")
 

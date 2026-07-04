@@ -376,7 +376,9 @@ async def _judge_answer(
     question_type: str,
     abstention: bool,
 ) -> tuple[bool | None, int]:
-    for _ in range(2):
+    # complete_json already retries 429/5xx/network internally; only LLMSchemaError
+    # goes unretried there, so that's the one case worth a second attempt here.
+    for attempt in range(2):
         try:
             verdict, tokens = await client.complete_json(
                 model=settings.t3_model,
@@ -394,8 +396,12 @@ async def _judge_answer(
                 run_type="longmemeval_judge",
             )
             return verdict.correct, tokens
-        except (LLMError, LLMNetworkError, LLMSchemaError):
-            continue
+        except LLMSchemaError:
+            if attempt == 0:
+                continue
+            return None, 0
+        except (LLMError, LLMNetworkError):
+            return None, 0
     return None, 0
 
 
@@ -656,7 +662,6 @@ async def run_longmemeval(
     embedder = Embedder(settings.t1_model)
     judge_errors = 0
     instance_errors = 0
-    out_dir.mkdir(parents=True, exist_ok=True)
     partial_path = out_dir / "results.partial.jsonl"
     engines: list[Any] = []
 

@@ -31,9 +31,11 @@ STRATEGIES: dict[str, RetrievalStrategy] = {
             "occurrence across all context blocks."
         ),
     ),
-    # current_state deliberately has no recency override: capsule created_at is
-    # ingestion order, not publication date, so boosting it buries past-dated facts
-    # (T-X3 finding — it dropped release-date capsules out of top-k entirely).
+    # current_state deliberately has no recency override. Recency now scores on
+    # published_at when set (T-L6 R3), but current_state wants the most up-to-date
+    # fact regardless of session date — boosting recency would bury an older
+    # session's still-current fact behind a newer session's stale one (T-X3
+    # finding — it dropped release-date capsules out of top-k entirely).
     # The supersession aux blocks + answer hint carry this shape's intent instead.
     "current_state": RetrievalStrategy(
         answer_hint="Prefer the most recent superseding fact; explicitly note the fact it replaced.",
