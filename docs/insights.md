@@ -293,3 +293,29 @@ CLAUDE.md's Submit PR flow suggests one Grok handoff per /simplify review angle.
 ### Mocked-session SQL assertions via the captured statement object
 
 To test that a retrieval node's `.limit()` actually reflects strategy math (a PR-review gap: the pure unit test duplicated the formula offline), the existing AsyncMock session pattern already captures the executed statement: `sf.return_value.__aenter__.return_value.execute.call_args_list[0].args[0]._limit_clause.value`. No new fixtures needed. `_limit_clause` is SQLAlchemy-internal but stable in 2.x; the pattern turns "wiring untested" review findings into three-line tests.
+
+## Session: longmemeval-h7 (2026-07-04)
+
+### Killing a background `grok -p` process does not roll back its file edits — recover, don't discard
+
+Twice this session a Grok implementer was killed mid-task (once to keep a live benchmark run's tree uncontaminated, once during its own self-check) because two things needed the same worktree at once. In both cases the process had already flushed its edits to disk before being killed — `git status`/`git diff` showed the complete, coherent change set either way. Treat a killed delegate the same as a killed compiler: check `git status` first, review what's there, and finish the review/gate/commit yourself rather than assuming a kill means lost or partial work. (One of the two was stashed and popped back after the conflicting task finished, purely to keep a diff clean for a moment — not because anything was actually at risk.)
+
+### `pkill -f <pattern>` can kill more than the target if a Monitor loop references the same string
+
+`pkill -f "run_longmemeval"` to stop a benchmark run also killed the `Monitor` task watching it, because that task's own polling loop (`pgrep -f "run_longmemeval"`) contained the same substring and matched itself. The monitor reported "failed" instead of a clean stop. Harmless here (the benchmark process was also genuinely gone), but the lesson generalizes: a broad `pkill -f` pattern can catch any shell command that merely *mentions* the target string, including your own polling infrastructure — prefer a more specific pattern (e.g. include a unique output-dir suffix) when a Monitor or wait-loop referencing the same name is active.
+
+### Extracting the JSON result from a background `grok -p ... --output-format json` call needs a real anchor, not a guessed `rfind`
+
+The raw background-task output file interleaves ERROR log lines (tool-not-found, parse-failure noise from the sandboxed Grok session) with the final JSON blob, and stray `{"...}` fragments inside the log lines broke naive `rfind('{"')` extraction more than once. What worked reliably: `rfind('{\n  "text"')` (the JSON is always pretty-printed with a newline after the opening brace) or `grep -o '"sessionId"[^,}]*'` for just the ID when the summary text isn't needed. Worth using this anchor form by default instead of re-deriving a parse strategy per call.
+
+### A "known pre-existing failures" list must be re-verified per tool, not carried forward as a rough count
+
+Delegation prompts this session cited "3 known pre-existing mypy errors in `app/cli/eval.py` and `app/main.py`" — actually wrong; the real mypy baseline (verified by checking out clean `main`) was two `chat.py` errors plus one `main.py` error, and `eval.py`'s two findings were `ruff` (`ASYNC240`), not `mypy`, at all. The two tools' pre-existing-failure sets had been silently conflated. This never caused a bad merge (every gate was independently re-verified against a stash/clean-`main` comparison before trusting a delta), but it did cost a moment of false alarm mid-review. Derive and write down the exact tool → file:line baseline once per session, rather than repeating a remembered summary in each delegation prompt.
+
+### `gh pr create` in this environment's `gh` version does not support `--json`
+
+`gh pr create --json number,url` errors with `unknown flag: --json` — that flag exists on `view`/`list` but not `create` here. Create first, then `gh pr view <n> --json ...` for the number/URL/mergeable state. Submitting an already-posted PENDING review (e.g. one a Grok bundled-reviewer skill leaves in draft) also isn't a `gh pr review` operation — there's no "submit this existing pending review" flag; it needs `gh api repos/<owner>/<repo>/pulls/<n>/reviews/<review_id>/events -X POST -f event=COMMENT` (or `APPROVE`/`REQUEST_CHANGES`) against the specific review ID.
+
+### Provisioning N scratch databases for `--workers N` benchmark parallelism is a five-line repeatable pattern, not a one-off
+
+Each parallel-worker benchmark run needed N Postgres databases created and migrated (`CREATE DATABASE nexus_lme_w{i}` via `asyncpg`, then `alembic upgrade head` per DB with `DATABASE_URL` pointed at each). This recurred across multiple reruns with different worker counts this session. Worth turning into a tiny reusable script next time this pattern is needed again (LongMemEval or any future parallel-instance benchmark), rather than re-deriving the asyncpg snippet + shell loop from scratch.
