@@ -9,6 +9,7 @@ from scripts.benchmarks.run_longmemeval import (
     render_session_text,
     select_instances,
     session_to_document,
+    shard_instances,
 )
 
 _SAMPLE_TURNS = [
@@ -163,6 +164,42 @@ def test_parse_args_pack_defaults_to_none():
 def test_parse_args_pack_pass_through():
     args = _parse_args(["--pack", "conversation_v1"])
     assert args.pack == "conversation_v1"
+
+
+def test_shard_instances_round_robin_three_workers():
+    instances = [{"question_id": str(i)} for i in range(7)]
+    w1 = shard_instances(instances, workers=3, worker_index=1)
+    w2 = shard_instances(instances, workers=3, worker_index=2)
+    w3 = shard_instances(instances, workers=3, worker_index=3)
+    assert [idx for idx, _ in w1] == [0, 3, 6]
+    assert [idx for idx, _ in w2] == [1, 4]
+    assert [idx for idx, _ in w3] == [2, 5]
+    assert [inst["question_id"] for _, inst in w1] == ["0", "3", "6"]
+
+
+def test_shard_instances_single_worker_gets_all():
+    instances = [{"question_id": "a"}, {"question_id": "b"}]
+    shard = shard_instances(instances, workers=1, worker_index=1)
+    assert [idx for idx, _ in shard] == [0, 1]
+
+
+def test_parse_args_workers_and_db_url_template_defaults():
+    args = _parse_args([])
+    assert args.workers == 1
+    assert args.db_url_template == ""
+
+
+def test_parse_args_workers_and_db_url_template_pass_through():
+    args = _parse_args(
+        [
+            "--workers",
+            "4",
+            "--db-url-template",
+            "postgresql+asyncpg://nexus:nexus@localhost:5432/nexus_lme_w{n}",
+        ]
+    )
+    assert args.workers == 4
+    assert args.db_url_template == "postgresql+asyncpg://nexus:nexus@localhost:5432/nexus_lme_w{n}"
 
 
 def test_run_longmemeval_pack_defaults_to_settings_default_pack_id():

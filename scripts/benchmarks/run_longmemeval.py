@@ -13,6 +13,7 @@ import json
 import subprocess
 import time
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -126,6 +127,23 @@ def select_instances(
     if limit > 0:
         sliced = sliced[:limit]
     return sliced
+
+
+def shard_instances(
+    instances: list[dict[str, Any]],
+    *,
+    workers: int,
+    worker_index: int,
+) -> list[tuple[int, dict[str, Any]]]:
+    """Return (dataset_index, instance) pairs assigned to worker_index (1-based).
+
+    Worker *i* receives instances[i-1::workers] — round-robin by original index.
+    """
+    return [
+        (index, instance)
+        for index, instance in enumerate(instances)
+        if index % workers == worker_index - 1
+    ]
 
 
 def is_abstention(question_id: str) -> bool:
@@ -454,6 +472,152 @@ def _write_outputs(
     (out_dir / "run_meta.json").write_text(json.dumps(run_meta, indent=2), encoding="utf-8")
 
 
+async def _run_single_instance(
+    instance: dict[str, Any],
+    *,
+    session_factory: async_sessionmaker,
+    embedder: Embedder,
+    client: LLMClient,
+    chat_graph: Any,
+    pack_id: str,
+    pack_obj: Any,
+    resolved_domain: str,
+    t2_model: str,
+    k: int,
+    append_partial: Callable[[dict[str, Any]], Any],
+) -> tuple[dict[str, Any], int, int]:
+    """Run the full per-instance pipeline. Returns (row, judge_errors, instance_errors)."""
+    try:
+        await _truncate_memory_tables(session_factory)
+        corpus = _instance_to_corpus(instance)
+        corpus_urls = [normalize_url(doc["url"]) for doc in corpus]
+
+        await _ingest_corpus(corpus, session_factory, embedder, pack_id)
+        await _extract_documents(corpus, session_factory, client, t2_model=t2_model)
+        await classify_cross_document_relations(
+            session_factory,
+            client,
+            domain=resolved_domain,
+            pack=pack_obj,
+            model=t2_model,
+        )
+        async with session_factory() as session:
+            await apply_lifecycle_transitions(session, domain=resolved_domain, pack=pack_obj)
+        async with session_factory() as session:
+            await consolidate_domain(session, domain=resolved_domain, pack=pack_obj)
+
+        doc_count, capsule_count, relation_count, zero_capsule_docs = await _instance_stats(
+            session_factory, corpus_urls
+        )
+
+        start = time.monotonic()
+        final = await run_chat_with_context(
+            chat_graph,
+            instance["question"],
+            t2_model,
+            top_k=k,
+            pack=pack_obj,
+            as_of=_parse_longmemeval_date(instance.get("question_date")),
+        )
+        latency_s = time.monotonic() - start
+
+        hypothesis = final.get("answer") or INSUFFICIENT_EVIDENCE_ANSWER
+        abstained = hypothesis == INSUFFICIENT_EVIDENCE_ANSWER
+        abstention_q = is_abstention(instance["question_id"])
+
+        autoeval_label, judge_tokens = await _judge_answer(
+            client,
+            question=instance["question"],
+            gold_answer=instance["answer"],
+            hypothesis=hypothesis,
+            question_type=instance["question_type"],
+            abstention=abstention_q,
+        )
+        judge_errors = 1 if autoeval_label is None else 0
+
+        row = {
+            "question_id": instance["question_id"],
+            "question_type": instance["question_type"],
+            "question": instance["question"],
+            "gold_answer": instance["answer"],
+            "hypothesis": hypothesis,
+            "autoeval_label": autoeval_label,
+            "abstained": abstained,
+            "latency_s": latency_s,
+            "tokens_used": final.get("tokens_used", 0),
+            "judge_tokens_used": judge_tokens,
+            "doc_count": doc_count,
+            "capsule_count": capsule_count,
+            "relation_count": relation_count,
+            "zero_capsule_docs": zero_capsule_docs,
+        }
+        await append_partial(row)
+        return row, judge_errors, 0
+    except Exception as exc:  # noqa: BLE001 — one bad instance must not kill a worker
+        print(f"ERROR instance {instance['question_id']}: {exc!r}")
+        row = {
+            "question_id": instance["question_id"],
+            "question_type": instance["question_type"],
+            "question": instance["question"],
+            "gold_answer": instance["answer"],
+            "hypothesis": None,
+            "autoeval_label": None,
+            "abstained": False,
+            "error": repr(exc)[:300],
+        }
+        await append_partial(row)
+        return row, 0, 1
+
+
+async def _run_worker(
+    worker_index: int,
+    shard: list[tuple[int, dict[str, Any]]],
+    *,
+    db_url: str,
+    embedder: Embedder,
+    pack_id: str,
+    pack_obj: Any,
+    resolved_domain: str,
+    t2_model: str,
+    k: int,
+    partial_lock: asyncio.Lock,
+    partial_path: Path,
+    engines: list[Any],
+) -> tuple[list[tuple[int, dict[str, Any]]], int, int]:
+    engine = make_engine(db_url)
+    engines.append(engine)
+    session_factory = make_session_factory(engine)
+    client = LLMClient(settings.llm_api_key, session_factory, base_url=settings.llm_base_url)
+    chat_graph = make_chat_graph(session_factory, client, embedder)
+
+    async def append_partial(row: dict[str, Any]) -> None:
+        async with partial_lock:
+            with partial_path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(row) + "\n")
+
+    indexed_rows: list[tuple[int, dict[str, Any]]] = []
+    judge_errors = 0
+    instance_errors = 0
+    for dataset_index, instance in shard:
+        row, judge_delta, instance_delta = await _run_single_instance(
+            instance,
+            session_factory=session_factory,
+            embedder=embedder,
+            client=client,
+            chat_graph=chat_graph,
+            pack_id=pack_id,
+            pack_obj=pack_obj,
+            resolved_domain=resolved_domain,
+            t2_model=t2_model,
+            k=k,
+            append_partial=append_partial,
+        )
+        indexed_rows.append((dataset_index, row))
+        judge_errors += judge_delta
+        instance_errors += instance_delta
+    return indexed_rows, judge_errors, instance_errors
+
+
 async def run_longmemeval(
     *,
     dataset: Path = _DEFAULT_DATASET,
@@ -463,6 +627,8 @@ async def run_longmemeval(
     k: int = 5,
     out: Path | None = None,
     pack: str | None = None,
+    workers: int = 1,
+    db_url_template: str = "",
 ) -> dict[str, Any]:
     started_at = datetime.now(timezone.utc)
     resolved_categories = categories or list(_DEFAULT_CATEGORIES)
@@ -478,123 +644,90 @@ async def run_longmemeval(
         offset=offset,
     )
 
+    if workers > 1 and "{n}" not in db_url_template:
+        msg = "--db-url-template must contain '{n}' when --workers > 1"
+        raise ValueError(msg)
+
     pack_id = pack or settings.default_pack_id
     pack_obj = load_pack(pack_id)
     resolved_domain = pack_obj.metadata.domain
     t2_model = _resolve_t2_model(pack_obj, settings.t2_model)
 
-    engine = make_engine(settings.database_url)
-    session_factory = make_session_factory(engine)
     embedder = Embedder(settings.t1_model)
-    client = LLMClient(settings.llm_api_key, session_factory, base_url=settings.llm_base_url)
-
-    rows: list[dict[str, Any]] = []
     judge_errors = 0
     instance_errors = 0
     out_dir.mkdir(parents=True, exist_ok=True)
     partial_path = out_dir / "results.partial.jsonl"
-
-    def _append_partial(row: dict[str, Any]) -> None:
-        # A killed multi-hour run must not lose completed instances.
-        with partial_path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(row) + "\n")
+    engines: list[Any] = []
 
     try:
-        chat_graph = make_chat_graph(session_factory, client, embedder)
-        for instance in instances:
-            try:
-                await _truncate_memory_tables(session_factory)
-                corpus = _instance_to_corpus(instance)
-                corpus_urls = [normalize_url(doc["url"]) for doc in corpus]
+        if workers == 1:
+            engine = make_engine(settings.database_url)
+            engines.append(engine)
+            session_factory = make_session_factory(engine)
+            client = LLMClient(
+                settings.llm_api_key, session_factory, base_url=settings.llm_base_url
+            )
+            chat_graph = make_chat_graph(session_factory, client, embedder)
 
-                await _ingest_corpus(corpus, session_factory, embedder, pack_id)
-                await _extract_documents(corpus, session_factory, client, t2_model=t2_model)
-                await classify_cross_document_relations(
-                    session_factory,
-                    client,
-                    domain=resolved_domain,
-                    pack=pack_obj,
-                    model=t2_model,
+            async def append_partial(row: dict[str, Any]) -> None:
+                # A killed multi-hour run must not lose completed instances.
+                with partial_path.open("a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(row) + "\n")
+
+            indexed_rows: list[tuple[int, dict[str, Any]]] = []
+            for dataset_index, instance in enumerate(instances):
+                row, judge_delta, instance_delta = await _run_single_instance(
+                    instance,
+                    session_factory=session_factory,
+                    embedder=embedder,
+                    client=client,
+                    chat_graph=chat_graph,
+                    pack_id=pack_id,
+                    pack_obj=pack_obj,
+                    resolved_domain=resolved_domain,
+                    t2_model=t2_model,
+                    k=k,
+                    append_partial=append_partial,
                 )
-                async with session_factory() as session:
-                    await apply_lifecycle_transitions(
-                        session, domain=resolved_domain, pack=pack_obj
+                indexed_rows.append((dataset_index, row))
+                judge_errors += judge_delta
+                instance_errors += instance_delta
+        else:
+            partial_lock = asyncio.Lock()
+            worker_results = await asyncio.gather(
+                *[
+                    _run_worker(
+                        worker_index,
+                        shard_instances(instances, workers=workers, worker_index=worker_index),
+                        db_url=db_url_template.format(n=worker_index),
+                        embedder=embedder,
+                        pack_id=pack_id,
+                        pack_obj=pack_obj,
+                        resolved_domain=resolved_domain,
+                        t2_model=t2_model,
+                        k=k,
+                        partial_lock=partial_lock,
+                        partial_path=partial_path,
+                        engines=engines,
                     )
-                async with session_factory() as session:
-                    await consolidate_domain(session, domain=resolved_domain, pack=pack_obj)
+                    for worker_index in range(1, workers + 1)
+                ]
+            )
+            indexed_rows = []
+            for worker_indexed_rows, worker_judge_errors, worker_instance_errors in worker_results:
+                indexed_rows.extend(worker_indexed_rows)
+                judge_errors += worker_judge_errors
+                instance_errors += worker_instance_errors
 
-                doc_count, capsule_count, relation_count, zero_capsule_docs = await _instance_stats(
-                    session_factory, corpus_urls
-                )
-
-                start = time.monotonic()
-                final = await run_chat_with_context(
-                    chat_graph,
-                    instance["question"],
-                    t2_model,
-                    top_k=k,
-                    pack=pack_obj,
-                    as_of=_parse_longmemeval_date(instance.get("question_date")),
-                )
-                latency_s = time.monotonic() - start
-
-                hypothesis = final.get("answer") or INSUFFICIENT_EVIDENCE_ANSWER
-                abstained = hypothesis == INSUFFICIENT_EVIDENCE_ANSWER
-                abstention_q = is_abstention(instance["question_id"])
-
-                autoeval_label, judge_tokens = await _judge_answer(
-                    client,
-                    question=instance["question"],
-                    gold_answer=instance["answer"],
-                    hypothesis=hypothesis,
-                    question_type=instance["question_type"],
-                    abstention=abstention_q,
-                )
-                if autoeval_label is None:
-                    judge_errors += 1
-
-                rows.append(
-                    {
-                        "question_id": instance["question_id"],
-                        "question_type": instance["question_type"],
-                        "question": instance["question"],
-                        "gold_answer": instance["answer"],
-                        "hypothesis": hypothesis,
-                        "autoeval_label": autoeval_label,
-                        "abstained": abstained,
-                        "latency_s": latency_s,
-                        "tokens_used": final.get("tokens_used", 0),
-                        "judge_tokens_used": judge_tokens,
-                        "doc_count": doc_count,
-                        "capsule_count": capsule_count,
-                        "relation_count": relation_count,
-                        "zero_capsule_docs": zero_capsule_docs,
-                    }
-                )
-                _append_partial(rows[-1])
-            except Exception as exc:  # noqa: BLE001 — one bad instance must not kill a 200-instance run
-                instance_errors += 1
-                print(f"ERROR instance {instance['question_id']}: {exc!r}")
-                rows.append(
-                    {
-                        "question_id": instance["question_id"],
-                        "question_type": instance["question_type"],
-                        "question": instance["question"],
-                        "gold_answer": instance["answer"],
-                        "hypothesis": None,
-                        "autoeval_label": None,
-                        "abstained": False,
-                        "error": repr(exc)[:300],
-                    }
-                )
-                _append_partial(rows[-1])
-                continue
-
+        indexed_rows.sort(key=lambda item: item[0])
+        rows = [row for _, row in indexed_rows]
     finally:
-        await engine.dispose()
+        for engine in engines:
+            await engine.dispose()
 
     finished_at = datetime.now(timezone.utc)
-    run_meta = {
+    run_meta: dict[str, Any] = {
         "started_at": started_at.isoformat(),
         "finished_at": finished_at.isoformat(),
         "git_rev": _git_rev(),
@@ -603,8 +736,9 @@ async def run_longmemeval(
         "limit": limit,
         "offset": offset,
         "k": k,
+        "workers": workers,
         "t1_model": settings.t1_model,
-        "t2_model": settings.t2_model,
+        "t2_model": t2_model,
         "t3_model": settings.t3_model,
         "judge_model": settings.t3_model,
         "llm_base_url": settings.llm_base_url,
@@ -614,6 +748,8 @@ async def run_longmemeval(
         "domain": resolved_domain,
         "pack_id": pack_id,
     }
+    if workers > 1:
+        run_meta["db_url_template"] = db_url_template
     _write_outputs(out_dir, rows, judge_model=settings.t3_model, run_meta=run_meta)
 
     return {
@@ -644,6 +780,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Domain pack id (defaults to settings.default_pack_id).",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Parallel worker count (1 = sequential, today's default).",
+    )
+    parser.add_argument(
+        "--db-url-template",
+        type=str,
+        default="",
+        help="Per-worker DB URL template with {n} placeholder (required when --workers > 1).",
+    )
     return parser.parse_args(argv)
 
 
@@ -659,6 +807,8 @@ def main(argv: list[str] | None = None) -> None:
             k=args.k,
             out=args.out,
             pack=args.pack,
+            workers=args.workers,
+            db_url_template=args.db_url_template,
         )
     )
     print(f"Wrote LongMemEval results to {result['out_dir']}")
