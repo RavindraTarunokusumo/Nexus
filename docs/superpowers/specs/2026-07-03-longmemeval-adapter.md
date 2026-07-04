@@ -191,8 +191,22 @@ together. Ranking is date-blind: recency scoring uses capsule `created_at`
   one, falling back to `created_at`. Candidates already carry `published_at`
   (T-L5a).
 
-Non-goals here: R2 sub-query union retrieval for comparison shapes — held until
-post-R1 numbers justify it.
+- **R2 — sub-query union retrieval (promoted in-scope 2026-07-04, user-approved).**
+  Post-R1/R4 residue: counting/aggregation and two-event comparisons where cosine
+  similarity against the whole question retrieves only one comparandum. Design —
+  zero added LLM round-trips:
+  - `IntentClassification` gains `sub_queries: list[str] = []`; the classify prompt
+    instructs: for temporal/multi_doc-shaped questions that compare or aggregate over
+    distinct events/entities, list each as a short standalone sub-query (2–4);
+    otherwise emit `[]`.
+  - `_run_classify_intent` sanitizes (strip empties/whitespace, cap at 4; `[]` on
+    LLM error) and returns `sub_queries` into chat state (`ChatState` + the initial
+    state dict in `run_chat_with_context` gain the field).
+  - `_run_retrieve_capsules`: query vectors = full question + each sub-query; run the
+    existing ANN candidate select once per vector (same `fetch_k`); union rows by
+    capsule id keeping the max `semantic_sim`; downstream scoring/assembly unchanged.
+    Empty `sub_queries` ⇒ exactly today's single-vector path.
+  - Embedding cost is local (bge-small); DB cost ≤ 5 ANN queries per question.
 
 - **R4 — render span evidence in the answer prompt (2026-07-04).** Span retrieval
   exists end-to-end (`_build_evidence_map`, pack `source_refs_and_excerpts`,
