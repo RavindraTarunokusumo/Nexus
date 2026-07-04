@@ -476,12 +476,12 @@ def compute_hybrid_score(
     epistemic = candidate.get("epistemic_state") or {}
     auth = _authority_score(epistemic) * weights.get("source_authority", 0.0)
 
-    created_at = candidate["created_at"]
+    event_at = candidate.get("published_at") or candidate["created_at"]
     if recency_min == recency_max:
         rec_score = 0.5
     else:
         span = (recency_max - recency_min).total_seconds()
-        rec_score = (created_at - recency_min).total_seconds() / span
+        rec_score = (event_at - recency_min).total_seconds() / span
         rec_score = max(0.0, min(1.0, rec_score))
     rec = rec_score * weights.get("recency", 0.0)
 
@@ -602,9 +602,9 @@ async def _run_retrieve_capsules(
         ).all()
         relation_counts = _count_relations_per_capsule(candidate_ids, relation_rows)
 
-        created_ats = [r.created_at for r in rows]
-        recency_min: datetime = min(created_ats)
-        recency_max: datetime = max(created_ats)
+        effective_dates = [r.published_at or r.created_at for r in rows]
+        recency_min: datetime = min(effective_dates)
+        recency_max: datetime = max(effective_dates)
 
         candidates = [_row_to_candidate(r, relation_counts.get(r.id, 0)) for r in rows]
 

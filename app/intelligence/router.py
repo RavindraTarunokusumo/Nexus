@@ -45,6 +45,14 @@ STRATEGIES: dict[str, RetrievalStrategy] = {
             "state the authority of your sources."
         ),
     ),
+    "temporal": RetrievalStrategy(
+        top_k_delta=7,
+        fetch_k_multiplier=6,
+        answer_hint=(
+            "Derive event ordering and durations from the per-block 'Date:' lines and "
+            "the 'Current date:' line; state the arithmetic briefly."
+        ),
+    ),
     "general": RetrievalStrategy(),
 }
 
