@@ -37,6 +37,10 @@ app/
                            #   GET /chat/sessions/{id}; POST /chat/sessions/{id}/messages;
                            #   PATCH /chat/sessions/{id}
     routes_claims.py       # POST /documents/{id}/extract-claims, GET /claims
+    routes_stats.py        # GET /stats/overview — entity counts, lifecycle histogram,
+                           #   agent_runs calls/tokens/cost by run_type x model
+    routes_capsules.py     # GET /capsules/{id}/provenance — document -> spans -> capsule ->
+                           #   relations -> thesis chain, structured JSON
   observability/
     run_context.py         # asyncio-safe ContextVars (run_id, document_id, span_id);
                            #   extraction_run(), chat_run(), span_scope(), current_context()
@@ -349,6 +353,8 @@ The `nexus` CLI uses a hybrid access strategy:
 | PATCH | /chat/sessions/{id} | Rename or archive a session |
 | POST | /documents/{id}/extract-claims | Run claim extraction for a document |
 | GET | /claims | List claims (filter by document_id, claim_type, status) |
+| GET | /stats/overview | Entity counts, lifecycle histogram, `agent_runs` calls/tokens/cost by run_type x model (H6 demo dashboard) |
+| GET | /capsules/{id}/provenance | Full provenance chain for a capsule: document -> spans -> capsule -> relations -> thesis (H6 demo "how it works" view) |
 
 Supported `source_type` values: `rss`, `manual`, `api`.
 
@@ -367,7 +373,7 @@ Request body:
 
 | Status | Meaning |
 |---|---|
-| 200 | Returns `{answer, citations, retrieved_context_count, run_id, tokens_used, cost_estimate_usd}` |
+| 200 | Returns `{answer, citations, retrieved_context_count, run_id, tokens_used, cost_estimate_usd, question_shape, query_intent}` (last two additive, H6 demo UI) |
 | 422 | Blank question or invalid `top_k` |
 | 503 | Embedder not initialised, OpenRouter unavailable, or chat graph failed |
 

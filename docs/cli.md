@@ -136,7 +136,15 @@ python -m scripts.benchmarks.run_longmemeval \
   --out docs/benchmarks/runs/<name>
 ```
 
-Runs the [LongMemEval](https://github.com/xiaowu0162/LongMemEval) (ICLR 2025) external benchmark against the same pipeline as `eval memory run`, deliberately kept as an independent script rather than a `nexus` subcommand or a shared module with `run_memory_benchmark.py` (see the adapter spec's constraints). Maps each haystack session to a Nexus document (session date → `Document.published_at`), truncates the memory tables between instances for isolation, and scores with the official LongMemEval QA-judge protocol (`hypotheses.jsonl` output is directly consumable by the paper's own `evaluate_qa.py` for judge-model-independent comparison). `--workers N` + `--db-url-template` shard instances across N scratch databases for ~Nx wall-clock (provision with `createdb` + `alembic upgrade head` per worker DB first). `--limit 55` is the fast iteration subset (~10 min at 6 workers); `--limit 0` runs the full selected category set. See [docs/benchmarks/longmemeval-2026-07-04.md](benchmarks/longmemeval-2026-07-04.md) and `evals/memory/longmemeval/README.md` for dataset setup.
+Runs the [LongMemEval](https://github.com/xiaowu0162/LongMemEval) (ICLR 2025) external benchmark against the same pipeline as `eval memory run`, deliberately kept as an independent script rather than a `nexus` subcommand or a shared module with `run_memory_benchmark.py` (see the adapter spec's constraints). Maps each haystack session to a Nexus document (session date → `Document.published_at`), truncates the memory tables between instances for isolation, and scores with the official LongMemEval QA-judge protocol (`hypotheses.jsonl` output is directly consumable by the paper's own `evaluate_qa.py` for judge-model-independent comparison). `--workers N` + `--db-url-template` shard instances across N scratch databases for ~Nx wall-clock (provision with `createdb` + `alembic upgrade head` per worker DB first). `--limit 55` is the fast iteration subset (~10 min at 6 workers); `--limit 0` runs the full selected category set. `--dump-context` (H9, gated, default off) additionally serializes each instance's retrieved `context_blocks` into `results.jsonl`, turning one full run into a replay cache for `replay_answer.py` below. See [docs/benchmarks/longmemeval-2026-07-04.md](benchmarks/longmemeval-2026-07-04.md) and `evals/memory/longmemeval/README.md` for dataset setup.
+
+### `python -m scripts.benchmarks.replay_answer` (H9 — answer-path replay harness, standalone script)
+
+```sh
+python -m scripts.benchmarks.replay_answer --cache docs/benchmarks/runs/<name>/results.jsonl --variants cot_leanprompt
+```
+
+Re-runs only the answer LLM + judge over a `--dump-context` cache under a named variant config (model, thinking, block order, Chain-of-Note, lean prompt, context trim) — no retrieval, no DB, no re-ingestion. Used to isolate answer-path-only optimizations from retrieval-side changes; see [docs/experiments/2026-07-04-longmemeval-answer-path.md](experiments/2026-07-04-longmemeval-answer-path.md) for the full variant sweep and conclusions.
 
 ## `runs` Subcommand Group
 

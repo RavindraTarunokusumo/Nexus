@@ -85,7 +85,18 @@ CLI entry point: `app/cli/eval.py` — `nexus eval` sub-app. See [Commands](comm
 | `tests/intelligence/test_cross_relations.py` | Unit (no DB) | Cross-doc relation pass — (family, actor) pairing, same-doc exclusion, dedup, published_at direction (incl. permuted ingestion order), max_pairs cap, dry-run, LLM-error continuation |
 | `tests/test_relations_cli.py` | Unit (no DB) | `nexus relations run` — help, pack-domain default, `--json` zero-count output |
 
-Benchmark fixtures: [`evals/memory/nexus_synthetic/`](../evals/memory/nexus_synthetic/README.md). First live baseline: [`docs/benchmarks/baseline-2026-07-02.md`](benchmarks/baseline-2026-07-02.md). Router validation run (PR #26): [`docs/benchmarks/runs/router-t-r2/`](benchmarks/runs/router-t-r2/report.md). External benchmark (PR #29, H7): [LongMemEval fixtures](../evals/memory/longmemeval/README.md), [`tests/benchmarks/test_longmemeval_adapter.py`](../tests/benchmarks/test_longmemeval_adapter.py), report at [`docs/benchmarks/longmemeval-2026-07-04.md`](benchmarks/longmemeval-2026-07-04.md).
+Benchmark fixtures: [`evals/memory/nexus_synthetic/`](../evals/memory/nexus_synthetic/README.md). First live baseline: [`docs/benchmarks/baseline-2026-07-02.md`](benchmarks/baseline-2026-07-02.md). Router validation run (PR #26): [`docs/benchmarks/runs/router-t-r2/`](benchmarks/runs/router-t-r2/report.md). External benchmark (PR #29, H7): [LongMemEval fixtures](../evals/memory/longmemeval/README.md), [`tests/benchmarks/test_longmemeval_adapter.py`](../tests/benchmarks/test_longmemeval_adapter.py), report at [`docs/benchmarks/longmemeval-2026-07-04.md`](benchmarks/longmemeval-2026-07-04.md). Answer-path replay harness (PR #30, H9): [`tests/benchmarks/test_replay_answer.py`](../tests/benchmarks/test_replay_answer.py), writeup at [`docs/experiments/2026-07-04-longmemeval-answer-path.md`](experiments/2026-07-04-longmemeval-answer-path.md).
+
+## H6 Demo UI Console Test Files
+
+| File | Type | Coverage |
+|---|---|---|
+| `tests/test_stats_api.py` | Integration (`@pytest.mark.slow`) | `GET /stats/overview` — entity counts, lifecycle histogram, `agent_runs` calls/tokens/cost by run_type x model |
+| `tests/test_provenance_api.py` | Integration (`@pytest.mark.slow`) | `GET /capsules/{id}/provenance` — document -> spans -> capsule -> relations -> thesis chain, 404 on unknown id |
+| `web/src/test/dashboard.test.tsx` | Frontend (Vitest) | Dashboard tab — count cards, lifecycle bar, model-usage table |
+| `web/src/test/mermaid.test.tsx` | Frontend (Vitest) | `buildMermaid()` pure diagram builders — routing flowchart, provenance chain, label sanitization |
+| `web/src/test/app.test.tsx` | Frontend (Vitest) | Tab shell navigation, chat/dashboard/how-it-works switching |
+| `web/src/test/client.test.ts` | Frontend (Vitest) | API client — stats/provenance fetch wrappers |
 
 ## Working Notes
 
