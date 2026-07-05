@@ -4,7 +4,17 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.intelligence.prompts.chat_answer import build_user_prompt
+from app.intelligence.prompts.chat_answer import SYSTEM_PROMPT, build_user_prompt
+
+
+def test_system_prompt_chain_of_note_contract():
+    # Chain-of-Note schema + reasoning steps must be present (H9a); ChatAnswerOutput
+    # and the replay COT variants depend on this exact schema sentence.
+    assert "Return JSON with keys: notes, answer, citations." in SYSTEM_PROMPT
+    assert "use the 'notes' field to reason" in SYSTEM_PROMPT
+    for step in ("Ordering", "Duration", "Counting"):
+        assert step in SYSTEM_PROMPT
+
 
 _BASE_BLOCK = {
     "label": "C1",
@@ -14,6 +24,8 @@ _BASE_BLOCK = {
     "score": 0.85,
     "text": "User bought a red car.",
 }
+
+_DROPPED_METADATA = ("Title:", "URL:", "Object type:", "Score:", "Epistemic note:", "Capsule:")
 
 
 def test_build_user_prompt_with_as_of_and_dated_blocks():
@@ -25,10 +37,12 @@ def test_build_user_prompt_with_as_of_and_dated_blocks():
 
     assert prompt.startswith("Current date: 2024-03-15 (Fri)")
     assert "Question:\n\nWhat car did I buy?" in prompt
-    assert "URL: longmemeval://q1/sess_a" in prompt
     assert "Date: 2023-04-10 (Mon)" in prompt
+    assert "User bought a red car." in prompt
+    for dropped in _DROPPED_METADATA:
+        assert dropped not in prompt
     assert prompt.index("Current date:") < prompt.index("Question:")
-    assert prompt.index("URL:") < prompt.index("Date:")
+    assert prompt.index("Date:") > prompt.index("Question:")
 
 
 def test_build_user_prompt_without_as_of_or_published_at():
@@ -39,7 +53,9 @@ def test_build_user_prompt_without_as_of_or_published_at():
     assert "Current date:" not in prompt
     assert "Date:" not in prompt
     assert prompt.startswith("Question:\n\nWhat car did I buy?")
-    assert "URL: longmemeval://q1/sess_a" in prompt
+    assert "User bought a red car." in prompt
+    for dropped in _DROPPED_METADATA:
+        assert dropped not in prompt
 
 
 def test_build_user_prompt_omits_date_line_when_published_at_missing():
@@ -53,7 +69,7 @@ def test_build_user_prompt_omits_date_line_when_published_at_missing():
     assert "Date:" not in prompt
 
 
-def test_build_user_prompt_renders_up_to_two_evidence_excerpts():
+def test_build_user_prompt_renders_single_evidence_excerpt():
     blocks = [
         {
             **_BASE_BLOCK,
@@ -67,9 +83,9 @@ def test_build_user_prompt_renders_up_to_two_evidence_excerpts():
 
     prompt = build_user_prompt("What car did I buy?", blocks)
 
-    assert prompt.count("Excerpt:") == 2
+    assert prompt.count("Excerpt:") == 1
     assert "Excerpt: first excerpt" in prompt
-    assert "Excerpt: second excerpt" in prompt
+    assert "Excerpt: second excerpt" not in prompt
     assert "Excerpt: third excerpt" not in prompt
 
 
@@ -84,7 +100,7 @@ def test_build_user_prompt_omits_excerpts_when_evidence_missing_or_empty():
     assert "Excerpt:" not in prompt_empty
 
 
-def test_build_user_prompt_places_excerpts_after_capsule_before_next_block():
+def test_build_user_prompt_places_excerpt_after_capsule_before_next_block():
     blocks = [
         {
             **_BASE_BLOCK,
@@ -105,3 +121,13 @@ def test_build_user_prompt_places_excerpts_after_capsule_before_next_block():
     c1_section = prompt.split("[C2]")[0]
     assert c1_section.index("Capsule one.") < c1_section.index("Excerpt: span for C1")
     assert "Excerpt: span for C2" in prompt.split("[C2]")[1]
+
+
+def test_build_user_prompt_renders_role_when_set():
+    blocks = [{**_BASE_BLOCK, "role": "primary"}]
+
+    prompt = build_user_prompt("What car did I buy?", blocks)
+
+    assert "Role: primary" in prompt
+    for dropped in _DROPPED_METADATA:
+        assert dropped not in prompt

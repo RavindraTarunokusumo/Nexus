@@ -10,7 +10,7 @@
 - [x] H1 — Route **T2 and above** through Qwen Cloud / Model Studio models; keep model names configurable by environment and domain pack. (PR #25 D3/G4)
 - [x] H2 — Produce a MemoryAgent demo script: ingest AI-tech memory stream → extract capsules → relate/consolidate → supersede stale memory → answer with citations → show benchmark report. (PR #25; `scripts/benchmarks/demo_answer.py` + `nexus eval memory run`)
 - [x] H9 — LongMemEval answer-path optimization (experiment). Chain-of-Note + lean prompt lift replay accuracy 0.692→0.834 at −37% tokens; ≥0.80-with-efficiency target met, answer-path ceiling ~0.83 established. Shipped in PR #30 (merge `a44368b`). Archived: `docs/iterations/archive/2026-07-05-longmemeval-answer-path-h9.md`. Log: `docs/experiments/2026-07-04-longmemeval-answer-path.md`.
-  - [ ] H9a — Productionize the chosen operating point into `app/intelligence/chat.py` + `prompts/chat_answer.py` (pending model-cost decision: `cot_leanprompt` fast vs `t3_leanprompt` max). Validate with a full end-to-end run, not just replay.
+  - [x] H9a — Productionized **`cot_leanprompt`** (CoN + lean prompt, current T2 model) into `chat_answer.py` + `chat.py` (commit `bae772e`). **Confirmed** via frozen-context replay: +0.208 accuracy (0.547→0.755), McNemar p=0.0034, 12:1 fix:regress, −26% tokens. A fresh-full-run confirmation read false-flat (p=0.61, extraction noise) — see [confirmation writeup](docs/experiments/2026-07-05-h9a-confirmation.md). Step-5 accuracy-neutral (kept). Plan: `docs/superpowers/plans/2026-07-05-h9a-chain-of-note-productionization.md`.
   - [ ] H9b — 0.90 push (3 walls, retrieval-side, full re-runs): Wall 1 top-k/ranking for un-retrieved evidence; Wall 2 supersession-direction ("initial/previous/original" → prefer superseded fact); Wall 3 ordering/counting (per-sub-query retrieval slots). See experiment log's cap analysis.
   - [ ] H9c — real end-to-end token levers (the answer path is only 3.4% of ~69k tok/q; extraction 56.9% + relation classification 38.8% dominate, `classify_relation` at 51.7 calls/q is the main cost). Ranked levers: (1) pre-LLM pair gate (T1 embedding cosine / shared `object_family` before the model, est. −50-70% classify calls); (2) batching + (3) prefix caching (already scoped as H8 M1/M2); (4) deterministic short-circuit for rule-decidable relations. Full mechanism trace and priority notes in the archive above.
 
@@ -21,6 +21,20 @@
 - [x] H6 — Demo UI console. Read-only three-tab console over the existing `web/` chat app (Dashboard, Chat enrichment, How-it-works Mermaid views): no auth, no live-refresh, no ingest-from-UI in v1. Shipped in PR #28 (merge `b9047b0`). Archived: `docs/iterations/archive/2026-07-05-demo-ui-console-h6.md`. Spec: `docs/superpowers/specs/2026-07-04-demo-ui-console.md`.
 
 - [ ] **UI display-consistency refactors (H6 /simplify, deferred)** — unify the citation-role vocabulary (badge class/label/diagram counts) and the lifecycle-state palette (CitationList dots / dashboard swatches / mermaid classDefs) into single frontend maps; shared `excerpt()` util for `routes_capsules._excerpt` vs `chat.py`'s span-excerpt shaping (cross-module). Query-merging on `/stats/overview`/provenance skipped: sub-10ms on demo-scale data.
+
+### H8 + H9b/H9c — Ingestion & Retrieval Optimization (session `claude/perf-h8h9`)
+
+Spec: `docs/superpowers/specs/2026-07-05-ingestion-retrieval-opt-h8h9.md`. Experiment-first; Track A (ingestion tokens, zero accuracy risk) before Track B (retrieval accuracy, full re-runs).
+
+- [x] **E1 — pair-gate characterization** (n=933 pairs, 15-instance instrumented run): cosine gate skips only ~14% of classify calls at ≥95% relation recall (not the projected 50–70%) — cosine doesn't separate relations from none. Result: `docs/experiments/2026-07-05-pair-gate-characterization.md`. **Reprioritizes Track A → A2/A3 primary, A1 demoted to optional.**
+- [ ] **A1 — pre-LLM candidate-pair gate** (H9c lever 1, DEMOTED by E1 to optional): conservative cosine floor (t≈0.55, ~10% fewer calls at ≥96% recall) on `pairs` in `extraction.py::_run_classify_relations` + `cross_relations.py`; `settings.relation_pair_cosine_floor` (default 0 = off). Build only if A2/A3 leave call-count worth trimming. Gate: synthetic A/B relation/`superseded` quality holds.
+- [ ] **A2 — relation-pair batching** (H8 M1, NOW PRIMARY): N pairs/call, keyed outputs, per-pair fallback on parse failure — cuts the ~87%-of-cost repeated system prompt regardless of pair count. Gate: synthetic quality holds, tokens/q down.
+- [ ] **A3 — DashScope prefix caching** (H8 M2): verify API surface live, cache static system-prompt prefix on extraction/relation calls. Gate: billed prompt tokens down, outputs identical.
+- [ ] **A4 — pre-extraction span filter** (H8 M3): local greeting/boilerplate/length pre-filter before extraction call; conversation-heavy win. Gate: capsule count/quality holds.
+- [ ] **A5 — deterministic short-circuit** (H9c lever 4): rule-decide unambiguous supersession (same family+actor+monotonic date) before the LLM. Gate: precision sample matches LLM verdict.
+- [ ] **B1 — Wall 1 top-k/ranking** (H9b): raise fetch pool / improve ranking so un-retrieved gold survives the cut. Gate: LongMemEval `cov` up, no regression.
+- [ ] **B2 — Wall 2 supersession-direction** (H9b): detect "initial/previous/original" and flip recency preference (router + `compute_hybrid_score`). Gate: `supersession_correctness` up.
+- [ ] **B3 — Wall 3 per-sub-query retrieval slots** (H9b): corrected R2 design — per-sub-query floor before shared rerank. Gate: comparison/aggregation accuracy up, no global regression.
 
 ### Phase C — Reasoning Layer
 

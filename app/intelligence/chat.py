@@ -25,6 +25,9 @@ from app.observability.run_context import chat_run
 
 
 class ChatAnswerOutput(BaseModel):
+    # Chain-of-Note reasoning field — internal, never surfaced. Optional so a model
+    # that emits "notes": null (or omits it) doesn't fail validation.
+    notes: str | None = None
     answer: str
     citations: list[str]
 

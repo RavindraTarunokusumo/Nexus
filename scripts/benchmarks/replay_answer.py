@@ -25,8 +25,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
-
 from app.config import settings
 from app.db.session import make_engine, make_session_factory
 from app.intelligence.chat import ChatAnswerOutput
@@ -39,42 +37,81 @@ from scripts.benchmarks.run_longmemeval import (
     is_abstention,
 )
 
+# Frozen pre-production prompt — decoupled from chat_answer.py so replay baseline
+# variants stay stable as production evolves (now CoN + lean).
+BASELINE_SYSTEM = """You answer questions using only the provided Nexus context.
+Return JSON with keys: answer, citations.
+Use citation labels exactly as provided, such as C1.
+If the context does not answer the question, say: I do not have enough evidence to answer that from the current corpus.
+Do not use outside knowledge or speculation.
 
-class ChatAnswerCoN(BaseModel):
-    notes: str = ""
-    answer: str
-    citations: list[str] = []
+Context blocks may include role annotations:
+- primary: main evidence for the answer
+- counter_evidence: contradicting or negative-polarity evidence — cite when relevant to nuance the answer
+- supersession: facts that supersede or are superseded by primary evidence — prefer superseding facts over superseded ones; when answering about changed facts, mention supersession explicitly.
 
+When context blocks conflict, resolve the conflict using supersession role annotations, lifecycle_state, and block dates: prefer active, superseding, and more recent facts and state the single best-supported answer. Never say the sources conflict or present both values as the final answer."""
 
-# Chain-of-Note: an in-band reasoning field (cheap alternative to thinking-mode)
-# that folds in the concrete LongMemEval failure fixes — resolve each event's
-# absolute date, sort for ordering, compute deltas explicitly, enumerate for
-# counting, and abstain on entity-mismatch distractors.
-COT_SYSTEM = (
-    SYSTEM_PROMPT.replace(
-        "Return JSON with keys: answer, citations.",
-        "Return JSON with keys: notes, answer, citations.",
-    )
-    + "\n\nBefore answering, use the 'notes' field to reason briefly and concretely:\n"
-    "1. List each relevant context block with its resolved absolute date — combine the "
-    "block 'Date:' line with any relative phrase in the excerpt (e.g. 'two weeks ago' "
-    "relative to that block's date).\n"
-    "2. Ordering ('which happened first / most recent'): sort those events by date and "
-    "name the first/latest.\n"
-    "3. Duration / elapsed time ('how long', 'how many days/weeks/months ago/between'): "
-    "state the two anchor dates and compute the difference explicitly.\n"
-    "4. Counting ('how many'): enumerate every distinct matching occurrence across all "
-    "blocks, then count.\n"
+# CoT replay variants use the *production* CoN system prompt directly (single
+# source of truth) — only BASELINE_SYSTEM stays frozen as the pre-CoN comparison.
+COT_SYSTEM = SYSTEM_PROMPT
+
+# Ablation: CoN without step 5 (the entity-mismatch abstention rule). The H9a
+# confirmation found step 5 accuracy-neutral on matched contexts (0.755 == 0.755,
+# p=1.0); kept for the record so the ablation stays reproducible.
+_STEP5 = (
     "5. If the question's subject (person, place, activity, or role) does not exactly "
     "match one in the evidence — e.g. it asks about 'table tennis' when only 'tennis' "
     "appears, or 'Dr. Johnson' when only 'Dr. Smith' appears — do NOT answer from the "
     "near match; abstain with the insufficient-evidence sentence.\n"
-    "Keep 'notes' short. Put only the final user-facing response in 'answer'."
 )
-# Fail fast if chat_answer.py's schema sentence changed and the .replace() above
-# silently no-op'd — otherwise every cot* variant would run the wrong schema.
-if "notes, answer, citations" not in COT_SYSTEM:
-    raise RuntimeError("SYSTEM_PROMPT schema sentence changed; update COT_SYSTEM's replace target.")
+COT_SYSTEM_NOSTEP5 = COT_SYSTEM.replace(_STEP5, "")
+if COT_SYSTEM_NOSTEP5 == COT_SYSTEM:
+    raise RuntimeError("step-5 text not found in production SYSTEM_PROMPT; update _STEP5 to match.")
+
+
+def _build_baseline_prompt(
+    question: str,
+    context_blocks: list[dict[str, Any]],
+    *,
+    hint: str,
+    as_of: datetime | None,
+) -> str:
+    blocks = []
+    for block in context_blocks:
+        lines = [
+            f"[{block['label']}]",
+            f"Title: {block.get('document_title') or '(untitled)'}",
+            f"URL: {block.get('url') or '(none)'}",
+        ]
+        published_at = block.get("published_at")
+        if published_at is not None:
+            lines.append(f"Date: {published_at.strftime('%Y-%m-%d (%a)')}")
+        lines.extend(
+            [
+                f"Object type: {block.get('object_type') or '(unknown)'}",
+                f"Score: {block['score']:.3f}",
+            ]
+        )
+        role = block.get("role")
+        if role:
+            lines.append(f"Role: {role}")
+        epistemic_note = block.get("epistemic_note")
+        if epistemic_note:
+            lines.append(f"Epistemic note: {epistemic_note}")
+        lines.extend(["Capsule:", block["text"]])
+        evidence = block.get("evidence")
+        if evidence:
+            for item in evidence[:2]:
+                lines.append(f"Excerpt: {item['text']}")
+        blocks.append("\n".join(lines))
+    parts: list[str] = []
+    if as_of is not None:
+        parts.append(f"Current date: {as_of.strftime('%Y-%m-%d (%a)')}")
+    parts.extend(["Question:", question, "Context:", "\n\n".join(blocks)])
+    if hint:
+        parts.append(f"Answer guidance: {hint}")
+    return "\n\n".join(parts)
 
 
 @dataclass(frozen=True)
@@ -87,7 +124,7 @@ class Variant:
     cot: bool = False  # Chain-of-Note in-band reasoning field
     max_blocks: int = 0  # 0 = all; else keep top-N by retrieval score (token trim)
     lean_prompt: bool = False  # strip per-block metadata noise (keeps all blocks)
-    system: str | None = None  # None -> default (SYSTEM_PROMPT or COT_SYSTEM)
+    system: str | None = None  # None -> default (BASELINE_SYSTEM or COT_SYSTEM)
 
 
 VARIANTS: dict[str, Variant] = {
@@ -112,41 +149,12 @@ VARIANTS: dict[str, Variant] = {
     # efficiency path: lean per-block prompt (all blocks kept) + CoN on fast model.
     "leanprompt": Variant("leanprompt", lean_prompt=True),
     "cot_leanprompt": Variant("cot_leanprompt", cot=True, lean_prompt=True),
+    "cot_nostep5": Variant("cot_nostep5", cot=True, system=COT_SYSTEM_NOSTEP5),
+    "cot_leanprompt_nostep5": Variant(
+        "cot_leanprompt_nostep5", cot=True, lean_prompt=True, system=COT_SYSTEM_NOSTEP5
+    ),
     "t3_leanprompt": Variant("t3_leanprompt", model="t3", lean_prompt=True),
 }
-
-
-def _build_lean_prompt(
-    question: str,
-    context_blocks: list[dict[str, Any]],
-    *,
-    hint: str,
-    as_of: datetime | None,
-) -> str:
-    # Token-lean block format: prompt tokens dominate (~85% of total) and most
-    # per-block lines (URL, Title, Object type, Score, Epistemic note) are noise
-    # the answer model ignores. Keep label, Date, Role, capsule text, 1 excerpt —
-    # preserving every evidence block (no starvation) at a fraction of the tokens.
-    blocks = []
-    for b in context_blocks:
-        lines = [f"[{b['label']}]"]
-        pub = b.get("published_at")
-        if pub is not None:
-            lines.append(f"Date: {pub.strftime('%Y-%m-%d (%a)')}")
-        if b.get("role"):
-            lines.append(f"Role: {b['role']}")
-        lines.append(b["text"])
-        evidence = b.get("evidence") or []
-        if evidence and evidence[0].get("text"):
-            lines.append(f"Excerpt: {evidence[0]['text']}")
-        blocks.append("\n".join(lines))
-    parts: list[str] = []
-    if as_of is not None:
-        parts.append(f"Current date: {as_of.strftime('%Y-%m-%d (%a)')}")
-    parts.extend(["Question:", question, "Context:", "\n\n".join(blocks)])
-    if hint:
-        parts.append(f"Answer guidance: {hint}")
-    return "\n\n".join(parts)
 
 
 def _parse_dt(value: Any) -> datetime | None:
@@ -187,16 +195,17 @@ async def _answer_one(
             tokens = 0
         else:
             blocks = _prep_blocks(raw_blocks, variant.order, variant.max_blocks)
-            build = _build_lean_prompt if variant.lean_prompt else build_user_prompt
+            # lean variants mirror production build_user_prompt (single source of
+            # truth); only the pre-CoN baseline uses the frozen full-format builder.
+            build = build_user_prompt if variant.lean_prompt else _build_baseline_prompt
             user = build(row["question"], blocks, hint=hint, as_of=_parse_dt(row.get("as_of")))
-            system = variant.system or (COT_SYSTEM if variant.cot else SYSTEM_PROMPT)
-            model_cls = ChatAnswerCoN if variant.cot else ChatAnswerOutput
+            system = variant.system or (COT_SYSTEM if variant.cot else BASELINE_SYSTEM)
             try:
                 result, tokens = await client.complete_json(
                     model=model,
                     system=system,
                     user=user,
-                    response_model=model_cls,
+                    response_model=ChatAnswerOutput,
                     run_type="chat_answer",
                     thinking=variant.thinking,
                     max_tokens=6000 if variant.thinking else 2000,

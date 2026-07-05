@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from app.intelligence.prompts.chat_answer import build_user_prompt
 from scripts.benchmarks.replay_answer import (
-    _build_lean_prompt,
     _parse_dt,
     _prep_blocks,
 )
@@ -68,7 +68,7 @@ def test_lean_prompt_drops_metadata_keeps_essentials():
             "evidence": [{"text": "an excerpt"}],
         }
     ]
-    out = _build_lean_prompt("Q?", blocks, hint="", as_of=None)
+    out = build_user_prompt("Q?", blocks, hint="", as_of=None)
     assert "capsule body" in out
     assert "Date: 2023-04-10" in out
     assert "Role: supersession" in out
@@ -80,5 +80,5 @@ def test_lean_prompt_drops_metadata_keeps_essentials():
 def test_lean_prompt_guards_missing_evidence_text():
     blocks = [{"label": "C1", "published_at": None, "text": "body", "evidence": [{"span_id": "x"}]}]
     # must not raise on evidence lacking a 'text' key
-    out = _build_lean_prompt("Q?", blocks, hint="", as_of=None)
+    out = build_user_prompt("Q?", blocks, hint="", as_of=None)
     assert "Excerpt:" not in out
