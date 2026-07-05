@@ -91,3 +91,20 @@ def test_recency_newer_beats_older() -> None:
     assert newer > older
     assert 0.0 <= newer <= 1.0
     assert 0.0 <= older <= 1.0
+
+
+def test_recency_prefers_published_at_over_created_at() -> None:
+    from app.intelligence.chat import compute_hybrid_score
+
+    w = _weights(recency=1.0)
+    recent_event = {
+        **_candidate(created_at=_MIN),
+        "published_at": _MAX,
+    }
+    old_event = {
+        **_candidate(created_at=_MAX),
+        "published_at": _MIN,
+    }
+    recent_score = compute_hybrid_score(recent_event, w, [], _MIN, _MAX)
+    old_score = compute_hybrid_score(old_event, w, [], _MIN, _MAX)
+    assert recent_score > old_score

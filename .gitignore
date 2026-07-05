@@ -45,3 +45,6 @@ Thumbs.db
 # Claude tooling
 .claude/scheduled_tasks.lock
 .superpowers/
+
+# LongMemEval dataset (download locally)
+evals/memory/longmemeval/*.json

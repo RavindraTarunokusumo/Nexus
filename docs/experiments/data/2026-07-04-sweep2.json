@@ -1,0 +1,38 @@
+[
+  {
+    "variant": "t3_cot",
+    "n": 211,
+    "labeled": 211,
+    "accuracy": 0.806,
+    "mean_tokens": 2675.5,
+    "abstain": 37,
+    "per_type": {
+      "temporal-reasoning": 0.789,
+      "knowledge-update": 0.833
+    }
+  },
+  {
+    "variant": "think_cot",
+    "n": 211,
+    "labeled": 211,
+    "accuracy": 0.829,
+    "mean_tokens": 4181.1,
+    "abstain": 29,
+    "per_type": {
+      "temporal-reasoning": 0.797,
+      "knowledge-update": 0.885
+    }
+  },
+  {
+    "variant": "t3_think_cot",
+    "n": 211,
+    "labeled": 211,
+    "accuracy": 0.791,
+    "mean_tokens": 3265.8,
+    "abstain": 41,
+    "per_type": {
+      "temporal-reasoning": 0.752,
+      "knowledge-update": 0.859
+    }
+  }
+]

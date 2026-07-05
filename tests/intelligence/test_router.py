@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.intelligence.router import STRATEGIES, resolve_strategy
+from app.intelligence.router import QUESTION_SHAPES, STRATEGIES, resolve_strategy
 
 
 def test_resolve_strategy_known_shapes() -> None:
@@ -8,6 +8,7 @@ def test_resolve_strategy_known_shapes() -> None:
     assert resolve_strategy("multi_doc") is STRATEGIES["multi_doc"]
     assert resolve_strategy("current_state") is STRATEGIES["current_state"]
     assert resolve_strategy("conflict") is STRATEGIES["conflict"]
+    assert resolve_strategy("temporal") is STRATEGIES["temporal"]
     assert resolve_strategy("general") is STRATEGIES["general"]
 
 
@@ -45,6 +46,16 @@ def test_weight_merge_preserves_unoverridden_pack_keys() -> None:
     assert weights["evidence_quality"] == 0.03
 
 
+def test_temporal_strategy_present() -> None:
+    assert "temporal" in STRATEGIES
+    assert "temporal" in QUESTION_SHAPES
+    temporal = STRATEGIES["temporal"]
+    assert temporal.top_k_delta == 7
+    assert temporal.fetch_k_multiplier == 6
+    assert "Date:" in temporal.answer_hint
+    assert QUESTION_SHAPES.index("temporal") < QUESTION_SHAPES.index("general")
+
+
 def test_effective_top_k_floors_at_one() -> None:
     strategy = resolve_strategy("general")
     top_k = 1
@@ -53,7 +64,7 @@ def test_effective_top_k_floors_at_one() -> None:
 
     multi_doc = resolve_strategy("multi_doc")
     effective_top_k = max(1, 0 + multi_doc.top_k_delta)
-    assert effective_top_k == 3
+    assert effective_top_k == 5
 
-    effective_top_k = max(1, -5 + multi_doc.top_k_delta)
+    effective_top_k = max(1, -7 + multi_doc.top_k_delta)
     assert effective_top_k == 1

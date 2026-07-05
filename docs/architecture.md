@@ -81,9 +81,14 @@ app/
     router.py              # H5 query router: STRATEGIES registry (single source of truth) of
                            #   per-question-shape RetrievalStrategy (weight_overrides merged over
                            #   pack hybrid weights, fetch_k_multiplier, top_k_delta, answer_hint);
-                           #   shapes factoid/multi_doc/current_state/conflict/general classified
-                           #   in the same T2 classify_intent call; general == pre-router behavior
-                           #   and is the fallback on LLMError/off-list shape
+                           #   shapes factoid/multi_doc/current_state/conflict/temporal/general
+                           #   classified in the same T2 classify_intent call; general == pre-router
+                           #   behavior and is the fallback on LLMError/off-list shape. temporal
+                           #   (H7 T-L6): event ordering/duration/elapsed-time questions —
+                           #   top_k_delta=7, fetch_k_multiplier=6, hint to derive arithmetic from
+                           #   context-block Date lines (an agent_runs audit found these questions
+                           #   were routing to factoid, tuned for single-fact lookup, and starving
+                           #   two-event comparisons of retrieval budget)
     lifecycle.py           # Phase E living-knowledge worker: apply_lifecycle_transitions(session,
                            #   domain, pack, dry_run) — deterministic precedence superseded >
                            #   contradicted > qualified > confirmed > stale > archived over
@@ -367,6 +372,8 @@ Request body:
 | 503 | Embedder not initialised, OpenRouter unavailable, or chat graph failed |
 
 Retrieval runs HNSW cosine search over `semantic_capsules` (filtered to lifecycle `active`/`confirmed`/`qualified`), then re-ranks candidates with `compute_hybrid_score` — a telos-aware blend of all seven components (semantic similarity, domain object-type match, source authority, recency, salience, relation relevance, evidence quality; the last three un-stubbed since Phase D). Component weights come from the active domain pack's `retrieval_policy.hybrid_score_weights`; the `classify_intent` LLM call selects both the pack query-intent (supplying retrieval priorities) and the H5 **question shape**, whose `router.py` strategy merges weight overrides onto the pack weights and scales the candidate fetch pool and effective `top_k` (e.g. `factoid` fetches 6× with similarity-dominant weights; `general` preserves pre-router behavior). Score-ranked candidates are then assembled under the pack's declarative token budget (`context_assembly.max_tokens_by_tier["T2"]`, estimated at ~4 chars/token) — `_assemble_within_budget` adds blocks in score order until the budget or the effective `top_k` is reached, always keeping at least the top block; when the pack omits the budget it falls back to the flat slice. The shape's `answer_hint` is appended to the answer prompt as an `Answer guidance:` line.
+
+**Temporal grounding (H7 T-L5/T-L6, LongMemEval-driven):** the recency component scores on `Document.published_at` (event time) when set, falling back to `created_at` (ingestion order) otherwise — a same-batch ingestion run makes `created_at` pure noise, which `published_at` fixes. `run_chat_with_context` takes a keyword-only `as_of` (defaults to `datetime.now(timezone.utc)`; production callers get today, the benchmark passes the question's own date) rendered as a `Current date:` line ahead of the question; each context block carries its own `Date:` line (weekday included, for "last Saturday"-style relative anchors) from `published_at`. The answer system prompt requires resolving conflicting blocks via supersession/lifecycle/dates to one answer rather than reporting the conflict. Each block also renders up to 2 span excerpts (`Excerpt:` lines, same 280-char cap as the citation payload) — span text was retrieved end-to-end but not shown to the answer model until this pass, needed so relative-time phrases in the raw utterance ("two weeks ago") can be read against the block's own date rather than the current one. A `sub_queries`-based union-retrieval attempt for two-event comparison questions was implemented, live-validated, and reverted the same day after it regressed its own benchmark gate (pooling per-entity candidates then reranking globally let one entity dominate the shared top-k) — see the LongMemEval adapter spec for the failure mode and a corrected design.
 
 Each citation carries `capsule_id`, `document_id`, `document_title`, `url`, `score`, `object_type`, `object_family`, `lifecycle_state`, a `summary` (the capsule text), and `evidence` — the supporting capsule→span excerpts (`span_id`, `span_index`, `text`) drawn from `capsule_segments`, capped per capsule and truncated for display. If retrieval finds no usable capsule embeddings, the route returns `200` with the insufficient-evidence answer, empty citations, and zero token usage without making a model call.
 
