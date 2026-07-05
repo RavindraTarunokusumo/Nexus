@@ -26,9 +26,9 @@
 
 Spec: `docs/superpowers/specs/2026-07-05-ingestion-retrieval-opt-h8h9.md`. Experiment-first; Track A (ingestion tokens, zero accuracy risk) before Track B (retrieval accuracy, full re-runs).
 
-- [ ] **E1 — pair-gate characterization** (no product code): small ingest+extract run populates a DB; read-only script computes the cosine ROC of same-`object_family` capsule pairs (relation vs no-relation) → sizes A1's threshold at a recall knee.
-- [ ] **A1 — pre-LLM candidate-pair gate** (H9c lever 1): embedding-cosine floor on `pairs` in `extraction.py::_run_classify_relations` + `cross_relations.py` before the classifier; `settings.relation_pair_cosine_floor` (default 0 = off). Gate: synthetic A/B relation/`superseded` quality holds, −50–70% classify calls.
-- [ ] **A2 — relation-pair batching** (H8 M1): N pairs/call, keyed outputs, per-pair fallback on parse failure. Gate: synthetic quality holds, tokens/q down.
+- [x] **E1 — pair-gate characterization** (n=933 pairs, 15-instance instrumented run): cosine gate skips only ~14% of classify calls at ≥95% relation recall (not the projected 50–70%) — cosine doesn't separate relations from none. Result: `docs/experiments/2026-07-05-pair-gate-characterization.md`. **Reprioritizes Track A → A2/A3 primary, A1 demoted to optional.**
+- [ ] **A1 — pre-LLM candidate-pair gate** (H9c lever 1, DEMOTED by E1 to optional): conservative cosine floor (t≈0.55, ~10% fewer calls at ≥96% recall) on `pairs` in `extraction.py::_run_classify_relations` + `cross_relations.py`; `settings.relation_pair_cosine_floor` (default 0 = off). Build only if A2/A3 leave call-count worth trimming. Gate: synthetic A/B relation/`superseded` quality holds.
+- [ ] **A2 — relation-pair batching** (H8 M1, NOW PRIMARY): N pairs/call, keyed outputs, per-pair fallback on parse failure — cuts the ~87%-of-cost repeated system prompt regardless of pair count. Gate: synthetic quality holds, tokens/q down.
 - [ ] **A3 — DashScope prefix caching** (H8 M2): verify API surface live, cache static system-prompt prefix on extraction/relation calls. Gate: billed prompt tokens down, outputs identical.
 - [ ] **A4 — pre-extraction span filter** (H8 M3): local greeting/boilerplate/length pre-filter before extraction call; conversation-heavy win. Gate: capsule count/quality holds.
 - [ ] **A5 — deterministic short-circuit** (H9c lever 4): rule-decide unambiguous supersession (same family+actor+monotonic date) before the LLM. Gate: precision sample matches LLM verdict.

@@ -37,10 +37,23 @@ any implementation:
 
 ## Track A — Ingestion token/latency levers (zero accuracy risk, do first)
 
-Ordered by ROI per the ingestion-levers note. Each is a localized change (call
-site, prompt, or config) — no architectural rewrite.
+Each is a localized change (call site, prompt, or config) — no architectural
+rewrite.
 
-### A1. Pre-LLM candidate-pair gate (H9c lever 1 — highest ROI)
+**Priority — revised by E1 ([pair-gate characterization](../../experiments/2026-07-05-pair-gate-characterization.md)).**
+E1 measured 933 real candidate pairs: the cosine gate skips only ~14% of calls at
+≥95% relation recall — **far below the projected 50–70%**, because cosine does not
+cleanly separate relations from non-relations. So the build order is now **A2
+(batching) → A3 (prefix caching)** as the primary token levers (both cut tokens
+regardless of the pair distribution), then A5 (after its own characterization),
+with **A1 demoted to an optional conservative gate** (t≈0.55, ~10% fewer calls at
+≥96% recall) — build it only if the A2/A3 wins leave call-count worth trimming.
+
+### A1. Pre-LLM candidate-pair gate (H9c lever 1 — DEMOTED by E1 to optional)
+
+**E1 verdict:** marginal. Keep the interface below but ship only as a conservative
+t≈0.55 floor gated on synthetic A/B, and only after A2/A3. Not the token lever it
+was scoped as.
 
 **Requirement:** drop candidate capsule pairs unlikely to relate *before* the LLM
 call. Pairs are already `object_family`-grouped; add an embedding-cosine floor (and
