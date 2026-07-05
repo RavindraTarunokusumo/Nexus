@@ -48,6 +48,17 @@ _DEFAULT_DATASET = Path("evals/memory/longmemeval/longmemeval_oracle.json")
 _DEFAULT_CATEGORIES = ["knowledge-update", "temporal-reasoning"]
 _SOURCE_NAME = "longmemeval"
 
+# Experiment harness: when True, _run_single_instance serializes the retrieved
+# context_blocks into each row so results.jsonl doubles as a replay cache for
+# answer-path A/B (scripts/benchmarks/replay_answer.py). Off in normal runs.
+_DUMP_CONTEXT = False
+
+
+def _serialize_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    # datetime/UUID -> str via json round-trip; published_at is re-parsed on replay.
+    return json.loads(json.dumps(blocks, default=str))
+
+
 # FK-safe order derived from app/db/models.py: children before parents;
 # sources are kept so _get_or_create_manual_source reuses the same row per run.
 _MEMORY_TABLES = (
@@ -564,6 +575,10 @@ async def _run_single_instance(
             "relation_count": relation_count,
             "zero_capsule_docs": zero_capsule_docs,
         }
+        if _DUMP_CONTEXT:
+            row["as_of"] = instance_as_of.isoformat() if instance_as_of else None
+            row["question_shape"] = final.get("question_shape")
+            row["context_blocks"] = _serialize_blocks(final.get("context_blocks", []))
         await append_partial(row)
         return row, judge_errors, 0
     except Exception as exc:  # noqa: BLE001 — one bad instance must not kill a worker
@@ -808,11 +823,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="",
         help="Per-worker DB URL template with {n} placeholder (required when --workers > 1).",
     )
+    parser.add_argument(
+        "--dump-context",
+        action="store_true",
+        help="Serialize retrieved context_blocks into results.jsonl for answer-path replay.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> None:
+    global _DUMP_CONTEXT
     args = _parse_args(argv)
+    _DUMP_CONTEXT = args.dump_context
     categories = [c.strip() for c in args.categories.split(",") if c.strip()]
     result = asyncio.run(
         run_longmemeval(

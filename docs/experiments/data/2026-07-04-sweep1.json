@@ -1,0 +1,86 @@
+[
+  {
+    "variant": "baseline",
+    "n": 211,
+    "labeled": 211,
+    "accuracy": 0.692,
+    "mean_tokens": 2346.2,
+    "abstain": 28,
+    "per_type": {
+      "temporal-reasoning": 0.647,
+      "knowledge-update": 0.769
+    }
+  },
+  {
+    "variant": "chrono",
+    "n": 211,
+    "labeled": 211,
+    "accuracy": 0.716,
+    "mean_tokens": 2374.6,
+    "abstain": 24,
+    "per_type": {
+      "temporal-reasoning": 0.677,
+      "knowledge-update": 0.782
+    }
+  },
+  {
+    "variant": "cot",
+    "n": 211,
+    "labeled": 211,
+    "accuracy": 0.829,
+    "mean_tokens": 2805.7,
+    "abstain": 31,
+    "per_type": {
+      "temporal-reasoning": 0.812,
+      "knowledge-update": 0.859
+    }
+  },
+  {
+    "variant": "cot_chrono",
+    "n": 211,
+    "labeled": 211,
+    "accuracy": 0.791,
+    "mean_tokens": 2778.9,
+    "abstain": 34,
+    "per_type": {
+      "temporal-reasoning": 0.759,
+      "knowledge-update": 0.846
+    }
+  },
+  {
+    "variant": "think_chrono",
+    "n": 211,
+    "labeled": 211,
+    "accuracy": 0.829,
+    "mean_tokens": 3519.7,
+    "abstain": 20,
+    "per_type": {
+      "temporal-reasoning": 0.805,
+      "knowledge-update": 0.872
+    }
+  },
+  {
+    "variant": "t3_chrono",
+    "n": 211,
+    "labeled": 211,
+    "accuracy": 0.825,
+    "mean_tokens": 2334.4,
+    "abstain": 25,
+    "per_type": {
+      "temporal-reasoning": 0.789,
+      "knowledge-update": 0.885
+    }
+  },
+  {
+    "variant": "cot_chrono_lean6",
+    "n": 211,
+    "labeled": 211,
+    "accuracy": 0.668,
+    "mean_tokens": 1961.0,
+    "abstain": 62,
+    "per_type": {
+      "temporal-reasoning": 0.594,
+      "knowledge-update": 0.795
+    }
+  }
+]
