@@ -42,6 +42,7 @@ def _make_client(
     intent_result.intent = intent
     intent_result.shape = shape
     answer_result = MagicMock()
+    answer_result.notes = ""
     answer_result.answer = answer
     answer_result.citations = citations if citations is not None else ["C1"]
     client.complete_json = AsyncMock(side_effect=[(intent_result, 10), (answer_result, 100)])

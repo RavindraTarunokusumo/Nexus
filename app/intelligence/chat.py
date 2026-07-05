@@ -25,6 +25,7 @@ from app.observability.run_context import chat_run
 
 
 class ChatAnswerOutput(BaseModel):
+    notes: str = ""
     answer: str
     citations: list[str]
 
