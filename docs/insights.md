@@ -319,3 +319,21 @@ Delegation prompts this session cited "3 known pre-existing mypy errors in `app/
 ### Provisioning N scratch databases for `--workers N` benchmark parallelism is a five-line repeatable pattern, not a one-off
 
 Each parallel-worker benchmark run needed N Postgres databases created and migrated (`CREATE DATABASE nexus_lme_w{i}` via `asyncpg`, then `alembic upgrade head` per DB with `DATABASE_URL` pointed at each). This recurred across multiple reruns with different worker counts this session. Worth turning into a tiny reusable script next time this pattern is needed again (LongMemEval or any future parallel-instance benchmark), rather than re-deriving the asyncpg snippet + shell loop from scratch.
+
+## Session: run-and-merge (2026-07-05)
+
+### `git merge-tree --write-tree <base> <head>` previews a merge's conflicts with zero local checkout
+
+Asked to confirm two open PRs would merge without conflicts, `git merge-tree --write-tree origin/main origin/<branch>` (plus `--name-only` for just the file list) gave the exact conflicting file(s) directly against remote refs — no need to check out the branch, merge, inspect, then abort. This is strictly better than `gh pr view --json mergeable` alone: GitHub's `mergeable` field only says yes/no, `merge-tree` shows *which* file and the actual conflict hunk. Use this before touching any worktree when the task is "will this merge cleanly."
+
+### `gh pr view --json mergeable` is computed asynchronously — poll, don't trust the first read
+
+Right after a push (or right after fetching a PR that hasn't been touched recently), `mergeable`/`mergeStateStatus` come back `UNKNOWN` — GitHub hasn't run the merge check yet. A short retry loop (`for i in ...; do s=$(gh pr view ... -q .mergeable); [ "$s" != "UNKNOWN" ] && break; sleep 3; done`) is necessary; treating the first `UNKNOWN` as "not mergeable" or as an error is wrong.
+
+### `git worktree remove` refuses on gitignored build artifacts even when `git status` is clean
+
+Removing a merged branch's worktree failed with "Directory not empty" because of gitignored files (`.env`, `.ruff_cache/`, `web/node_modules/`) — none of which show up in `git status --porcelain` (already confirmed clean, so nothing was actually at risk). `--force` is the correct next step once cleanliness is verified from the porcelain status, not a shortcut around checking for real uncommitted work. Separately, one `--force` call left the directory unregistered as a worktree (`git worktree list` no longer showed it) but the folder itself was still on disk — `git worktree remove` doesn't always guarantee the directory is gone even when it succeeds; `ls` the path afterward and `rm -rf` any remainder rather than assuming a clean exit means a clean filesystem.
+
+### Multiple projects' `docker-compose` stacks on one VPS collide on default ports — check `docker ps`, don't assume the compose file's port
+
+This repo's `docker-compose.yml` maps Postgres to host `5432`, but `docker ps` showed a different project's Postgres already bound to `5432`, with this repo's own `nexus-postgres` container remapped to host `5434` (Docker's own conflict avoidance from whenever it was brought up). Trusting the compose file's stated port instead of checking actual running containers would have pointed the app at the wrong database. On a shared VPS running several of this user's projects, always cross-check `docker ps --format '{{.Names}} {{.Ports}}'` against the compose file rather than assuming the file's mapping is what's actually bound.
