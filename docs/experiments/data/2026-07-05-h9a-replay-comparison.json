@@ -1,0 +1,38 @@
+[
+  {
+    "variant": "baseline",
+    "n": 53,
+    "labeled": 53,
+    "accuracy": 0.547,
+    "mean_tokens": 2823.6,
+    "abstain": 8,
+    "per_type": {
+      "temporal-reasoning": 0.547
+    },
+    "errors": 0
+  },
+  {
+    "variant": "cot_leanprompt",
+    "n": 53,
+    "labeled": 53,
+    "accuracy": 0.755,
+    "mean_tokens": 2100.5,
+    "abstain": 8,
+    "per_type": {
+      "temporal-reasoning": 0.755
+    },
+    "errors": 0
+  },
+  {
+    "variant": "cot_leanprompt_nostep5",
+    "n": 53,
+    "labeled": 53,
+    "accuracy": 0.755,
+    "mean_tokens": 2074.7,
+    "abstain": 6,
+    "per_type": {
+      "temporal-reasoning": 0.755
+    },
+    "errors": 0
+  }
+]
