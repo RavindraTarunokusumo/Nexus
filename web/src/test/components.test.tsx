@@ -94,9 +94,11 @@ describe('MessageBubble', () => {
     expect(screen.getByText('Citations')).toBeInTheDocument()
   })
 
-  it('shows token count for assistant messages', () => {
-    render(<MessageBubble message={ASSISTANT_MSG} />)
-    expect(screen.getByText(/100 tokens/)).toBeInTheDocument()
+  it('shows token count in explain disclosure for assistant messages', async () => {
+    const msg: ChatMessage = { ...ASSISTANT_MSG, question_shape: 'factoid' }
+    render(<MessageBubble message={msg} />)
+    await userEvent.click(screen.getByText('Explain'))
+    expect(screen.getByText('100')).toBeInTheDocument()
   })
 })
 

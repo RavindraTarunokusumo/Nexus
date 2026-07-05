@@ -8,6 +8,12 @@ type Props = {
 
 export function MessageBubble({ message, isPending = false }: Props) {
   const isUser = message.role === 'user'
+  const shape = message.question_shape ?? 'general'
+  const intent = message.query_intent ?? 'general'
+  const showExplain =
+    !isUser &&
+    !(shape === 'general' && intent === 'general') &&
+    (message.question_shape || message.query_intent || message.tokens_used)
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
@@ -22,14 +28,39 @@ export function MessageBubble({ message, isPending = false }: Props) {
         {!isUser && message.citations && message.citations.length > 0 && (
           <CitationList citations={message.citations} />
         )}
-        {!isUser && message.tokens_used !== undefined && message.tokens_used > 0 && (
-          <p className="text-xs text-gray-400 mt-2">
-            {message.tokens_used} tokens
-            {message.cost_estimate_usd !== undefined && message.cost_estimate_usd > 0
-              ? ` · $${message.cost_estimate_usd.toFixed(6)}`
-              : ''}
-          </p>
-        )}
+        {showExplain && (
+            <details className="message-explain mt-2 text-xs text-gray-500">
+              <summary className="cursor-pointer hover:text-gray-700">Explain</summary>
+              <dl className="mt-1 space-y-0.5 pl-1">
+                {message.question_shape && (
+                  <>
+                    <dt className="inline font-medium">Shape:</dt>
+                    <dd className="inline ml-1">{message.question_shape}</dd>
+                    <br />
+                  </>
+                )}
+                {message.query_intent && (
+                  <>
+                    <dt className="inline font-medium">Intent:</dt>
+                    <dd className="inline ml-1">{message.query_intent}</dd>
+                    <br />
+                  </>
+                )}
+                {message.tokens_used !== undefined && message.tokens_used > 0 && (
+                  <>
+                    <dt className="inline font-medium">Tokens:</dt>
+                    <dd className="inline ml-1">
+                      {message.tokens_used}
+                      {message.cost_estimate_usd !== undefined &&
+                      message.cost_estimate_usd > 0
+                        ? ` ($${message.cost_estimate_usd.toFixed(6)})`
+                        : ''}
+                    </dd>
+                  </>
+                )}
+              </dl>
+            </details>
+          )}
       </div>
     </div>
   )

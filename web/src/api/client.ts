@@ -26,6 +26,8 @@ export type ChatCitation = {
   lifecycle_state: string | null
   summary: string
   evidence: { span_id: string; span_index: number; text: string }[]
+  role?: string | null
+  epistemic_note?: string | null
 }
 
 export type ChatMessage = {
@@ -38,6 +40,8 @@ export type ChatMessage = {
   retrieved_context_count?: number
   tokens_used?: number
   cost_estimate_usd?: number
+  question_shape?: string | null
+  query_intent?: string | null
 }
 
 export type ChatSessionDetail = ChatSessionSummary & {
@@ -48,6 +52,59 @@ export type SendMessageResponse = {
   session: ChatSessionSummary
   user_message: ChatMessage
   assistant_message: ChatMessage
+}
+
+export type StatsCounts = {
+  documents: number
+  spans: number
+  capsules: number
+  relations: number
+  theses: number
+}
+
+export type ModelUsageRow = {
+  run_type: string
+  model: string
+  calls: number
+  prompt_tokens: number
+  completion_tokens: number
+  cost_estimate_usd: number
+}
+
+export type StatsOverview = {
+  counts: StatsCounts
+  lifecycle: Record<string, number>
+  model_usage: ModelUsageRow[]
+}
+
+export type CapsuleProvenance = {
+  capsule: {
+    id: string
+    text: string
+    object_family: string
+    domain_object_type: string
+    core_type: string
+    lifecycle_state: string
+    salience: number
+    confidence: number
+    created_at: string
+  }
+  document: {
+    id: string
+    title: string | null
+    url: string | null
+    published_at: string | null
+  }
+  spans: { id: string; span_index: number; text_excerpt: string }[]
+  relations: {
+    id: string
+    direction: string
+    relation_type: string
+    polarity: string | null
+    strength: number
+    other_capsule: { id: string; text_excerpt: string; lifecycle_state: string }
+  }[]
+  theses: { id: string; statement_excerpt: string }[]
 }
 
 class ApiCallError extends Error {
@@ -120,5 +177,13 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(patch),
     })
+  },
+
+  getStatsOverview(): Promise<StatsOverview> {
+    return request('/stats/overview')
+  },
+
+  getCapsuleProvenance(capsuleId: string): Promise<CapsuleProvenance> {
+    return request(`/capsules/${capsuleId}/provenance`)
   },
 }

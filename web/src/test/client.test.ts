@@ -29,6 +29,23 @@ describe('api.listSessions', () => {
   })
 })
 
+describe('api.getStatsOverview', () => {
+  it('calls GET /stats/overview', async () => {
+    const overview = {
+      counts: { documents: 0, spans: 0, capsules: 0, relations: 0, theses: 0 },
+      lifecycle: {},
+      model_usage: [],
+    }
+    mockResponse(overview)
+    const result = await api.getStatsOverview()
+    expect(result).toEqual(overview)
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/stats/overview'),
+      expect.any(Object),
+    )
+  })
+})
+
 describe('api.createSession', () => {
   it('calls POST /chat/sessions', async () => {
     const session = { id: 'abc', title: null, status: 'active', created_at: '', updated_at: '', message_count: 0, last_message_preview: null }

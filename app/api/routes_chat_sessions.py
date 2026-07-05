@@ -65,6 +65,8 @@ class ChatMessageOut(BaseModel):
     retrieved_context_count: int | None = None
     tokens_used: int | None = None
     cost_estimate_usd: float | None = None
+    question_shape: str | None = None
+    query_intent: str | None = None
 
 
 class ChatSessionDetail(ChatSessionSummary):
@@ -117,7 +119,12 @@ async def _session_summary(session: ChatSession, db: AsyncSession) -> ChatSessio
     )
 
 
-def _message_out(msg: ChatMessage) -> ChatMessageOut:
+def _message_out(
+    msg: ChatMessage,
+    *,
+    question_shape: str | None = None,
+    query_intent: str | None = None,
+) -> ChatMessageOut:
     citations: list[ChatCitation] | None = None
     if msg.citations_json is not None:
         citations = [ChatCitation.model_validate(c) for c in msg.citations_json]
@@ -131,6 +138,8 @@ def _message_out(msg: ChatMessage) -> ChatMessageOut:
         retrieved_context_count=msg.retrieved_context_count,
         tokens_used=msg.tokens_used,
         cost_estimate_usd=msg.cost_estimate_usd,
+        question_shape=question_shape,
+        query_intent=query_intent,
     )
 
 
@@ -338,10 +347,15 @@ async def send_message(  # noqa: C901
     )
 
     summary = await _session_summary(row, db)
+
     return SendMessageResponse(
         session=summary,
         user_message=_message_out(user_msg),
-        assistant_message=_message_out(assistant_msg),
+        assistant_message=_message_out(
+            assistant_msg,
+            question_shape=result.get("question_shape") or "general",
+            query_intent=result.get("query_intent") or "general",
+        ),
     )
 
 
