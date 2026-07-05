@@ -92,6 +92,19 @@ if "notes, answer, citations" not in COT_SYSTEM:
         "BASELINE_SYSTEM schema sentence changed; update COT_SYSTEM's replace target."
     )
 
+# Ablation: CoN without step 5 (the entity-mismatch abstention rule). The H9a
+# confirmation showed step 5 over-fires on production contexts, converting 5
+# previously-correct temporal answers to abstentions.
+_STEP5 = (
+    "5. If the question's subject (person, place, activity, or role) does not exactly "
+    "match one in the evidence — e.g. it asks about 'table tennis' when only 'tennis' "
+    "appears, or 'Dr. Johnson' when only 'Dr. Smith' appears — do NOT answer from the "
+    "near match; abstain with the insufficient-evidence sentence.\n"
+)
+COT_SYSTEM_NOSTEP5 = COT_SYSTEM.replace(_STEP5, "")
+if COT_SYSTEM_NOSTEP5 == COT_SYSTEM:
+    raise RuntimeError("step-5 text not found; update _STEP5 to match COT_SYSTEM.")
+
 
 def _build_baseline_prompt(
     question: str,
@@ -172,6 +185,10 @@ VARIANTS: dict[str, Variant] = {
     # efficiency path: lean per-block prompt (all blocks kept) + CoN on fast model.
     "leanprompt": Variant("leanprompt", lean_prompt=True),
     "cot_leanprompt": Variant("cot_leanprompt", cot=True, lean_prompt=True),
+    "cot_nostep5": Variant("cot_nostep5", cot=True, system=COT_SYSTEM_NOSTEP5),
+    "cot_leanprompt_nostep5": Variant(
+        "cot_leanprompt_nostep5", cot=True, lean_prompt=True, system=COT_SYSTEM_NOSTEP5
+    ),
     "t3_leanprompt": Variant("t3_leanprompt", model="t3", lean_prompt=True),
 }
 
