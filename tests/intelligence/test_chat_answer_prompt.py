@@ -15,7 +15,7 @@ _BASE_BLOCK = {
     "text": "User bought a red car.",
 }
 
-_DROPPED_METADATA = ("Title:", "URL:", "Object type:", "Score:", "Epistemic note:")
+_DROPPED_METADATA = ("Title:", "URL:", "Object type:", "Score:", "Epistemic note:", "Capsule:")
 
 
 def test_build_user_prompt_with_as_of_and_dated_blocks():

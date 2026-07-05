@@ -31,6 +31,7 @@ from app.config import settings
 from app.db.session import make_engine, make_session_factory
 from app.intelligence.chat import ChatAnswerOutput
 from app.intelligence.llm_client import LLMClient, LLMError, LLMNetworkError
+from app.intelligence.prompts.chat_answer import build_user_prompt
 from app.intelligence.router import resolve_strategy
 from scripts.benchmarks.run_longmemeval import (
     INSUFFICIENT_EVIDENCE_ANSWER,
@@ -193,39 +194,6 @@ VARIANTS: dict[str, Variant] = {
 }
 
 
-def _build_lean_prompt(
-    question: str,
-    context_blocks: list[dict[str, Any]],
-    *,
-    hint: str,
-    as_of: datetime | None,
-) -> str:
-    # Token-lean block format: prompt tokens dominate (~85% of total) and most
-    # per-block lines (URL, Title, Object type, Score, Epistemic note) are noise
-    # the answer model ignores. Keep label, Date, Role, capsule text, 1 excerpt —
-    # preserving every evidence block (no starvation) at a fraction of the tokens.
-    blocks = []
-    for b in context_blocks:
-        lines = [f"[{b['label']}]"]
-        pub = b.get("published_at")
-        if pub is not None:
-            lines.append(f"Date: {pub.strftime('%Y-%m-%d (%a)')}")
-        if b.get("role"):
-            lines.append(f"Role: {b['role']}")
-        lines.append(b["text"])
-        evidence = b.get("evidence") or []
-        if evidence and evidence[0].get("text"):
-            lines.append(f"Excerpt: {evidence[0]['text']}")
-        blocks.append("\n".join(lines))
-    parts: list[str] = []
-    if as_of is not None:
-        parts.append(f"Current date: {as_of.strftime('%Y-%m-%d (%a)')}")
-    parts.extend(["Question:", question, "Context:", "\n\n".join(blocks)])
-    if hint:
-        parts.append(f"Answer guidance: {hint}")
-    return "\n\n".join(parts)
-
-
 def _parse_dt(value: Any) -> datetime | None:
     if not value:
         return None
@@ -264,7 +232,9 @@ async def _answer_one(
             tokens = 0
         else:
             blocks = _prep_blocks(raw_blocks, variant.order, variant.max_blocks)
-            build = _build_lean_prompt if variant.lean_prompt else _build_baseline_prompt
+            # lean variants mirror production build_user_prompt (single source of
+            # truth); only the pre-CoN baseline uses the frozen full-format builder.
+            build = build_user_prompt if variant.lean_prompt else _build_baseline_prompt
             user = build(row["question"], blocks, hint=hint, as_of=_parse_dt(row.get("as_of")))
             system = variant.system or (COT_SYSTEM if variant.cot else BASELINE_SYSTEM)
             model_cls = ChatAnswerCoN if variant.cot else ChatAnswerOutput
