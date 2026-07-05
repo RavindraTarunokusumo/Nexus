@@ -1,0 +1,28 @@
+[
+  {
+    "variant": "baseline",
+    "n": 208,
+    "labeled": 208,
+    "accuracy": 0.702,
+    "mean_tokens": 2359.6,
+    "abstain": 29,
+    "per_type": {
+      "temporal-reasoning": 0.669,
+      "knowledge-update": 0.756
+    },
+    "errors": 0
+  },
+  {
+    "variant": "cot_leanprompt",
+    "n": 208,
+    "labeled": 208,
+    "accuracy": 0.817,
+    "mean_tokens": 1917.0,
+    "abstain": 32,
+    "per_type": {
+      "temporal-reasoning": 0.808,
+      "knowledge-update": 0.833
+    },
+    "errors": 0
+  }
+]

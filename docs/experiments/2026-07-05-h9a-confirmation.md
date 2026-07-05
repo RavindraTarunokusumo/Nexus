@@ -69,6 +69,27 @@ answer-path variants over the *identical* contexts (same judge). n=53 usable:
 extraction per run (this frozen cache happened to have a hard 0.547 baseline); the
 +0.21 *answer-path delta* is the robust, matched result.
 
+## Leg 3 (full-211 validation) — reproduces PR30
+
+The Leg-2 cache was temporal-only (55, hard slice, unlucky 0.547 baseline). To get
+a number comparable to PR30's full-set 0.806, ran a full-211 draw two ways:
+
+| measurement | overall | temporal | know-update | abst | tokens |
+| --- | --- | --- | --- | --- | --- |
+| fresh full run, H9a productionized | 0.812 | 0.808 | 0.821 | 31/208 | 1946 |
+| matched replay: baseline | 0.702 | 0.669 | 0.756 | 29 | 2360 |
+| matched replay: cot_leanprompt | 0.817 | 0.808 | 0.833 | 32 | 1917 |
+| **PR30 reference (replay)** | 0.806 | 0.797 | 0.821 | 33 | 1919 |
+
+Matched full-211 replay: **0.702 → 0.817, +0.115, McNemar p=7e-5** (30 w→r, 6 r→w).
+Baseline 0.702 ≈ PR30's 0.692 → this was a normal extraction draw (one draw
+suffices; no averaging needed). **Abstentions flat (29→32)** — the Leg-1 surge was
+small-sample noise, not a real regression. The Leg-2 temporal-only 0.755 was the
+hard 55-slice + unlucky draw; on the full 130 temporal questions it is 0.808.
+
+**H9a confirmed three independent ways: fresh full run 0.812, matched replay 0.817,
+PR30 0.806.** The "80% with efficiency" reproduces in production.
+
 ## Methodology note (the real lesson)
 
 The same change read **flat (p=0.61)** via fresh full-run before/after and
