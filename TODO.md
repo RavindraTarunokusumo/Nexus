@@ -22,6 +22,20 @@
 
 - [ ] **UI display-consistency refactors (H6 /simplify, deferred)** — unify the citation-role vocabulary (badge class/label/diagram counts) and the lifecycle-state palette (CitationList dots / dashboard swatches / mermaid classDefs) into single frontend maps; shared `excerpt()` util for `routes_capsules._excerpt` vs `chat.py`'s span-excerpt shaping (cross-module). Query-merging on `/stats/overview`/provenance skipped: sub-10ms on demo-scale data.
 
+### H8 + H9b/H9c — Ingestion & Retrieval Optimization (session `claude/perf-h8h9`)
+
+Spec: `docs/superpowers/specs/2026-07-05-ingestion-retrieval-opt-h8h9.md`. Experiment-first; Track A (ingestion tokens, zero accuracy risk) before Track B (retrieval accuracy, full re-runs).
+
+- [ ] **E1 — pair-gate characterization** (no product code): small ingest+extract run populates a DB; read-only script computes the cosine ROC of same-`object_family` capsule pairs (relation vs no-relation) → sizes A1's threshold at a recall knee.
+- [ ] **A1 — pre-LLM candidate-pair gate** (H9c lever 1): embedding-cosine floor on `pairs` in `extraction.py::_run_classify_relations` + `cross_relations.py` before the classifier; `settings.relation_pair_cosine_floor` (default 0 = off). Gate: synthetic A/B relation/`superseded` quality holds, −50–70% classify calls.
+- [ ] **A2 — relation-pair batching** (H8 M1): N pairs/call, keyed outputs, per-pair fallback on parse failure. Gate: synthetic quality holds, tokens/q down.
+- [ ] **A3 — DashScope prefix caching** (H8 M2): verify API surface live, cache static system-prompt prefix on extraction/relation calls. Gate: billed prompt tokens down, outputs identical.
+- [ ] **A4 — pre-extraction span filter** (H8 M3): local greeting/boilerplate/length pre-filter before extraction call; conversation-heavy win. Gate: capsule count/quality holds.
+- [ ] **A5 — deterministic short-circuit** (H9c lever 4): rule-decide unambiguous supersession (same family+actor+monotonic date) before the LLM. Gate: precision sample matches LLM verdict.
+- [ ] **B1 — Wall 1 top-k/ranking** (H9b): raise fetch pool / improve ranking so un-retrieved gold survives the cut. Gate: LongMemEval `cov` up, no regression.
+- [ ] **B2 — Wall 2 supersession-direction** (H9b): detect "initial/previous/original" and flip recency preference (router + `compute_hybrid_score`). Gate: `supersession_correctness` up.
+- [ ] **B3 — Wall 3 per-sub-query retrieval slots** (H9b): corrected R2 design — per-sub-query floor before shared rerank. Gate: comparison/aggregation accuracy up, no global regression.
+
 ### Phase C — Reasoning Layer
 
 Complete. Thesis writer, decision artefact writer, and DB integration tests shipped in
