@@ -36,13 +36,14 @@ def _make_client(
     shape: str = "general",
     answer: str = "The answer",
     citations: list[str] | None = None,
+    notes: str = "",
 ) -> AsyncMock:
     client = AsyncMock()
     intent_result = MagicMock()
     intent_result.intent = intent
     intent_result.shape = shape
     answer_result = MagicMock()
-    answer_result.notes = ""
+    answer_result.notes = notes
     answer_result.answer = answer
     answer_result.citations = citations if citations is not None else ["C1"]
     client.complete_json = AsyncMock(side_effect=[(intent_result, 10), (answer_result, 100)])
@@ -191,6 +192,31 @@ async def test_format_result_builds_capsule_citation() -> None:
     assert cit["summary"] == "GPT-5 released with 128k context."
     assert "span_id" not in cit
     assert "claim_ids" not in cit
+
+
+@pytest.mark.asyncio
+async def test_chain_of_note_notes_never_surfaced() -> None:
+    """The internal CoN `notes` reasoning must not leak into the user-facing result."""
+    from app.intelligence.chat import make_chat_graph, run_chat_with_context
+
+    capsule_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    sf = _make_session_factory(rows=[_capsule_row(capsule_id, doc_id)])
+    client = _make_client(
+        answer="GPT-5 is fast.",
+        citations=["C1"],
+        notes="INTERNAL: block C1 dated 2026, ordering computed here",
+    )
+    embedder = _make_embedder()
+    pack = _make_pack(query_intents={"general": {}})
+
+    graph = make_chat_graph(sf, client, embedder)
+    with patch("app.intelligence.chat.load_pack", return_value=pack):
+        result = await run_chat_with_context(graph, "What is GPT-5?", "test-model", top_k=1)
+
+    assert result["answer"] == "GPT-5 is fast."
+    assert "notes" not in result
+    assert "INTERNAL" not in str(result)
 
 
 @pytest.mark.asyncio

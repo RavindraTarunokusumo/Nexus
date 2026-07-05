@@ -25,26 +25,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
-
 from app.config import settings
 from app.db.session import make_engine, make_session_factory
 from app.intelligence.chat import ChatAnswerOutput
 from app.intelligence.llm_client import LLMClient, LLMError, LLMNetworkError
-from app.intelligence.prompts.chat_answer import build_user_prompt
+from app.intelligence.prompts.chat_answer import SYSTEM_PROMPT, build_user_prompt
 from app.intelligence.router import resolve_strategy
 from scripts.benchmarks.run_longmemeval import (
     INSUFFICIENT_EVIDENCE_ANSWER,
     _judge_answer,
     is_abstention,
 )
-
-
-class ChatAnswerCoN(BaseModel):
-    notes: str = ""
-    answer: str
-    citations: list[str] = []
-
 
 # Frozen pre-production prompt — decoupled from chat_answer.py so replay baseline
 # variants stay stable as production evolves (now CoN + lean).
@@ -61,41 +52,13 @@ Context blocks may include role annotations:
 
 When context blocks conflict, resolve the conflict using supersession role annotations, lifecycle_state, and block dates: prefer active, superseding, and more recent facts and state the single best-supported answer. Never say the sources conflict or present both values as the final answer."""
 
-# Chain-of-Note: an in-band reasoning field (cheap alternative to thinking-mode)
-# that folds in the concrete LongMemEval failure fixes — resolve each event's
-# absolute date, sort for ordering, compute deltas explicitly, enumerate for
-# counting, and abstain on entity-mismatch distractors.
-COT_SYSTEM = (
-    BASELINE_SYSTEM.replace(
-        "Return JSON with keys: answer, citations.",
-        "Return JSON with keys: notes, answer, citations.",
-    )
-    + "\n\nBefore answering, use the 'notes' field to reason briefly and concretely:\n"
-    "1. List each relevant context block with its resolved absolute date — combine the "
-    "block 'Date:' line with any relative phrase in the excerpt (e.g. 'two weeks ago' "
-    "relative to that block's date).\n"
-    "2. Ordering ('which happened first / most recent'): sort those events by date and "
-    "name the first/latest.\n"
-    "3. Duration / elapsed time ('how long', 'how many days/weeks/months ago/between'): "
-    "state the two anchor dates and compute the difference explicitly.\n"
-    "4. Counting ('how many'): enumerate every distinct matching occurrence across all "
-    "blocks, then count.\n"
-    "5. If the question's subject (person, place, activity, or role) does not exactly "
-    "match one in the evidence — e.g. it asks about 'table tennis' when only 'tennis' "
-    "appears, or 'Dr. Johnson' when only 'Dr. Smith' appears — do NOT answer from the "
-    "near match; abstain with the insufficient-evidence sentence.\n"
-    "Keep 'notes' short. Put only the final user-facing response in 'answer'."
-)
-# Fail fast if BASELINE_SYSTEM's schema sentence changed and the .replace() above
-# silently no-op'd — otherwise every cot* variant would run the wrong schema.
-if "notes, answer, citations" not in COT_SYSTEM:
-    raise RuntimeError(
-        "BASELINE_SYSTEM schema sentence changed; update COT_SYSTEM's replace target."
-    )
+# CoT replay variants use the *production* CoN system prompt directly (single
+# source of truth) — only BASELINE_SYSTEM stays frozen as the pre-CoN comparison.
+COT_SYSTEM = SYSTEM_PROMPT
 
 # Ablation: CoN without step 5 (the entity-mismatch abstention rule). The H9a
-# confirmation showed step 5 over-fires on production contexts, converting 5
-# previously-correct temporal answers to abstentions.
+# confirmation found step 5 accuracy-neutral on matched contexts (0.755 == 0.755,
+# p=1.0); kept for the record so the ablation stays reproducible.
 _STEP5 = (
     "5. If the question's subject (person, place, activity, or role) does not exactly "
     "match one in the evidence — e.g. it asks about 'table tennis' when only 'tennis' "
@@ -104,7 +67,7 @@ _STEP5 = (
 )
 COT_SYSTEM_NOSTEP5 = COT_SYSTEM.replace(_STEP5, "")
 if COT_SYSTEM_NOSTEP5 == COT_SYSTEM:
-    raise RuntimeError("step-5 text not found; update _STEP5 to match COT_SYSTEM.")
+    raise RuntimeError("step-5 text not found in production SYSTEM_PROMPT; update _STEP5 to match.")
 
 
 def _build_baseline_prompt(
@@ -237,13 +200,12 @@ async def _answer_one(
             build = build_user_prompt if variant.lean_prompt else _build_baseline_prompt
             user = build(row["question"], blocks, hint=hint, as_of=_parse_dt(row.get("as_of")))
             system = variant.system or (COT_SYSTEM if variant.cot else BASELINE_SYSTEM)
-            model_cls = ChatAnswerCoN if variant.cot else ChatAnswerOutput
             try:
                 result, tokens = await client.complete_json(
                     model=model,
                     system=system,
                     user=user,
-                    response_model=model_cls,
+                    response_model=ChatAnswerOutput,
                     run_type="chat_answer",
                     thinking=variant.thinking,
                     max_tokens=6000 if variant.thinking else 2000,
