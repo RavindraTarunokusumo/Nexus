@@ -40,7 +40,10 @@ Spec: `docs/superpowers/specs/2026-07-05-ingestion-retrieval-opt-h8h9.md`. Exper
 - [ ] **A5 — deterministic short-circuit** (H9c lever 4): rule-decide unambiguous supersession (same family+actor+monotonic date) before the LLM. Gate: precision sample matches LLM verdict.
 - [ ] **B1 — Wall 1 top-k/ranking** (H9b): raise fetch pool / improve ranking so un-retrieved gold survives the cut. Gate: LongMemEval `cov` up, no regression.
 - [ ] **B2 — Wall 2 supersession-direction** (H9b): detect "initial/previous/original" and flip recency preference (router + `compute_hybrid_score`). Gate: `supersession_correctness` up.
-- [ ] **B3 — Wall 3 per-sub-query retrieval slots** (H9b): corrected R2 design — per-sub-query floor before shared rerank. Gate: comparison/aggregation accuracy up, no global regression.
+- [ ] **B3 — Wall 3 per-sub-query retrieval slots** (H9b, IN PROGRESS session `claude/h9b-walls`): corrected R2 design — per-sub-query floor before shared rerank, behind `settings.retrieval_subquery_slots` (default off). Plan: `docs/superpowers/plans/2026-07-06-b3-subquery-slots.md`.
+  - [ ] Task 1: classifier emits `sub_queries` (restore from `bc8fe83`).
+  - [ ] Task 2: slotted retrieval merge in `_run_retrieve_capsules` + config flag + unit tests.
+  - [ ] A/B gate: n=50 mixed gate + targeted wall-3 `--question-ids` run, flag off vs on; flip default if it passes.
 
 ### Phase C — Reasoning Layer
 
