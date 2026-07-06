@@ -698,6 +698,9 @@ def make_chat_graph(session_factory: async_sessionmaker, client: Any, embedder: 
                 user=user,
                 response_model=ChatAnswerOutput,
                 run_type="chat_answer",
+                # 2000 truncates CoN notes on long contexts: replay A/B 0.802->0.850,
+                # McNemar p=0.013 (docs/benchmarks/runs/h9b-replay-abstention).
+                max_tokens=4000,
             )
         except LLMNetworkError as exc:
             return {"error": str(exc), "tokens_used": 0}
