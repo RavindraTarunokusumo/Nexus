@@ -19,11 +19,16 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+# Import `app` from this script's own tree, not the venv's editable install —
+# otherwise a worktree run silently benchmarks the main checkout's code.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.config import settings
 from app.db.session import make_engine, make_session_factory

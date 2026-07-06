@@ -11,12 +11,17 @@ import argparse
 import asyncio
 import json
 import subprocess
+import sys
 import time
 import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+# Import `app` from this script's own tree, not the venv's editable install —
+# otherwise a worktree run silently benchmarks the main checkout's code.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from pydantic import BaseModel
 from sqlalchemy import func, select, text
