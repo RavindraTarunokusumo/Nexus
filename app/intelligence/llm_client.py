@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 from app.observability.tracer import record_agent_run
 
 _BASE_URL = "https://openrouter.ai/api/v1"
-_TIMEOUT = httpx.Timeout(60.0)
+_TIMEOUT = httpx.Timeout(150.0)
 _COST_PER_TOKEN_USD = 0.14 / 1_000_000
 _MAX_JSON_ATTEMPTS = 3
 _RETRY_BACKOFF_SECONDS = (1.0, 4.0)
@@ -23,6 +23,20 @@ T = TypeVar("T", bound=BaseModel)
 
 _rate_lock = asyncio.Lock()
 _last_request_at = 0.0
+
+
+def _strip_json_fences(text: str) -> str:
+    """Unwrap a ```json ... ``` (or bare ```) fenced block; pure JSON passes through."""
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return text
+    first_nl = stripped.find("\n")
+    if first_nl == -1:
+        return text
+    body = stripped[first_nl + 1 :]
+    if body.rstrip().endswith("```"):
+        body = body.rstrip()[:-3]
+    return body
 
 
 async def _throttle_to_rpm() -> None:
@@ -87,16 +101,19 @@ class LLMClient:
         Raises LLMSchemaError if the response fails Pydantic validation.
         Always records an agent_runs row (even on failure).
         """
+        from app.config import settings
+
         payload: dict[str, Any] = {
             "model": model,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            "response_format": {"type": "json_object"},
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        if settings.llm_json_response_format:
+            payload["response_format"] = {"type": "json_object"}
         if "dashscope" in self._base_url:
             # qwen3 hybrid models think by default on DashScope; that cost 3-24x
             # completion tokens and wall-clock on JSON tasks with identical output
@@ -105,8 +122,6 @@ class LLMClient:
             # provider (e.g. OpenRouter) risks a 4xx rather than being ignored.
             # Some snapshots (settings.thinking_locked_models) reject
             # enable_thinking=false outright; omit the flag for those.
-            from app.config import settings
-
             locked = {m.strip() for m in settings.thinking_locked_models.split(",") if m.strip()}
             if model not in locked:
                 payload["enable_thinking"] = thinking
@@ -164,7 +179,9 @@ class LLMClient:
                         raise LLMSchemaError("LLM returned null content", raw_output="")
 
                     try:
-                        validated = response_model.model_validate_json(raw_output)
+                        validated = response_model.model_validate_json(
+                            _strip_json_fences(raw_output)
+                        )
                     except (ValueError, ValidationError) as exc:
                         call_status = "schema_error"
                         raise LLMSchemaError(
