@@ -92,6 +92,40 @@ def test_select_instances_limit_offset_slice_after_filter():
     assert [i["question_id"] for i in selected] == ["b", "c"]
 
 
+def test_select_instances_per_category_limit():
+    instances = [
+        {"question_id": "a", "question_type": "knowledge-update"},
+        {"question_id": "b", "question_type": "knowledge-update"},
+        {"question_id": "c", "question_type": "temporal-reasoning"},
+        {"question_id": "d", "question_type": "temporal-reasoning"},
+        {"question_id": "e", "question_type": "temporal-reasoning"},
+    ]
+    selected = select_instances(
+        instances,
+        categories=["knowledge-update", "temporal-reasoning"],
+        limit=0,
+        offset=0,
+        per_category_limit=1,
+    )
+    assert [i["question_id"] for i in selected] == ["a", "c"]
+
+
+def test_select_instances_question_ids_override():
+    instances = [
+        {"question_id": "a", "question_type": "knowledge-update"},
+        {"question_id": "b", "question_type": "temporal-reasoning"},
+        {"question_id": "c", "question_type": "temporal-reasoning"},
+    ]
+    selected = select_instances(
+        instances,
+        categories=["knowledge-update", "temporal-reasoning"],
+        limit=1,
+        offset=0,
+        question_ids=["c", "a"],
+    )
+    assert [i["question_id"] for i in selected] == ["a", "c"]
+
+
 def test_select_instances_limit_zero_means_no_cap():
     instances = [{"question_id": str(i), "question_type": "knowledge-update"} for i in range(5)]
     selected = select_instances(instances, categories=["knowledge-update"], limit=0, offset=0)

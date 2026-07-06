@@ -132,8 +132,22 @@ def select_instances(
     categories: list[str],
     limit: int,
     offset: int,
+    per_category_limit: int = 0,
+    question_ids: list[str] | None = None,
 ) -> list[dict]:
     filtered = [inst for inst in instances if inst.get("question_type") in categories]
+    if question_ids:
+        wanted = set(question_ids)
+        return [inst for inst in filtered if inst.get("question_id") in wanted]
+    if per_category_limit > 0:
+        taken: dict[str, int] = {}
+        picked = []
+        for inst in filtered[offset:]:
+            cat = inst["question_type"]
+            if taken.get(cat, 0) < per_category_limit:
+                taken[cat] = taken.get(cat, 0) + 1
+                picked.append(inst)
+        return picked
     sliced = filtered[offset:]
     if limit > 0:
         sliced = sliced[:limit]
@@ -661,6 +675,8 @@ async def run_longmemeval(
     pack: str | None = None,
     workers: int = 1,
     db_url_template: str = "",
+    per_category_limit: int = 0,
+    question_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     started_at = datetime.now(timezone.utc)
     resolved_categories = categories or list(_DEFAULT_CATEGORIES)
@@ -674,6 +690,8 @@ async def run_longmemeval(
         categories=resolved_categories,
         limit=limit,
         offset=offset,
+        per_category_limit=per_category_limit,
+        question_ids=question_ids,
     )
 
     if workers > 1 and "{n}" not in db_url_template:
@@ -766,6 +784,8 @@ async def run_longmemeval(
         "categories": resolved_categories,
         "limit": limit,
         "offset": offset,
+        "per_category_limit": per_category_limit,
+        "question_ids": question_ids or [],
         "k": k,
         "workers": workers,
         "t1_model": settings.t1_model,
@@ -803,6 +823,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--limit", type=int, default=20, help="Max instances (0 = no limit).")
     parser.add_argument("--offset", type=int, default=0)
+    parser.add_argument(
+        "--per-category-limit",
+        type=int,
+        default=0,
+        help="First N instances per category (overrides --limit when > 0).",
+    )
+    parser.add_argument(
+        "--question-ids",
+        type=str,
+        default="",
+        help="Comma-separated question_ids to run (overrides all other selection).",
+    )
     parser.add_argument("--k", type=int, default=5)
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument(
@@ -847,6 +879,8 @@ def main(argv: list[str] | None = None) -> None:
             pack=args.pack,
             workers=args.workers,
             db_url_template=args.db_url_template,
+            per_category_limit=args.per_category_limit,
+            question_ids=[q.strip() for q in args.question_ids.split(",") if q.strip()] or None,
         )
     )
     print(f"Wrote LongMemEval results to {result['out_dir']}")
