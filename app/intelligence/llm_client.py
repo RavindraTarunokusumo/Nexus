@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import time
 from typing import Any, Literal, TypeVar
 
 import httpx
@@ -19,6 +20,24 @@ _RETRY_BACKOFF_SECONDS = (1.0, 4.0)
 _RETRY_JITTER_FRACTION = 0.25
 
 T = TypeVar("T", bound=BaseModel)
+
+_rate_lock = asyncio.Lock()
+_last_request_at = 0.0
+
+
+async def _throttle_to_rpm() -> None:
+    """Space requests to settings.llm_max_rpm (0 = off). Process-global."""
+    from app.config import settings
+
+    rpm = settings.llm_max_rpm
+    if rpm <= 0:
+        return
+    global _last_request_at
+    async with _rate_lock:
+        wait = _last_request_at + 60.0 / rpm - time.monotonic()
+        if wait > 0:
+            await asyncio.sleep(wait)
+        _last_request_at = time.monotonic()
 
 
 class LLMError(Exception):
@@ -114,6 +133,7 @@ class LLMClient:
                 completion_tokens = None
                 call_status = "success"
                 try:
+                    await _throttle_to_rpm()
                     resp = await http.post("/chat/completions", json=payload)
 
                     if resp.status_code == 429 or resp.status_code >= 500:

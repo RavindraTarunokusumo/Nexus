@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     extraction_model: str = ""
     # Model ids that reject enable_thinking=false; the flag is omitted for them.
     thinking_locked_models: str = "qwen3.7-max-2026-05-17"
+    # Process-global request pacing for rate-capped endpoints (0 = off).
+    llm_max_rpm: int = 0
     t2_model_force: str = ""
     t2_concurrency: int = 4
     t3_model: str = "qwen3.7-max"
