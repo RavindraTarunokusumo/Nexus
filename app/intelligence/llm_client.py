@@ -82,25 +82,15 @@ class LLMClient:
         self._session_factory = session_factory
         self._base_url = base_url
 
-    async def complete_json(
+    def _build_payload(
         self,
-        *,
         model: str,
         system: str,
         user: str,
-        response_model: type[T],
-        temperature: float = 0.1,
-        max_tokens: int = 2000,
-        run_type: str = "claim_extraction",
-        thinking: bool = False,
-    ) -> tuple[T, int]:
-        """Call OpenRouter and return (validated_result, total_tokens).
-
-        Raises LLMNetworkError on 5xx / connection failure.
-        Raises LLMError on 4xx.
-        Raises LLMSchemaError if the response fails Pydantic validation.
-        Always records an agent_runs row (even on failure).
-        """
+        temperature: float,
+        max_tokens: int,
+        thinking: bool,
+    ) -> dict[str, Any]:
         from app.config import settings
 
         payload: dict[str, Any] = {
@@ -125,6 +115,28 @@ class LLMClient:
             locked = {m.strip() for m in settings.thinking_locked_models.split(",") if m.strip()}
             if model not in locked:
                 payload["enable_thinking"] = thinking
+        return payload
+
+    async def complete_json(
+        self,
+        *,
+        model: str,
+        system: str,
+        user: str,
+        response_model: type[T],
+        temperature: float = 0.1,
+        max_tokens: int = 2000,
+        run_type: str = "claim_extraction",
+        thinking: bool = False,
+    ) -> tuple[T, int]:
+        """Call OpenRouter and return (validated_result, total_tokens).
+
+        Raises LLMNetworkError on 5xx / connection failure.
+        Raises LLMError on 4xx.
+        Raises LLMSchemaError if the response fails Pydantic validation.
+        Always records an agent_runs row (even on failure).
+        """
+        payload = self._build_payload(model, system, user, temperature, max_tokens, thinking)
 
         raw_output: str | None = None
         total_tokens = 0
@@ -165,18 +177,24 @@ class LLMClient:
                     data = resp.json()
                     try:
                         raw_output = data["choices"][0]["message"]["content"]
-                    except (KeyError, IndexError, TypeError) as exc:
-                        call_status = "malformed_response"
-                        raise LLMError(f"Malformed OpenRouter response: {exc}") from exc
+                    except (KeyError, IndexError, TypeError):
+                        raw_output = None
 
                     usage = data.get("usage", {})
                     total_tokens = usage.get("total_tokens", 0)
                     prompt_tokens = usage.get("prompt_tokens")
                     completion_tokens = usage.get("completion_tokens")
 
-                    if raw_output is None:
-                        call_status = "schema_error"
-                        raise LLMSchemaError("LLM returned null content", raw_output="")
+                    # Transient empty response — empty choices or null/blank content with
+                    # finish_reason=stop and 0 completion tokens (seen on NVIDIA
+                    # integrate.api). Proven to recover on a fresh call, so retry within
+                    # the attempt budget rather than failing the call.
+                    if not raw_output:
+                        call_status = "empty_response"
+                        if attempt < _MAX_JSON_ATTEMPTS - 1:
+                            await _retry_backoff(attempt)
+                            continue
+                        raise LLMSchemaError("LLM returned empty content", raw_output="")
 
                     try:
                         validated = response_model.model_validate_json(
