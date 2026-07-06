@@ -84,7 +84,13 @@ class LLMClient:
             # (H8 Q0 A/B). Callers needing reasoning must opt in. Gated to
             # DashScope only — an unrecognized field on another OpenAI-compatible
             # provider (e.g. OpenRouter) risks a 4xx rather than being ignored.
-            payload["enable_thinking"] = thinking
+            # Some snapshots (settings.thinking_locked_models) reject
+            # enable_thinking=false outright; omit the flag for those.
+            from app.config import settings
+
+            locked = {m.strip() for m in settings.thinking_locked_models.split(",") if m.strip()}
+            if model not in locked:
+                payload["enable_thinking"] = thinking
 
         raw_output: str | None = None
         total_tokens = 0

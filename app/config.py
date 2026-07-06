@@ -19,9 +19,11 @@ class Settings(BaseSettings):
     # Defaults are Qwen Cloud (DashScope) model ids; override per env.
     t1_model: str = "BAAI/bge-small-en-v1.5"
     t2_model: str = "qwen3.6-flash"
-    extraction_model: str = (
-        "qwen3.6-flash-2026-04-16"  # Span/claim extraction only; empty falls back to T2.
-    )
+    # Span/claim extraction only; empty falls back to T2. The 2026-04-16 flash
+    # snapshot was gated and rejected: 0.820->0.531 (docs/experiments 2026-07-06).
+    extraction_model: str = ""
+    # Model ids that reject enable_thinking=false; the flag is omitted for them.
+    thinking_locked_models: str = "qwen3.7-max-2026-05-17"
     t2_model_force: str = ""
     t2_concurrency: int = 4
     t3_model: str = "qwen3.7-max"
