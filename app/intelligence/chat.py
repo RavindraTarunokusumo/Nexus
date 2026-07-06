@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import uuid
 from datetime import datetime, timezone
 from typing import Any, TypedDict
@@ -60,6 +61,7 @@ class ChatState(TypedDict):
     run_id: uuid.UUID | None
     query_intent: str
     question_shape: str
+    sub_queries: list[str]
     pack: Any
     as_of: datetime
     context_blocks: list[dict[str, Any]]
@@ -388,6 +390,102 @@ def _normalize_citation_label(label: str) -> str:
     return label.strip().removeprefix("[").removesuffix("]").strip()
 
 
+_MAX_SUB_QUERIES = 3
+
+
+def _sanitize_sub_queries(raw: list[str] | None) -> list[str]:
+    if not raw:
+        return []
+    return [sq for sq in (s.strip() for s in raw) if sq][:_MAX_SUB_QUERIES]
+
+
+def merge_subquery_slot_capsule_ids(
+    vector_scored: list[list[tuple[uuid.UUID, float]]],
+    effective_top_k: int,
+) -> list[uuid.UUID]:
+    """Allocate a per-vector floor, then top up by global best hybrid score.
+
+    Each inner list is one query vector (full question first, then sub-queries),
+    sorted by hybrid score descending. Returns up to effective_top_k capsule ids in
+    slot order (floor picks per vector, then remainder by score).
+    """
+    if not vector_scored:
+        return []
+    num_sub_queries = len(vector_scored) - 1
+    floor = math.ceil(effective_top_k / (1 + num_sub_queries))
+    claimed: list[uuid.UUID] = []
+    claimed_set: set[uuid.UUID] = set()
+
+    for vector_candidates in vector_scored:
+        slots_filled = 0
+        for cap_id, _score in vector_candidates:
+            if slots_filled >= floor:
+                break
+            if cap_id in claimed_set:
+                continue
+            claimed.append(cap_id)
+            claimed_set.add(cap_id)
+            slots_filled += 1
+
+    remaining = effective_top_k - len(claimed)
+    if remaining > 0:
+        best_unclaimed: dict[uuid.UUID, float] = {}
+        for vector_candidates in vector_scored:
+            for cap_id, score in vector_candidates:
+                if cap_id in claimed_set:
+                    continue
+                prev = best_unclaimed.get(cap_id)
+                if prev is None or score > prev:
+                    best_unclaimed[cap_id] = score
+        top_up = sorted(best_unclaimed.items(), key=lambda item: item[1], reverse=True)
+        for cap_id, _score in top_up[:remaining]:
+            claimed.append(cap_id)
+
+    return claimed
+
+
+async def _fetch_ann_candidate_rows(
+    session: Any, query_vec: list[float], fetch_k: int
+) -> list[Any]:
+    distance = SemanticCapsule.embedding.cosine_distance(query_vec)
+    return (
+        await session.execute(
+            select(
+                SemanticCapsule.id,
+                SemanticCapsule.document_id,
+                SemanticCapsule.text,
+                SemanticCapsule.domain_object_type,
+                SemanticCapsule.object_family,
+                SemanticCapsule.lifecycle_state,
+                SemanticCapsule.salience,
+                SemanticCapsule.created_at,
+                SemanticCapsule.epistemic_state,
+                SemanticCapsule.confidence,
+                (1 - distance).label("semantic_sim"),
+                Document.title.label("title"),
+                Document.url.label("url"),
+                Document.published_at.label("published_at"),
+            )
+            .join(Document, SemanticCapsule.document_id == Document.id)
+            .where(SemanticCapsule.embedding.isnot(None))
+            .where(SemanticCapsule.lifecycle_state.in_(_LIFECYCLE_RETRIEVAL_STATES))
+            .order_by(distance)
+            .limit(fetch_k)
+        )
+    ).all()
+
+
+def _dedupe_rows_by_max_semantic_sim(row_sets: list[list[Any]]) -> list[Any]:
+    best: dict[uuid.UUID, Any] = {}
+    for rows in row_sets:
+        for row in rows:
+            sim = float(row.semantic_sim)
+            existing = best.get(row.id)
+            if existing is None or sim > float(existing.semantic_sim):
+                best[row.id] = row
+    return list(best.values())
+
+
 def _row_to_candidate(row: Any, relation_count: int) -> dict[str, Any]:
     return {
         "id": row.id,
@@ -501,7 +599,7 @@ def compute_hybrid_score(
 async def _run_classify_intent(state: dict, client: Any) -> dict:
     pack = state.get("pack")
     if pack is None:
-        return {"query_intent": "general", "question_shape": "general"}
+        return {"query_intent": "general", "question_shape": "general", "sub_queries": []}
     intent_names = list(pack.retrieval_policy.query_intents.keys())
     try:
         result, _ = await client.complete_json(
@@ -513,10 +611,44 @@ async def _run_classify_intent(state: dict, client: Any) -> dict:
         )
         intent = result.intent if result.intent in intent_names else "general"
         shape = result.shape if result.shape in QUESTION_SHAPES else "general"
+        sub_queries = _sanitize_sub_queries(result.sub_queries)
     except LLMError:
         intent = "general"
         shape = "general"
-    return {"query_intent": intent, "question_shape": shape}
+        sub_queries = []
+    return {"query_intent": intent, "question_shape": shape, "sub_queries": sub_queries}
+
+
+def _build_subquery_slot_scored(
+    row_sets: list[list[Any]],
+    relation_counts: dict[uuid.UUID, int],
+    candidates_by_id: dict[uuid.UUID, dict[str, Any]],
+    weights: dict[str, float],
+    retrieval_priorities: list[str],
+    recency_min: datetime,
+    recency_max: datetime,
+    effective_top_k: int,
+) -> list[tuple[dict[str, Any], float]]:
+    vector_scored: list[list[tuple[uuid.UUID, float]]] = []
+    for vector_rows in row_sets:
+        scored_vec: list[tuple[uuid.UUID, float]] = []
+        for row in vector_rows:
+            candidate = _row_to_candidate(row, relation_counts.get(row.id, 0))
+            score = compute_hybrid_score(
+                candidate, weights, retrieval_priorities, recency_min, recency_max
+            )
+            scored_vec.append((row.id, score))
+        scored_vec.sort(key=lambda item: item[1], reverse=True)
+        vector_scored.append(scored_vec)
+
+    ordered_ids = merge_subquery_slot_capsule_ids(vector_scored, effective_top_k)
+    best_scores: dict[uuid.UUID, float] = {}
+    for scored_vec in vector_scored:
+        for cap_id, score in scored_vec:
+            prev = best_scores.get(cap_id)
+            if prev is None or score > prev:
+                best_scores[cap_id] = score
+    return [(candidates_by_id[cap_id], best_scores[cap_id]) for cap_id in ordered_ids]
 
 
 async def _run_retrieve_capsules(
@@ -556,33 +688,22 @@ async def _run_retrieve_capsules(
         if sentinel is None:
             return {"context_blocks": []}
 
-        query_vec = embedder.embed_one(state["question"])
-        distance = SemanticCapsule.embedding.cosine_distance(query_vec)
-        rows = (
-            await session.execute(
-                select(
-                    SemanticCapsule.id,
-                    SemanticCapsule.document_id,
-                    SemanticCapsule.text,
-                    SemanticCapsule.domain_object_type,
-                    SemanticCapsule.object_family,
-                    SemanticCapsule.lifecycle_state,
-                    SemanticCapsule.salience,
-                    SemanticCapsule.created_at,
-                    SemanticCapsule.epistemic_state,
-                    SemanticCapsule.confidence,
-                    (1 - distance).label("semantic_sim"),
-                    Document.title.label("title"),
-                    Document.url.label("url"),
-                    Document.published_at.label("published_at"),
-                )
-                .join(Document, SemanticCapsule.document_id == Document.id)
-                .where(SemanticCapsule.embedding.isnot(None))
-                .where(SemanticCapsule.lifecycle_state.in_(_LIFECYCLE_RETRIEVAL_STATES))
-                .order_by(distance)
-                .limit(fetch_k)
+        from app.config import settings
+
+        sub_queries = state.get("sub_queries", [])
+        use_subquery_slots = settings.retrieval_subquery_slots and len(sub_queries) >= 2
+
+        if use_subquery_slots:
+            vectors = [embedder.embed_one(state["question"])] + [
+                embedder.embed_one(sq) for sq in sub_queries
+            ]
+            row_sets = [await _fetch_ann_candidate_rows(session, vec, fetch_k) for vec in vectors]
+            rows = _dedupe_rows_by_max_semantic_sim(row_sets)
+        else:
+            rows = await _fetch_ann_candidate_rows(
+                session, embedder.embed_one(state["question"]), fetch_k
             )
-        ).all()
+            row_sets = None
 
         if not rows:
             return {"context_blocks": []}
@@ -609,21 +730,38 @@ async def _run_retrieve_capsules(
         recency_min: datetime = min(effective_dates)
         recency_max: datetime = max(effective_dates)
 
-        candidates = [_row_to_candidate(r, relation_counts.get(r.id, 0)) for r in rows]
+        candidates_by_id = {r.id: _row_to_candidate(r, relation_counts.get(r.id, 0)) for r in rows}
 
-        scored = sorted(
-            [
-                (
-                    c,
-                    compute_hybrid_score(
-                        c, weights, retrieval_priorities, recency_min, recency_max
-                    ),
-                )
-                for c in candidates
-            ],
-            key=lambda x: x[1],
-            reverse=True,
-        )
+        if use_subquery_slots and row_sets is not None:
+            scored = _build_subquery_slot_scored(
+                row_sets,
+                relation_counts,
+                candidates_by_id,
+                weights,
+                retrieval_priorities,
+                recency_min,
+                recency_max,
+                effective_top_k,
+            )
+        else:
+            scored = sorted(
+                [
+                    (
+                        candidates_by_id[r.id],
+                        compute_hybrid_score(
+                            candidates_by_id[r.id],
+                            weights,
+                            retrieval_priorities,
+                            recency_min,
+                            recency_max,
+                        ),
+                    )
+                    for r in rows
+                ],
+                key=lambda x: x[1],
+                reverse=True,
+            )
+
         top = _assemble_within_budget(scored, effective_top_k, token_budget)
 
         selected_ids = {c["id"] for c, _ in top}
@@ -787,6 +925,7 @@ async def run_chat_with_context(
                 "run_id": run_id,
                 "query_intent": "general",
                 "question_shape": "general",
+                "sub_queries": [],
                 "pack": pack,
                 "as_of": as_of,
                 "context_blocks": [],

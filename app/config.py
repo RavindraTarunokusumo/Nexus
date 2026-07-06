@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # Default domain pack loaded for /chat/answer and session turns.
     default_pack_id: str = "personal_ai_tech"
 
+    # Per-sub-query retrieval floor before shared rerank (B3); off until A/B gate passes.
+    retrieval_subquery_slots: bool = False
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @property
