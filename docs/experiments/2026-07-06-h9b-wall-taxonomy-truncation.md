@@ -65,9 +65,17 @@ abstention boundary without net gain.
 ## Production change + validation
 
 - `chat.py` answer call `max_tokens=4000` — commit `ff77d19`.
-- Fresh-pipeline full-211 validation: [`h9b-4k-validation`](../benchmarks/runs/h9b-4k-validation/) —
-  expected ≈0.85 (replay estimate); confirms the replay harness predicts
-  production.
+- **Validation caveat:** the first fresh-pipeline attempt
+  ([`h9b-4k-validation`](../benchmarks/runs/h9b-4k-validation/), n=50
+  all-temporal) is **not a test of this change** — benchmark scripts run as
+  files imported `app` from the venv's editable install (the main checkout,
+  still at 2000 tokens), so it measured main-vs-main. Its matched "flat"
+  result (0.804→0.739, p≈0.45) is a same-code noise reading. Fixed by
+  inserting the script's own tree root into `sys.path`
+  (`scripts/benchmarks/run_longmemeval.py`, `replay_answer.py`); the real
+  arm is `b3-gate-4k`. Bonus: two other same-code n=50 runs
+  (`b3-gate-baseline`/`b3-gate-slots`) give the gate's noise floor —
+  0.760/0.760 overall, ±3 per category.
 
 ## Revised path to >0.90 (211-question gate)
 
