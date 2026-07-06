@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     # Defaults are Qwen Cloud (DashScope) model ids; override per env.
     t1_model: str = "BAAI/bge-small-en-v1.5"
     t2_model: str = "qwen3.6-flash"
+    extraction_model: str = (
+        "qwen3.6-flash-2026-04-16"  # Span/claim extraction only; empty falls back to T2.
+    )
     t2_model_force: str = ""
     t2_concurrency: int = 4
     t3_model: str = "qwen3.7-max"

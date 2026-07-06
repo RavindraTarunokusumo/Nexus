@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.db.models import CapsuleSegment, Document, SemanticCapsule, SemanticRelation, Span
 from app.domain_packs.loader import load_pack
-from app.intelligence.llm_client import LLMError, LLMNetworkError
+from app.intelligence.llm_client import LLMError, LLMNetworkError, LLMSchemaError
 from app.intelligence.prompts.chat_answer import SYSTEM_PROMPT, build_user_prompt
 from app.intelligence.prompts.classify_intent import (
     SYSTEM_PROMPT as _INTENT_SYSTEM_PROMPT,
@@ -74,6 +74,11 @@ class ChatState(TypedDict):
 
 INSUFFICIENT_EVIDENCE_ANSWER = (
     "I do not have enough evidence to answer that from the current corpus."
+)
+
+_CHAT_ANSWER_SCHEMA_RETRY_SUFFIX = (
+    "\n\nKeep 'notes' to at most 3 one-line bullets. "
+    "Emit complete JSON with 'answer' and 'citations' — the answer matters more than the notes."
 )
 
 _PRIORITY_SCORES = [1.0, 0.5, 0.25, 0.1]
@@ -829,17 +834,29 @@ def make_chat_graph(session_factory: async_sessionmaker, client: Any, embedder: 
             hint=strategy.answer_hint,
             as_of=state["as_of"],
         )
+        tokens = 0
         try:
-            result, tokens = await client.complete_json(
-                model=state["model"],
-                system=SYSTEM_PROMPT,
-                user=user,
-                response_model=ChatAnswerOutput,
-                run_type="chat_answer",
-                # 2000 truncates CoN notes on long contexts: replay A/B 0.802->0.850,
-                # McNemar p=0.013 (docs/benchmarks/runs/h9b-replay-abstention).
-                max_tokens=4000,
-            )
+            try:
+                result, tokens = await client.complete_json(
+                    model=state["model"],
+                    system=SYSTEM_PROMPT,
+                    user=user,
+                    response_model=ChatAnswerOutput,
+                    run_type="chat_answer",
+                    # 2000 truncates CoN notes on long contexts: replay A/B 0.802->0.850,
+                    # McNemar p=0.013 (docs/benchmarks/runs/h9b-replay-abstention).
+                    max_tokens=4000,
+                )
+            except LLMSchemaError:
+                result, retry_tokens = await client.complete_json(
+                    model=state["model"],
+                    system=SYSTEM_PROMPT + _CHAT_ANSWER_SCHEMA_RETRY_SUFFIX,
+                    user=user,
+                    response_model=ChatAnswerOutput,
+                    run_type="chat_answer",
+                    max_tokens=4000,
+                )
+                tokens += retry_tokens
         except LLMNetworkError as exc:
             return {"error": str(exc), "tokens_used": 0}
         return {"answer": result.answer, "citation_labels": result.citations, "tokens_used": tokens}

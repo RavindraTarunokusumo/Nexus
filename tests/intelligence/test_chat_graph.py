@@ -539,3 +539,83 @@ async def test_retrieve_capsules_flag_off_ignores_sub_queries() -> None:
 
     assert embedder.embed_one.call_count == 1
     assert result["context_blocks"][0]["capsule_id"] == cap_only
+
+
+@pytest.mark.asyncio
+async def test_chat_answer_schema_error_retries_once_and_succeeds() -> None:
+    from app.intelligence.chat import make_chat_graph, run_chat_with_context
+    from app.intelligence.llm_client import LLMSchemaError
+    from app.intelligence.prompts.chat_answer import SYSTEM_PROMPT
+
+    capsule_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    sf = _make_session_factory(rows=[_capsule_row(capsule_id, doc_id)])
+
+    intent_result = MagicMock()
+    intent_result.intent = "general"
+    intent_result.shape = "general"
+    intent_result.sub_queries = []
+    answer_result = MagicMock()
+    answer_result.notes = ""
+    answer_result.answer = "Recovered answer"
+    answer_result.citations = ["C1"]
+
+    client = AsyncMock()
+    client.complete_json = AsyncMock(
+        side_effect=[
+            (intent_result, 10),
+            LLMSchemaError("truncated notes"),
+            (answer_result, 65),
+        ]
+    )
+    embedder = _make_embedder()
+    pack = _make_pack(query_intents={"general": {}})
+
+    graph = make_chat_graph(sf, client, embedder)
+    with patch("app.intelligence.chat.load_pack", return_value=pack):
+        result = await run_chat_with_context(graph, "What is GPT-5?", "test-model", top_k=1)
+
+    assert result["answer"] == "Recovered answer"
+    assert result["tokens_used"] == 65
+    assert client.complete_json.call_count == 3
+    answer_calls = [
+        c for c in client.complete_json.call_args_list if c.kwargs.get("run_type") == "chat_answer"
+    ]
+    assert len(answer_calls) == 2
+    assert answer_calls[0].kwargs["system"] == SYSTEM_PROMPT
+    assert "3 one-line bullets" in answer_calls[1].kwargs["system"]
+    assert "'answer' and 'citations'" in answer_calls[1].kwargs["system"]
+
+
+@pytest.mark.asyncio
+async def test_chat_answer_schema_error_retry_then_propagates() -> None:
+    from app.intelligence.chat import make_chat_graph, run_chat_with_context
+    from app.intelligence.llm_client import LLMSchemaError
+
+    capsule_id = uuid.uuid4()
+    sf = _make_session_factory(rows=[_capsule_row(capsule_id)])
+    intent_result = MagicMock()
+    intent_result.intent = "general"
+    intent_result.shape = "general"
+    intent_result.sub_queries = []
+
+    client = AsyncMock()
+    client.complete_json = AsyncMock(
+        side_effect=[
+            (intent_result, 10),
+            LLMSchemaError("truncated notes"),
+            LLMSchemaError("still truncated"),
+        ]
+    )
+    embedder = _make_embedder()
+    pack = _make_pack(query_intents={"general": {}})
+
+    graph = make_chat_graph(sf, client, embedder)
+    with patch("app.intelligence.chat.load_pack", return_value=pack):
+        with pytest.raises(LLMSchemaError, match="still truncated"):
+            await run_chat_with_context(graph, "What is GPT-5?", "test-model", top_k=1)
+
+    answer_calls = [
+        c for c in client.complete_json.call_args_list if c.kwargs.get("run_type") == "chat_answer"
+    ]
+    assert len(answer_calls) == 2
