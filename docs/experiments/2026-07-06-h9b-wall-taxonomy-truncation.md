@@ -77,6 +77,33 @@ abstention boundary without net gain.
   (`b3-gate-baseline`/`b3-gate-slots`) give the gate's noise floor —
   0.760/0.760 overall, ±3 per category.
 
+## B3 A/B verdict (post-footgun, correct code both arms)
+
+n=50 mixed gate (25/category) + targeted wall-3 runs, noise floor from the
+same-code pair (0.760/0.760, ±3/category):
+
+| arm | gate | temporal | knowledge-update | wall-3 (6q) |
+| --- | --- | --- | --- | --- |
+| 2000-token main (noise pair) | 0.760 / 0.760 | 17, 20 | 21, 18 | 1/6, 0/6 |
+| **4k, slots off** (`b3-gate-4k`, `b3-wall3-4k`) | **0.820** | 20/25 | 21/25 | 1/6 (+2 schema errors) |
+| 4k + slots (`b3-gate-slots-v2`, `b3-wall3-slots-v2`) | 0.776 | 17/25 | 21/25 | **0/6** |
+
+- **4k confirmed on fresh pipeline**: 0.820 vs the 0.760/0.760 same-code pair —
+  +3 questions, both categories at their best observed values, 0 gate schema
+  errors. Direction and size match the frozen-context replay (p=0.013).
+- **B3 slots FAIL their gate**: −0.044 on the gate (5 up / 7 down, p≈0.77, ns)
+  and 0/6 on the target population — including flipping the Samsung/Dell
+  ordering question right→wrong in **two independent replicates**. Emission
+  verified real: 5/6 wall-3 questions produced ≥2 sensible sub-queries
+  (`agent_runs`), so the mechanism ran as designed and still lost.
+  **`retrieval_subquery_slots` stays False.**
+- **Wall-3 is not (mainly) a retrieval problem anymore.** Per the taxonomy these
+  questions retrieve their evidence (cov 0.58–1.0); across four runs the same
+  4/6 fail systematically via date-arithmetic mistakes, abstention-with-evidence,
+  or — on the two 6-item enumeration questions — the notes-overrun
+  `LLMSchemaError`. The lever is the answer path (schema-failure retry, date
+  arithmetic), not slot allocation.
+
 ## Revised path to >0.90 (211-question gate)
 
 1. ~~Truncation fix~~ (`ff77d19`) — worth ≈+3–5 pts, validated by replay.

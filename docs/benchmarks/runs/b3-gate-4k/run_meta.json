@@ -1,0 +1,27 @@
+{
+  "started_at": "2026-07-06T19:21:53.889216+00:00",
+  "finished_at": "2026-07-06T19:31:04.140137+00:00",
+  "git_rev": "08a43f7",
+  "dataset": "/root/Nexus/evals/memory/longmemeval/longmemeval_oracle.json",
+  "categories": [
+    "knowledge-update",
+    "temporal-reasoning"
+  ],
+  "limit": 0,
+  "offset": 0,
+  "per_category_limit": 25,
+  "question_ids": [],
+  "k": 5,
+  "workers": 6,
+  "t1_model": "BAAI/bge-small-en-v1.5",
+  "t2_model": "qwen3.6-flash",
+  "t3_model": "qwen3.7-max",
+  "judge_model": "qwen3.7-max",
+  "llm_base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+  "instance_count": 50,
+  "judge_errors": 0,
+  "instance_errors": 0,
+  "domain": "conversation_v1",
+  "pack_id": "conversation_v1",
+  "db_url_template": "postgresql+asyncpg://nexus:nexus@localhost:5432/nexus_lme_w{n}"
+}
