@@ -48,3 +48,4 @@ Thumbs.db
 
 # LongMemEval dataset (download locally)
 evals/memory/longmemeval/*.json
+evals/memory/locomo/*.json
