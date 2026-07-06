@@ -1,0 +1,67 @@
+[
+  {
+    "variant": "cot_leanprompt",
+    "n": 207,
+    "labeled": 207,
+    "accuracy": 0.802,
+    "mean_tokens": 1871.4,
+    "abstain": 34,
+    "per_type": {
+      "temporal-reasoning": 0.777,
+      "knowledge-update": 0.844
+    },
+    "errors": 0
+  },
+  {
+    "variant": "cot_leanprompt_nostep5",
+    "n": 207,
+    "labeled": 207,
+    "accuracy": 0.821,
+    "mean_tokens": 1879.0,
+    "abstain": 24,
+    "per_type": {
+      "temporal-reasoning": 0.831,
+      "knowledge-update": 0.805
+    },
+    "errors": 0
+  },
+  {
+    "variant": "cot_leanprompt_4k",
+    "n": 207,
+    "labeled": 207,
+    "accuracy": 0.85,
+    "mean_tokens": 1962.4,
+    "abstain": 28,
+    "per_type": {
+      "temporal-reasoning": 0.846,
+      "knowledge-update": 0.857
+    },
+    "errors": 0
+  },
+  {
+    "variant": "cot_leanprompt_confident",
+    "n": 207,
+    "labeled": 207,
+    "accuracy": 0.821,
+    "mean_tokens": 1985.2,
+    "abstain": 32,
+    "per_type": {
+      "temporal-reasoning": 0.808,
+      "knowledge-update": 0.844
+    },
+    "errors": 0
+  },
+  {
+    "variant": "cot_leanprompt_confident_4k",
+    "n": 207,
+    "labeled": 207,
+    "accuracy": 0.816,
+    "mean_tokens": 2015.6,
+    "abstain": 29,
+    "per_type": {
+      "temporal-reasoning": 0.815,
+      "knowledge-update": 0.818
+    },
+    "errors": 0
+  }
+]
