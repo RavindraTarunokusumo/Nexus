@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     # For conversational corpora (LoCoMo); keep off for LongMemEval (rewards strict
     # abstention on adversarial questions).
     sentence_window_permit_inference: bool = False
+    # Hybrid retrieval: fuse lexical (Postgres full-text) with semantic ANN via RRF.
+    # Targets "needle" facts (specific dates/titles) that a small embedding buries.
+    sentence_window_hybrid: bool = False
+    # Decompose the question into sub-queries and union their candidate pools (multi-hop).
+    sentence_window_subqueries: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

@@ -6,7 +6,9 @@ from types import SimpleNamespace
 
 from app.intelligence.prompts.chat_answer import build_user_prompt
 from app.intelligence.sentence_window import (
+    _lexical_tsquery,
     _order_context_blocks,
+    _rrf_fuse,
     rank_hit_windows,
     split_sentences,
 )
@@ -56,6 +58,25 @@ def test_rank_hit_windows_dedup_and_ordering() -> None:
     assert ranked[0][0].id == best_duplicate.id
     assert ranked[1][0].id == fresh_unique.id
     assert ranked[0][1] >= ranked[1][1]
+
+
+def test_rrf_fuse_rewards_cross_list_agreement_and_dedups() -> None:
+    a, b, c = (uuid.uuid4() for _ in range(3))
+    list1 = [SimpleNamespace(id=a), SimpleNamespace(id=b)]
+    list2 = [SimpleNamespace(id=b), SimpleNamespace(id=c)]  # b appears in both
+    fused = _rrf_fuse([list1, list2], k=3)
+    ids = [h.id for h in fused]
+    assert ids[0] == b  # agreement across both lists ranks it first
+    assert len(ids) == len(set(ids)) == 3  # deduped, all present
+
+
+def test_lexical_tsquery_ors_dedups_and_drops_short_tokens() -> None:
+    q = _lexical_tsquery("When did Joanna watch watch it in 2019?")
+    terms = q.split(" | ")
+    assert "joanna" in terms and "2019" in terms and "watch" in terms
+    assert "it" not in terms  # short tokens dropped
+    assert terms.count("watch") == 1  # deduped
+    assert _lexical_tsquery("a of it") == ""  # all-short -> empty
 
 
 def test_order_context_blocks_by_published_at_then_span_index() -> None:

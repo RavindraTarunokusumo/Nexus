@@ -242,6 +242,18 @@ def build_judge_prompt(
             "only."
         ).format(question, gold_answer, hypothesis)
 
+    if category == 3:  # open_domain — reference answer is a paraphrasable inference
+        return (
+            "I will give you a question, a reference answer, and a response from a model. "
+            "This is an open-domain question: the reference answer is one acceptable "
+            "phrasing, not the only one. Answer yes if the response conveys the same "
+            "essential meaning as the reference or captures its key point, even if worded "
+            "differently, more verbosely, or via a reasonable inference from the same "
+            "facts. Answer no only if it misses or contradicts the key point.\n\n"
+            "Question: {}\n\nReference Answer: {}\n\nModel Response: {}\n\n"
+            "Is the model response acceptable? Answer yes or no only."
+        ).format(question, gold_answer, hypothesis)
+
     return (
         "I will give you a question, a correct answer, and a response from a model. "
         "Please answer yes if the response contains the correct answer or is equivalent "

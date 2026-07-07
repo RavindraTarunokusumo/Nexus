@@ -6,7 +6,8 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from pydantic import BaseModel
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import settings
@@ -157,6 +158,86 @@ async def _fetch_ann_hits(
     return list(rows)
 
 
+_WORD_RE = re.compile(r"[A-Za-z0-9]+")
+
+
+def _lexical_tsquery(question: str) -> str:
+    """OR-of-terms tsquery string from question tokens (recall-oriented, injection-safe)."""
+    seen: dict[str, None] = {}
+    for tok in _WORD_RE.findall(question.lower()):
+        if len(tok) > 2:
+            seen.setdefault(tok, None)
+    return " | ".join(seen)
+
+
+async def _fetch_lexical_hits(
+    session: AsyncSession,
+    question: str,
+    fetch_k: int,
+) -> list[Any]:
+    tsq = _lexical_tsquery(question)
+    if not tsq:
+        return []
+    # ponytail: on-the-fly to_tsvector (LoCoMo corpora are ~hundreds of spans); add a
+    # GIN index on to_tsvector('english', text) if this ever runs on large corpora.
+    stmt = text(
+        """
+        SELECT s.id, s.document_id, s.span_index, s.text,
+               ts_rank(to_tsvector('english', s.text), to_tsquery('english', :tsq)) AS semantic_sim,
+               d.title AS title, d.url AS url, d.published_at AS published_at, d.fetched_at AS fetched_at
+        FROM spans s JOIN documents d ON s.document_id = d.id
+        WHERE s.embedding IS NOT NULL
+          AND to_tsvector('english', s.text) @@ to_tsquery('english', :tsq)
+        ORDER BY semantic_sim DESC
+        LIMIT :k
+        """
+    )
+    try:
+        rows = (await session.execute(stmt, {"tsq": tsq, "k": fetch_k})).all()
+    except Exception:  # noqa: BLE001 - malformed tsquery falls back to semantic-only
+        return []
+    return list(rows)
+
+
+def _rrf_fuse(ranked_lists: list[list[Any]], k: int, *, k_rrf: int = 60) -> list[Any]:
+    """Reciprocal-rank fusion across ranked hit lists; dedup by span id, return top-k hits."""
+    scores: dict[uuid.UUID, float] = {}
+    hit_by_id: dict[uuid.UUID, Any] = {}
+    for ranked in ranked_lists:
+        for rank, hit in enumerate(ranked):
+            scores[hit.id] = scores.get(hit.id, 0.0) + 1.0 / (k_rrf + rank)
+            hit_by_id.setdefault(hit.id, hit)
+    ordered = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
+    return [hit_by_id[hid] for hid, _ in ordered[:k]]
+
+
+class _SubQueries(BaseModel):
+    subqueries: list[str]
+
+
+_DECOMPOSE_SYSTEM = (
+    "Break the user's question into 2-3 short, focused sub-questions that each "
+    "retrieve one fact needed to answer it. If the question is already atomic, "
+    'return it unchanged as a single item. Return JSON: {"subqueries": [...]}.'
+)
+
+
+async def _decompose_question(client: Any, model: str, question: str) -> tuple[list[str], int]:
+    try:
+        result, tokens = await client.complete_json(
+            model=model,
+            system=_DECOMPOSE_SYSTEM,
+            user=question,
+            response_model=_SubQueries,
+            run_type="chat_answer",
+            max_tokens=300,
+        )
+    except (LLMSchemaError, LLMNetworkError):
+        return [], 0
+    subs = [s.strip() for s in result.subqueries if s.strip()][:3]
+    return subs, tokens
+
+
 async def _fetch_neighbor_spans(
     session: AsyncSession,
     document_id: uuid.UUID,
@@ -187,6 +268,35 @@ def _order_context_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(blocks, key=sort_key)
 
 
+async def _build_blocks(
+    session: AsyncSession,
+    hits: list[Any],
+    scores: list[float],
+    window: int,
+) -> list[dict[str, Any]]:
+    blocks: list[dict[str, Any]] = []
+    label_index = 0
+    for hit, score in zip(hits, scores, strict=True):
+        neighbors = await _fetch_neighbor_spans(session, hit.document_id, hit.span_index, window)
+        if not neighbors:
+            continue
+        label_index += 1
+        blocks.append(
+            {
+                "label": f"C{label_index}",
+                "text": " ".join(row.text for row in neighbors),
+                "published_at": hit.published_at,
+                "span_ids": [row.id for row in neighbors],
+                "document_id": hit.document_id,
+                "document_title": hit.title,
+                "url": hit.url,
+                "score": score,
+                "first_span_index": neighbors[0].span_index,
+            }
+        )
+    return _order_context_blocks(blocks)
+
+
 async def retrieve_windows(
     session: AsyncSession,
     embedder: Any,
@@ -196,68 +306,35 @@ async def retrieve_windows(
     window: int,
     k: int,
     as_of: datetime | None,
+    queries: list[str] | None = None,
+    hybrid: bool = False,
 ) -> list[dict[str, Any]]:
     del as_of  # reserved for prompt assembly in answer_sentence_window
     sentinel = await session.scalar(select(Span).where(Span.embedding.isnot(None)).limit(1))
     if sentinel is None:
         return []
 
-    query_vec = embedder.embed_one(question)
-    hits = await _fetch_ann_hits(session, query_vec, fetch_k)
+    all_queries = queries or [question]
+    if hybrid or len(all_queries) > 1:
+        # RRF fusion across per-query semantic (and lexical) ranked lists. A span
+        # appearing in several lists is rewarded, surfacing cross-query/cross-modal hits.
+        ranked_lists: list[list[Any]] = []
+        for q in all_queries:
+            ranked_lists.append(await _fetch_ann_hits(session, embedder.embed_one(q), fetch_k))
+            if hybrid:
+                lexical = await _fetch_lexical_hits(session, q, fetch_k)
+                if lexical:
+                    ranked_lists.append(lexical)
+        fused = _rrf_fuse(ranked_lists, k)
+        if not fused:
+            return []
+        return await _build_blocks(session, fused, [0.0] * len(fused), window)
+
+    hits = await _fetch_ann_hits(session, embedder.embed_one(question), fetch_k)
     if not hits:
         return []
-
-    effective_dates = [hit.published_at or hit.fetched_at for hit in hits]
-    recency_min = min(effective_dates)
-    recency_max = max(effective_dates)
-
-    scored_hits = [
-        (
-            hit,
-            _hybrid_hit_score(
-                float(hit.semantic_sim),
-                hit.published_at,
-                hit.fetched_at,
-                recency_min,
-                recency_max,
-            ),
-        )
-        for hit in hits
-    ]
-    scored_hits.sort(key=lambda item: item[1], reverse=True)
-
-    seen_hit_ids: set[uuid.UUID] = set()
-    selected_hits: list[tuple[Any, float]] = []
-    for hit, score in scored_hits:
-        if hit.id in seen_hit_ids:
-            continue
-        seen_hit_ids.add(hit.id)
-        selected_hits.append((hit, score))
-        if len(selected_hits) >= k:
-            break
-
-    blocks: list[dict[str, Any]] = []
-    for label_index, (hit, score) in enumerate(selected_hits, start=1):
-        neighbors = await _fetch_neighbor_spans(session, hit.document_id, hit.span_index, window)
-        if not neighbors:
-            continue
-        span_ids = [row.id for row in neighbors]
-        block_text = " ".join(row.text for row in neighbors)
-        blocks.append(
-            {
-                "label": f"C{label_index}",
-                "text": block_text,
-                "published_at": hit.published_at,
-                "span_ids": span_ids,
-                "document_id": hit.document_id,
-                "document_title": hit.title,
-                "url": hit.url,
-                "score": score,
-                "first_span_index": neighbors[0].span_index,
-            }
-        )
-
-    return _order_context_blocks(blocks)
+    selected = rank_hit_windows(hits, k=k)
+    return await _build_blocks(session, [h for h, _ in selected], [s for _, s in selected], window)
 
 
 async def answer_sentence_window(
@@ -274,6 +351,13 @@ async def answer_sentence_window(
     pack: Any,
 ) -> dict[str, Any]:
     del pack  # sentence-window path does not use pack retrieval policy in the MVP
+    tokens = 0
+    queries = [question]
+    if settings.sentence_window_subqueries:
+        subs, decompose_tokens = await _decompose_question(client, model, question)
+        tokens += decompose_tokens
+        queries = [question, *subs]
+
     async with session_factory() as session:
         blocks = await retrieve_windows(
             session,
@@ -283,13 +367,15 @@ async def answer_sentence_window(
             window=window,
             k=k,
             as_of=as_of,
+            queries=queries,
+            hybrid=settings.sentence_window_hybrid,
         )
 
     if not blocks:
         return {
             "answer": INSUFFICIENT_EVIDENCE_ANSWER,
             "citation_labels": [],
-            "tokens_used": 0,
+            "tokens_used": tokens,
             "context_blocks": [],
             "question_shape": "sentence_window",
         }
@@ -298,10 +384,9 @@ async def answer_sentence_window(
     system_prompt = (
         SYSTEM_PROMPT_INFERENCE if settings.sentence_window_permit_inference else SYSTEM_PROMPT
     )
-    tokens = 0
     try:
         try:
-            result, tokens = await client.complete_json(
+            result, answer_tokens = await client.complete_json(
                 model=model,
                 system=system_prompt,
                 user=user,
@@ -309,6 +394,7 @@ async def answer_sentence_window(
                 run_type="chat_answer",
                 max_tokens=4000,
             )
+            tokens += answer_tokens
         except LLMSchemaError:
             result, retry_tokens = await client.complete_json(
                 model=model,
@@ -323,7 +409,7 @@ async def answer_sentence_window(
         return {
             "answer": INSUFFICIENT_EVIDENCE_ANSWER,
             "citation_labels": [],
-            "tokens_used": 0,
+            "tokens_used": tokens,
             "context_blocks": blocks,
             "question_shape": "sentence_window",
             "error": str(exc),
