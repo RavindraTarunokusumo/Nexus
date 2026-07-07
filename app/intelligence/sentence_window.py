@@ -20,7 +20,11 @@ from app.intelligence.chat import (
     estimate_tokens,
 )
 from app.intelligence.llm_client import LLMNetworkError, LLMSchemaError
-from app.intelligence.prompts.chat_answer import SYSTEM_PROMPT, build_user_prompt
+from app.intelligence.prompts.chat_answer import (
+    SYSTEM_PROMPT,
+    SYSTEM_PROMPT_INFERENCE,
+    build_user_prompt,
+)
 
 _ABBREVIATIONS = (
     "Mr.",
@@ -291,12 +295,15 @@ async def answer_sentence_window(
         }
 
     user = build_user_prompt(question, blocks, as_of=as_of)
+    system_prompt = (
+        SYSTEM_PROMPT_INFERENCE if settings.sentence_window_permit_inference else SYSTEM_PROMPT
+    )
     tokens = 0
     try:
         try:
             result, tokens = await client.complete_json(
                 model=model,
-                system=SYSTEM_PROMPT,
+                system=system_prompt,
                 user=user,
                 response_model=ChatAnswerOutput,
                 run_type="chat_answer",
@@ -305,7 +312,7 @@ async def answer_sentence_window(
         except LLMSchemaError:
             result, retry_tokens = await client.complete_json(
                 model=model,
-                system=SYSTEM_PROMPT + _SCHEMA_RETRY_SUFFIX,
+                system=system_prompt + _SCHEMA_RETRY_SUFFIX,
                 user=user,
                 response_model=ChatAnswerOutput,
                 run_type="chat_answer",

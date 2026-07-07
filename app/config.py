@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     # relevant evidence (fatal for "which happened first" questions). Semantic
     # dominates; the reader + ordering handle temporal.
     sentence_window_recency_weight: float = 0.05
+    # Use the inference-permitting reader prompt (grounded synthesis, abstain less).
+    # For conversational corpora (LoCoMo); keep off for LongMemEval (rewards strict
+    # abstention on adversarial questions).
+    sentence_window_permit_inference: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

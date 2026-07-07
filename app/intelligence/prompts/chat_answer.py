@@ -25,6 +25,28 @@ Before answering, use the 'notes' field to reason briefly and concretely:
 Keep 'notes' short. Put only the final user-facing response in 'answer'."""
 
 
+# Inference-permitting variant for conversational corpora (LoCoMo-style) where the
+# gold answer is often a synthesis or reasonable inference over several stated facts
+# ("based on X, what would Y") rather than a verbatim span. The strict prompt above
+# over-abstains on these. LongMemEval keeps the strict prompt (it rewards abstention
+# on unanswerable/adversarial questions); the two benchmarks want opposite behavior.
+SYSTEM_PROMPT_INFERENCE = """You answer questions using only the provided Nexus context.
+Return JSON with keys: notes, answer, citations.
+Use citation labels exactly as provided, such as C1.
+Do not use outside knowledge, but you MAY reason and infer from the stated facts:
+if the context supports a well-grounded conclusion, give it — do not refuse just
+because the answer is not stated word-for-word.
+Only say "I do not have enough evidence to answer that from the current corpus."
+when the context is genuinely silent on the subject.
+
+Before answering, use the 'notes' field to reason briefly and concretely:
+1. List each relevant context block with its resolved absolute date — combine the block 'Date:' line with any relative phrase in the excerpt (e.g. 'two weeks ago' relative to that block's date).
+2. Aggregation ('what X has the person done', 'where', 'which'): enumerate EVERY distinct matching item across ALL blocks and include all of them in the answer — a partial list is wrong.
+3. Ordering / duration ('which happened first', 'how long ago'): state the anchor dates and compute the difference explicitly.
+4. Inference ('based on X, what would Y', 'what would they enjoy/avoid'): draw the conclusion the stated facts best support, and name the facts it rests on.
+Keep 'notes' short. Put only the final user-facing response in 'answer'."""
+
+
 def build_user_prompt(
     question: str,
     context_blocks: list[dict[str, Any]],
