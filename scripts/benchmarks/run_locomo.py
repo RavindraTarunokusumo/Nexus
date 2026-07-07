@@ -51,12 +51,15 @@ from app.intelligence.embedder import Embedder
 from app.intelligence.extraction import _resolve_t2_model
 from app.intelligence.lifecycle import apply_lifecycle_transitions
 from app.intelligence.llm_client import LLMClient, LLMError, LLMNetworkError, LLMSchemaError
+from app.intelligence.sentence_window import answer_sentence_window
 from scripts.benchmarks.run_longmemeval import (
     _accuracy,
     _extract_documents,
     _git_rev,
     _ingest_corpus,
+    _ingest_sentence_window_corpus,
     _instance_stats,
+    _resolve_k,
     _serialize_blocks,
     _truncate_memory_tables,
     shard_instances,
@@ -370,6 +373,7 @@ async def _run_single_conversation(
     resolved_domain: str,
     t2_model: str,
     k: int,
+    mode: str,
     categories: list[int],
     question_limit: int,
     append_partial: Any,
@@ -383,23 +387,32 @@ async def _run_single_conversation(
         corpus = _conversation_to_corpus(sample)
         corpus_urls = [normalize_url(doc["url"]) for doc in corpus]
 
-        await _ingest_corpus(corpus, session_factory, embedder, pack_id)
-        await _extract_documents(corpus, session_factory, client, t2_model=t2_model)
-        await classify_cross_document_relations(
-            session_factory,
-            client,
-            domain=resolved_domain,
-            pack=pack_obj,
-            model=t2_model,
-        )
-        async with session_factory() as session:
-            await apply_lifecycle_transitions(session, domain=resolved_domain, pack=pack_obj)
-        async with session_factory() as session:
-            await consolidate_domain(session, domain=resolved_domain, pack=pack_obj)
+        sentence_span_count = 0
+        if mode == "sentence-window":
+            doc_count, _skipped, sentence_span_count = await _ingest_sentence_window_corpus(
+                corpus, session_factory, embedder, pack_id
+            )
+            capsule_count = 0
+            relation_count = 0
+            zero_capsule_docs = []
+        else:
+            await _ingest_corpus(corpus, session_factory, embedder, pack_id)
+            await _extract_documents(corpus, session_factory, client, t2_model=t2_model)
+            await classify_cross_document_relations(
+                session_factory,
+                client,
+                domain=resolved_domain,
+                pack=pack_obj,
+                model=t2_model,
+            )
+            async with session_factory() as session:
+                await apply_lifecycle_transitions(session, domain=resolved_domain, pack=pack_obj)
+            async with session_factory() as session:
+                await consolidate_domain(session, domain=resolved_domain, pack=pack_obj)
 
-        doc_count, capsule_count, relation_count, zero_capsule_docs = await _instance_stats(
-            session_factory, corpus_urls
-        )
+            doc_count, capsule_count, relation_count, zero_capsule_docs = await _instance_stats(
+                session_factory, corpus_urls
+            )
         as_of = _last_session_as_of(sample["conversation"])
     except Exception as exc:  # noqa: BLE001 — one bad conversation must not kill a worker
         print(f"ERROR conversation {sample_id}: {exc!r}")
@@ -428,14 +441,28 @@ async def _run_single_conversation(
             gold_answer = gold_answer_text(qa)
 
             start = time.monotonic()
-            final = await run_chat_with_context(
-                chat_graph,
-                qa["question"],
-                t2_model,
-                top_k=k,
-                pack=pack_obj,
-                as_of=as_of,
-            )
+            if mode == "sentence-window":
+                final = await answer_sentence_window(
+                    session_factory,
+                    client,
+                    embedder,
+                    qa["question"],
+                    t2_model,
+                    fetch_k=settings.sentence_window_fetch_k,
+                    window=settings.sentence_window_size,
+                    k=k,
+                    as_of=as_of,
+                    pack=pack_obj,
+                )
+            else:
+                final = await run_chat_with_context(
+                    chat_graph,
+                    qa["question"],
+                    t2_model,
+                    top_k=k,
+                    pack=pack_obj,
+                    as_of=as_of,
+                )
             latency_s = time.monotonic() - start
 
             hypothesis = final.get("answer") or INSUFFICIENT_EVIDENCE_ANSWER
@@ -468,6 +495,7 @@ async def _run_single_conversation(
                 "capsule_count": capsule_count,
                 "relation_count": relation_count,
                 "zero_capsule_docs": zero_capsule_docs,
+                "sentence_span_count": sentence_span_count,
             }
             if _DUMP_CONTEXT:
                 row["as_of"] = as_of.isoformat() if as_of else None
@@ -504,6 +532,7 @@ async def _run_worker(
     resolved_domain: str,
     t2_model: str,
     k: int,
+    mode: str,
     categories: list[int],
     question_limit: int,
     partial_lock: asyncio.Lock,
@@ -540,6 +569,7 @@ async def _run_worker(
             resolved_domain=resolved_domain,
             t2_model=t2_model,
             k=k,
+            mode=mode,
             categories=categories,
             question_limit=question_limit,
             append_partial=append_partial,
@@ -558,12 +588,13 @@ async def run_locomo(
     limit: int = 0,
     offset: int = 0,
     question_limit: int = 0,
-    k: int = 5,
+    k: int | None = None,
     out: Path | None = None,
     pack: str | None = None,
     workers: int = 1,
     db_url_template: str = "",
     db_url: str | None = None,
+    mode: str = "semantic",
 ) -> dict[str, Any]:
     started_at = datetime.now(timezone.utc)
     resolved_categories = categories or list(_DEFAULT_CATEGORIES)
@@ -582,6 +613,7 @@ async def run_locomo(
     pack_obj = load_pack(pack_id)
     resolved_domain = pack_obj.metadata.domain
     t2_model = _resolve_t2_model(pack_obj, settings.t2_model)
+    resolved_k = _resolve_k(mode, k)
 
     judge_errors = 0
     question_errors = 0
@@ -621,7 +653,8 @@ async def run_locomo(
                     pack_obj=pack_obj,
                     resolved_domain=resolved_domain,
                     t2_model=t2_model,
-                    k=k,
+                    k=resolved_k,
+                    mode=mode,
                     categories=resolved_categories,
                     question_limit=question_limit,
                     append_partial=append_partial,
@@ -642,7 +675,8 @@ async def run_locomo(
                         pack_obj=pack_obj,
                         resolved_domain=resolved_domain,
                         t2_model=t2_model,
-                        k=k,
+                        k=resolved_k,
+                        mode=mode,
                         categories=resolved_categories,
                         question_limit=question_limit,
                         partial_lock=partial_lock,
@@ -674,7 +708,8 @@ async def run_locomo(
         "limit": limit,
         "offset": offset,
         "question_limit": question_limit,
-        "k": k,
+        "k": resolved_k,
+        "mode": mode,
         "workers": workers,
         "t1_model": settings.t1_model,
         "t2_model": t2_model,
@@ -724,7 +759,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=0,
         help="Max questions per conversation after category filter (0 = no limit).",
     )
-    parser.add_argument("--k", type=int, default=5)
+    parser.add_argument(
+        "--k",
+        type=int,
+        default=None,
+        help="Retrieval top-k (semantic default 5; sentence-window default from settings).",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("semantic", "sentence-window"),
+        default="semantic",
+        help="Ingest+answer path: semantic pipeline (default) or sentence-window retrieval.",
+    )
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument(
         "--pack",
@@ -776,6 +822,7 @@ def main(argv: list[str] | None = None) -> None:
             workers=args.workers,
             db_url_template=args.db_url_template,
             db_url=args.db_url,
+            mode=args.mode,
         )
     )
     print(f"Wrote LoCoMo results to {result['out_dir']}")

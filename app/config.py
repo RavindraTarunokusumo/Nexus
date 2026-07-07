@@ -40,6 +40,16 @@ class Settings(BaseSettings):
     # Per-sub-query retrieval floor before shared rerank (B3); off until A/B gate passes.
     retrieval_subquery_slots: bool = False
 
+    # Sentence-window retrieval (deterministic ingest, no extraction graph).
+    sentence_window_size: int = 2
+    sentence_window_top_k: int = 15
+    sentence_window_fetch_k: int = 60
+    # Recency vs semantic blend for sentence-window ranking. Low by default: raw
+    # sentences have no supersession edges, so a high recency weight buries old-but-
+    # relevant evidence (fatal for "which happened first" questions). Semantic
+    # dominates; the reader + ordering handle temporal.
+    sentence_window_recency_weight: float = 0.05
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @property

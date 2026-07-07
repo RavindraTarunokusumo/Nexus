@@ -237,7 +237,8 @@ def test_parse_args_defaults():
     assert args.limit == 0
     assert args.offset == 0
     assert args.question_limit == 0
-    assert args.k == 5
+    assert args.k is None  # resolved per-mode: 5 (semantic) or settings.sentence_window_top_k
+    assert args.mode == "semantic"
     assert args.pack is None
     assert args.workers == 1
     assert args.db_url_template == ""
