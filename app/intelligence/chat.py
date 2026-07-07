@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, TypedDict
 
 from langgraph.graph import END, StateGraph
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -31,6 +31,15 @@ class ChatAnswerOutput(BaseModel):
     notes: str | None = None
     answer: str
     citations: list[str]
+
+    @field_validator("notes", mode="before")
+    @classmethod
+    def _coerce_notes(cls, value: Any) -> Any:
+        # Some thinking models (e.g. glm-5.2) emit notes as a JSON array of lines
+        # instead of a string. Join rather than fail — notes is internal-only.
+        if isinstance(value, list):
+            return "\n".join(str(item) for item in value)
+        return value
 
 
 class CitationEvidence(BaseModel):
