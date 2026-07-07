@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     sentence_window_hybrid: bool = False
     # Decompose the question into sub-queries and union their candidate pools (multi-hop).
     sentence_window_subqueries: bool = False
+    # Entity-anchored retrieval: local NER tags spans and adds a JSONB entity channel to RRF.
+    sentence_window_entity_anchoring: bool = False
+    sentence_window_ner_model: str = "urchade/gliner_small-v2.1"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

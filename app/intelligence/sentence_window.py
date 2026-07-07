@@ -20,6 +20,7 @@ from app.intelligence.chat import (
     ChatAnswerOutput,
     estimate_tokens,
 )
+from app.intelligence.entities import extract_entities
 from app.intelligence.llm_client import LLMNetworkError, LLMSchemaError
 from app.intelligence.prompts.chat_answer import (
     SYSTEM_PROMPT,
@@ -107,11 +108,20 @@ async def ingest_sentence_spans(
     if not sentences:
         return 0
 
-    metadata: dict[str, str] | None = {"speaker": speaker} if speaker else None
+    entity_lists: list[list[str]] | None = None
+    if settings.sentence_window_entity_anchoring:
+        entity_lists = extract_entities(sentences)
     vectors = embedder.embed(sentences)
 
     async with session_factory() as session:
         for index, (sentence, vector) in enumerate(zip(sentences, vectors, strict=True)):
+            metadata: dict[str, Any] | None = None
+            if speaker is not None or entity_lists is not None:
+                metadata = {}
+                if speaker is not None:
+                    metadata["speaker"] = speaker
+                if entity_lists is not None:
+                    metadata["entities"] = entity_lists[index]
             session.add(
                 Span(
                     document_id=document_id,
@@ -195,6 +205,37 @@ async def _fetch_lexical_hits(
     try:
         rows = (await session.execute(stmt, {"tsq": tsq, "k": fetch_k})).all()
     except Exception:  # noqa: BLE001 - malformed tsquery falls back to semantic-only
+        return []
+    return list(rows)
+
+
+async def _fetch_entity_hits(
+    session: AsyncSession,
+    entities: list[str],
+    fetch_k: int,
+) -> list[Any]:
+    if not entities:
+        return []
+    stmt = text(
+        """
+        SELECT s.id, s.document_id, s.span_index, s.text,
+               (
+                 SELECT count(*)::int
+                 FROM jsonb_array_elements_text(s.metadata_json->'entities') ent
+                 WHERE ent = ANY(:ents)
+               ) AS match_count,
+               d.title AS title, d.url AS url,
+               d.published_at AS published_at, d.fetched_at AS fetched_at
+        FROM spans s JOIN documents d ON s.document_id = d.id
+        WHERE s.embedding IS NOT NULL
+          AND s.metadata_json->'entities' ?| :ents
+        ORDER BY match_count DESC, s.span_index
+        LIMIT :k
+        """
+    )
+    try:
+        rows = (await session.execute(stmt, {"ents": entities, "k": fetch_k})).all()
+    except Exception:  # noqa: BLE001 - malformed entity query falls back to other channels
         return []
     return list(rows)
 
@@ -315,7 +356,8 @@ async def retrieve_windows(
         return []
 
     all_queries = queries or [question]
-    if hybrid or len(all_queries) > 1:
+    use_rrf = hybrid or len(all_queries) > 1 or settings.sentence_window_entity_anchoring
+    if use_rrf:
         # RRF fusion across per-query semantic (and lexical) ranked lists. A span
         # appearing in several lists is rewarded, surfacing cross-query/cross-modal hits.
         ranked_lists: list[list[Any]] = []
@@ -325,6 +367,9 @@ async def retrieve_windows(
                 lexical = await _fetch_lexical_hits(session, q, fetch_k)
                 if lexical:
                     ranked_lists.append(lexical)
+        if settings.sentence_window_entity_anchoring:
+            question_entities = extract_entities([question])[0]
+            ranked_lists.append(await _fetch_entity_hits(session, question_entities, fetch_k))
         fused = _rrf_fuse(ranked_lists, k)
         if not fused:
             return []

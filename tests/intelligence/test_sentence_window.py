@@ -3,9 +3,13 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
 
 from app.intelligence.prompts.chat_answer import build_user_prompt
 from app.intelligence.sentence_window import (
+    _fetch_entity_hits,
     _lexical_tsquery,
     _order_context_blocks,
     _rrf_fuse,
@@ -68,6 +72,55 @@ def test_rrf_fuse_rewards_cross_list_agreement_and_dedups() -> None:
     ids = [h.id for h in fused]
     assert ids[0] == b  # agreement across both lists ranks it first
     assert len(ids) == len(set(ids)) == 3  # deduped, all present
+
+
+def test_rrf_fuse_entity_channel_agreement_wins_over_single_channel() -> None:
+    semantic_only, entity_only, shared = (uuid.uuid4() for _ in range(3))
+    semantic = [SimpleNamespace(id=semantic_only), SimpleNamespace(id=shared)]
+    entity = [SimpleNamespace(id=entity_only), SimpleNamespace(id=shared)]
+    fused = _rrf_fuse([semantic, entity], k=3)
+    assert fused[0].id == shared
+
+
+@pytest.mark.asyncio
+async def test_fetch_entity_hits_empty_entities_returns_empty() -> None:
+    session = AsyncMock()
+    assert await _fetch_entity_hits(session, [], fetch_k=10) == []
+    session.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_fetch_entity_hits_returns_rows_in_query_order() -> None:
+    when = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    hit_a = SimpleNamespace(
+        id=uuid.uuid4(),
+        document_id=uuid.uuid4(),
+        span_index=1,
+        text="John and Maria volunteered.",
+        match_count=2,
+        title="Conv",
+        url=None,
+        published_at=when,
+        fetched_at=when,
+    )
+    hit_b = SimpleNamespace(
+        id=uuid.uuid4(),
+        document_id=uuid.uuid4(),
+        span_index=0,
+        text="John went home.",
+        match_count=1,
+        title="Conv",
+        url=None,
+        published_at=when,
+        fetched_at=when,
+    )
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=SimpleNamespace(all=lambda: [hit_a, hit_b]))
+
+    rows = await _fetch_entity_hits(session, ["john", "maria"], fetch_k=5)
+
+    assert rows == [hit_a, hit_b]
+    assert rows[0].match_count >= rows[1].match_count
 
 
 def test_lexical_tsquery_ors_dedups_and_drops_short_tokens() -> None:
