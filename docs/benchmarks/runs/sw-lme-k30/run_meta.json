@@ -1,0 +1,27 @@
+{
+  "started_at": "2026-07-07T01:26:24.818290+00:00",
+  "finished_at": "2026-07-07T01:47:04.397698+00:00",
+  "git_rev": "f445c89",
+  "dataset": "/root/Nexus/evals/memory/longmemeval/longmemeval_oracle.json",
+  "categories": [
+    "knowledge-update",
+    "temporal-reasoning"
+  ],
+  "limit": 0,
+  "offset": 0,
+  "per_category_limit": 25,
+  "question_ids": [],
+  "k": 30,
+  "mode": "sentence-window",
+  "workers": 1,
+  "t1_model": "BAAI/bge-small-en-v1.5",
+  "t2_model": "glm-5.1",
+  "t3_model": "qwen3.7-max",
+  "judge_model": "qwen3.7-max",
+  "llm_base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+  "instance_count": 50,
+  "judge_errors": 0,
+  "instance_errors": 0,
+  "domain": "conversation_v1",
+  "pack_id": "conversation_v1"
+}
