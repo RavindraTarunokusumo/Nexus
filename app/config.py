@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     #   T3: strong LLM via llm_base_url (synthesis / query)
     # Defaults are Qwen Cloud (DashScope) model ids; override per env.
     t1_model: str = "BAAI/bge-small-en-v1.5"
+    # MRL truncation for the T1 embedder (0 = off). Set to 384 for Qwen3-Embedding-*
+    # so its native 1024-dim output fits the vector(384) span column without migration.
+    t1_truncate_dim: int = 0
     t2_model: str = "qwen3.6-flash"
     # Span/claim extraction only; empty falls back to T2. The 2026-04-16 flash
     # snapshot was gated and rejected: 0.820->0.531 (docs/experiments 2026-07-06).
