@@ -866,8 +866,10 @@ def make_chat_graph(session_factory: async_sessionmaker, client: Any, embedder: 
                     max_tokens=4000,
                 )
                 tokens += retry_tokens
-        except LLMNetworkError as exc:
-            return {"error": str(exc), "tokens_used": 0}
+        except (LLMNetworkError, LLMSchemaError) as exc:
+            # A second schema failure after the one-shot retry must not abort the
+            # graph — degrade to the error path like a network failure.
+            return {"error": str(exc), "tokens_used": tokens}
         return {"answer": result.answer, "citation_labels": result.citations, "tokens_used": tokens}
 
     async def format_result(state: ChatState) -> dict:

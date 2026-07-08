@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy import select, text
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import settings
@@ -114,6 +114,9 @@ async def ingest_sentence_spans(
     vectors = embedder.embed(sentences)
 
     async with session_factory() as session:
+        # Idempotent re-ingest: drop any prior spans for this document so a re-index
+        # (API re-ingest, partial resume) doesn't duplicate spans and corrupt windows.
+        await session.execute(delete(Span).where(Span.document_id == document_id))
         for index, (sentence, vector) in enumerate(zip(sentences, vectors, strict=True)):
             metadata: dict[str, Any] | None = None
             if speaker is not None or entity_lists is not None:
@@ -450,7 +453,9 @@ async def answer_sentence_window(
                 max_tokens=4000,
             )
             tokens += retry_tokens
-    except LLMNetworkError as exc:
+    except (LLMNetworkError, LLMSchemaError) as exc:
+        # A second schema failure after the one-shot retry degrades to the same
+        # error-shaped abstention as a network failure rather than bubbling up.
         return {
             "answer": INSUFFICIENT_EVIDENCE_ANSWER,
             "citation_labels": [],

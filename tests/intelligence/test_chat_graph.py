@@ -588,7 +588,7 @@ async def test_chat_answer_schema_error_retries_once_and_succeeds() -> None:
 
 
 @pytest.mark.asyncio
-async def test_chat_answer_schema_error_retry_then_propagates() -> None:
+async def test_chat_answer_schema_error_retry_then_degrades() -> None:
     from app.intelligence.chat import make_chat_graph, run_chat_with_context
     from app.intelligence.llm_client import LLMSchemaError
 
@@ -612,8 +612,10 @@ async def test_chat_answer_schema_error_retry_then_propagates() -> None:
 
     graph = make_chat_graph(sf, client, embedder)
     with patch("app.intelligence.chat.load_pack", return_value=pack):
-        with pytest.raises(LLMSchemaError, match="still truncated"):
-            await run_chat_with_context(graph, "What is GPT-5?", "test-model", top_k=1)
+        # A second schema failure after the one-shot retry must degrade to the error
+        # path (state["error"] set), not abort graph.ainvoke.
+        final = await run_chat_with_context(graph, "What is GPT-5?", "test-model", top_k=1)
+    assert "still truncated" in (final.get("error") or "")
 
     answer_calls = [
         c for c in client.complete_json.call_args_list if c.kwargs.get("run_type") == "chat_answer"
