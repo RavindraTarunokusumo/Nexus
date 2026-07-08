@@ -4,6 +4,8 @@
 
 Nexus Lite is a private FastAPI application backed by PostgreSQL + pgvector, Redis, and local embeddings. The Phase 1 foundation covers source registration, document ingestion, and the full persistence schema.
 
+> **Alternative retrieval path — sentence-window (benchmark-validated, PR #32).** A deterministic memory path lives alongside the capsule pipeline: local sentence-split ingest (zero LLM at ingest) → hybrid semantic⊕lexical (RRF) retrieval of local ±window spans → Chain-of-Note reader (`app/intelligence/sentence_window.py`, flag-gated in `app/config.py`). It reaches **LongMemEval-500 0.864 / LoCoMo-48 0.750** on an all-Qwen stack (Qwen3-Embedding + qwen3.7-plus + qwen3.7-max judge). It is currently exercised via the benchmark runners (`--mode sentence-window`), **not** yet wired into the `/chat/answer` graph (still capsule-based) — production wiring (notably corpus-scoped retrieval) is tracked in `TODO.md`. See [docs/benchmarks/sentence-window-qwen-2026-07-08.md](benchmarks/sentence-window-qwen-2026-07-08.md) and the [H9d archive](iterations/archive/2026-07-08-sentence-window-qwen-h9d.md).
+
 Read [docs/specs/architecture.md](specs/architecture.md) for the full architecture spec.
 
 ## Tech Stack
