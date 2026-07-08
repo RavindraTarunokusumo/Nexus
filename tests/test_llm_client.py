@@ -140,6 +140,56 @@ async def test_complete_json_retries_on_429_then_succeeds(client, fake_session_f
 
 
 @pytest.mark.asyncio
+async def test_complete_json_retries_on_empty_content_then_succeeds(client, fake_session_factory):
+    """NVIDIA integrate.api intermittently returns null content / empty choices with
+    finish_reason=stop; the client retries within the attempt budget."""
+    empty = AsyncMock()
+    empty.status_code = 200
+    empty.json = lambda: {"choices": [{"message": {"content": None}}], "usage": {"total_tokens": 0}}
+    success = AsyncMock()
+    success.status_code = 200
+    success.json = lambda: {
+        "choices": [{"message": {"content": '{"value": "hello"}'}}],
+        "usage": {"total_tokens": 50},
+    }
+    with (
+        patch("httpx.AsyncClient.post", new=AsyncMock(side_effect=[empty, success])) as mock_post,
+        patch("app.intelligence.llm_client._retry_backoff", new=AsyncMock()),
+    ):
+        result, tokens = await client.complete_json(
+            model="qwen/qwen3.5-122b-a10b",
+            system="s",
+            user="u",
+            response_model=_SimpleOutput,
+        )
+    assert result.value == "hello"
+    assert mock_post.await_count == 2
+    assert fake_session_factory.return_value.add.call_args[0][0].status == "success"
+
+
+@pytest.mark.asyncio
+async def test_complete_json_strips_markdown_fences(client, fake_session_factory):
+    fenced = '```json\n{"value": "hello"}\n```'
+    openrouter_response = {
+        "choices": [{"message": {"content": fenced}}],
+        "usage": {"total_tokens": 5},
+    }
+    with patch("httpx.AsyncClient.post", new=AsyncMock()) as mock_post:
+        mock_resp = AsyncMock()
+        mock_resp.status_code = 200
+        mock_resp.json = lambda: openrouter_response
+        mock_post.return_value = mock_resp
+
+        result, _ = await client.complete_json(
+            model="qwen/qwen3.5-122b-a10b",
+            system="s",
+            user="u",
+            response_model=_SimpleOutput,
+        )
+    assert result.value == "hello"
+
+
+@pytest.mark.asyncio
 async def test_complete_json_schema_error_does_not_retry(client, fake_session_factory):
     openrouter_response = {
         "choices": [{"message": {"content": "not-json"}}],

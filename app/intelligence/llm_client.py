@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import time
 from typing import Any, Literal, TypeVar
 
 import httpx
@@ -12,13 +13,45 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 from app.observability.tracer import record_agent_run
 
 _BASE_URL = "https://openrouter.ai/api/v1"
-_TIMEOUT = httpx.Timeout(60.0)
+_TIMEOUT = httpx.Timeout(150.0)
 _COST_PER_TOKEN_USD = 0.14 / 1_000_000
 _MAX_JSON_ATTEMPTS = 3
 _RETRY_BACKOFF_SECONDS = (1.0, 4.0)
 _RETRY_JITTER_FRACTION = 0.25
 
 T = TypeVar("T", bound=BaseModel)
+
+_rate_lock = asyncio.Lock()
+_last_request_at = 0.0
+
+
+def _strip_json_fences(text: str) -> str:
+    """Unwrap a ```json ... ``` (or bare ```) fenced block; pure JSON passes through."""
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return text
+    first_nl = stripped.find("\n")
+    if first_nl == -1:
+        return text
+    body = stripped[first_nl + 1 :]
+    if body.rstrip().endswith("```"):
+        body = body.rstrip()[:-3]
+    return body
+
+
+async def _throttle_to_rpm() -> None:
+    """Space requests to settings.llm_max_rpm (0 = off). Process-global."""
+    from app.config import settings
+
+    rpm = settings.llm_max_rpm
+    if rpm <= 0:
+        return
+    global _last_request_at
+    async with _rate_lock:
+        wait = _last_request_at + 60.0 / rpm - time.monotonic()
+        if wait > 0:
+            await asyncio.sleep(wait)
+        _last_request_at = time.monotonic()
 
 
 class LLMError(Exception):
@@ -49,6 +82,41 @@ class LLMClient:
         self._session_factory = session_factory
         self._base_url = base_url
 
+    def _build_payload(
+        self,
+        model: str,
+        system: str,
+        user: str,
+        temperature: float,
+        max_tokens: int,
+        thinking: bool,
+    ) -> dict[str, Any]:
+        from app.config import settings
+
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if settings.llm_json_response_format:
+            payload["response_format"] = {"type": "json_object"}
+        if "dashscope" in self._base_url:
+            # qwen3 hybrid models think by default on DashScope; that cost 3-24x
+            # completion tokens and wall-clock on JSON tasks with identical output
+            # (H8 Q0 A/B). Callers needing reasoning must opt in. Gated to
+            # DashScope only — an unrecognized field on another OpenAI-compatible
+            # provider (e.g. OpenRouter) risks a 4xx rather than being ignored.
+            # Some snapshots (settings.thinking_locked_models) reject
+            # enable_thinking=false outright; omit the flag for those.
+            locked = {m.strip() for m in settings.thinking_locked_models.split(",") if m.strip()}
+            if model not in locked:
+                payload["enable_thinking"] = thinking
+        return payload
+
     async def complete_json(
         self,
         *,
@@ -68,23 +136,7 @@ class LLMClient:
         Raises LLMSchemaError if the response fails Pydantic validation.
         Always records an agent_runs row (even on failure).
         """
-        payload: dict[str, Any] = {
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            "response_format": {"type": "json_object"},
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        }
-        if "dashscope" in self._base_url:
-            # qwen3 hybrid models think by default on DashScope; that cost 3-24x
-            # completion tokens and wall-clock on JSON tasks with identical output
-            # (H8 Q0 A/B). Callers needing reasoning must opt in. Gated to
-            # DashScope only — an unrecognized field on another OpenAI-compatible
-            # provider (e.g. OpenRouter) risks a 4xx rather than being ignored.
-            payload["enable_thinking"] = thinking
+        payload = self._build_payload(model, system, user, temperature, max_tokens, thinking)
 
         raw_output: str | None = None
         total_tokens = 0
@@ -108,6 +160,7 @@ class LLMClient:
                 completion_tokens = None
                 call_status = "success"
                 try:
+                    await _throttle_to_rpm()
                     resp = await http.post("/chat/completions", json=payload)
 
                     if resp.status_code == 429 or resp.status_code >= 500:
@@ -124,21 +177,29 @@ class LLMClient:
                     data = resp.json()
                     try:
                         raw_output = data["choices"][0]["message"]["content"]
-                    except (KeyError, IndexError, TypeError) as exc:
-                        call_status = "malformed_response"
-                        raise LLMError(f"Malformed OpenRouter response: {exc}") from exc
+                    except (KeyError, IndexError, TypeError):
+                        raw_output = None
 
                     usage = data.get("usage", {})
                     total_tokens = usage.get("total_tokens", 0)
                     prompt_tokens = usage.get("prompt_tokens")
                     completion_tokens = usage.get("completion_tokens")
 
-                    if raw_output is None:
-                        call_status = "schema_error"
-                        raise LLMSchemaError("LLM returned null content", raw_output="")
+                    # Transient empty response — empty choices or null/blank content with
+                    # finish_reason=stop and 0 completion tokens (seen on NVIDIA
+                    # integrate.api). Proven to recover on a fresh call, so retry within
+                    # the attempt budget rather than failing the call.
+                    if not raw_output:
+                        call_status = "empty_response"
+                        if attempt < _MAX_JSON_ATTEMPTS - 1:
+                            await _retry_backoff(attempt)
+                            continue
+                        raise LLMSchemaError("LLM returned empty content", raw_output="")
 
                     try:
-                        validated = response_model.model_validate_json(raw_output)
+                        validated = response_model.model_validate_json(
+                            _strip_json_fences(raw_output)
+                        )
                     except (ValueError, ValidationError) as exc:
                         call_status = "schema_error"
                         raise LLMSchemaError(

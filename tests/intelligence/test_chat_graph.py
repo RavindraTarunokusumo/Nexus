@@ -11,6 +11,7 @@ def _make_session_factory(
     rows: list | None = None,
     has_sentinel: bool = True,
     evidence_rows: list | None = None,
+    candidate_calls: int = 1,
 ) -> MagicMock:
     mock_session = AsyncMock()
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -23,7 +24,9 @@ def _make_session_factory(
     candidate_result.all.return_value = rows or []
     evidence_result = MagicMock()
     evidence_result.all.return_value = evidence_rows or []
-    mock_session.execute = AsyncMock(side_effect=[candidate_result, empty_result, evidence_result])
+    mock_session.execute = AsyncMock(
+        side_effect=[candidate_result] * candidate_calls + [empty_result, evidence_result]
+    )
 
     sf = MagicMock()
     sf.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -103,6 +106,7 @@ async def test_classify_intent_writes_query_intent() -> None:
     result_mock = MagicMock()
     result_mock.intent = "technical_deep_dive"
     result_mock.shape = "general"
+    result_mock.sub_queries = []
     client.complete_json.return_value = (result_mock, 10)
 
     pack = MagicMock()
@@ -111,7 +115,11 @@ async def test_classify_intent_writes_query_intent() -> None:
 
     result = await _run_classify_intent(state, client)
 
-    assert result == {"query_intent": "technical_deep_dive", "question_shape": "general"}
+    assert result == {
+        "query_intent": "technical_deep_dive",
+        "question_shape": "general",
+        "sub_queries": [],
+    }
 
 
 @pytest.mark.asyncio
@@ -268,7 +276,7 @@ async def test_classify_intent_shape_fallback_on_llm_error() -> None:
 
     result = await _run_classify_intent(state, client)
 
-    assert result == {"query_intent": "general", "question_shape": "general"}
+    assert result == {"query_intent": "general", "question_shape": "general", "sub_queries": []}
 
 
 @pytest.mark.asyncio
@@ -279,6 +287,7 @@ async def test_classify_intent_shape_fallback_on_invalid_shape() -> None:
     result_mock = MagicMock()
     result_mock.intent = "general"
     result_mock.shape = "not_a_real_shape"
+    result_mock.sub_queries = []
     client.complete_json.return_value = (result_mock, 10)
 
     pack = MagicMock()
@@ -287,7 +296,7 @@ async def test_classify_intent_shape_fallback_on_invalid_shape() -> None:
 
     result = await _run_classify_intent(state, client)
 
-    assert result == {"query_intent": "general", "question_shape": "general"}
+    assert result == {"query_intent": "general", "question_shape": "general", "sub_queries": []}
 
 
 @pytest.mark.asyncio
@@ -391,3 +400,224 @@ async def test_retrieve_capsules_pack_none_skips_weight_overrides() -> None:
     with patch("app.intelligence.chat.compute_hybrid_score", return_value=1.0) as mock_score:
         await _run_retrieve_capsules(state, sf, _make_embedder())
     assert mock_score.call_args.args[1] == {}
+
+
+def test_merge_subquery_slot_capsule_ids_starvation_floor() -> None:
+    from app.intelligence.chat import merge_subquery_slot_capsule_ids
+
+    cap_a, cap_b, cap_c, cap_d, cap_e = (
+        uuid.uuid4(),
+        uuid.uuid4(),
+        uuid.uuid4(),
+        uuid.uuid4(),
+        uuid.uuid4(),
+    )
+    vector_scored = [
+        [(cap_a, 10.0), (cap_b, 9.0), (cap_c, 8.0), (cap_d, 7.0)],
+        [(cap_a, 1.0), (cap_e, 0.5)],
+    ]
+    ordered = merge_subquery_slot_capsule_ids(vector_scored, effective_top_k=4)
+
+    assert cap_e in ordered
+    assert ordered.index(cap_e) < ordered.index(cap_c)
+    assert cap_d not in ordered
+    assert len(ordered) == 4
+
+
+def test_merge_subquery_slot_capsule_ids_dedup_across_vectors() -> None:
+    from app.intelligence.chat import merge_subquery_slot_capsule_ids
+
+    cap_shared, cap_only = uuid.uuid4(), uuid.uuid4()
+    vector_scored = [
+        [(cap_shared, 5.0), (cap_only, 4.0)],
+        [(cap_shared, 9.0)],
+    ]
+    ordered = merge_subquery_slot_capsule_ids(vector_scored, effective_top_k=2)
+
+    assert ordered == [cap_shared, cap_only]
+
+
+def test_merge_subquery_slot_capsule_ids_remainder_top_up_by_score() -> None:
+    from app.intelligence.chat import merge_subquery_slot_capsule_ids
+
+    cap_a, cap_b, cap_c, cap_d = uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    vector_scored = [
+        [(cap_a, 10.0), (cap_b, 9.0)],
+        [(cap_c, 8.0)],
+        [(cap_d, 7.0)],
+    ]
+    ordered = merge_subquery_slot_capsule_ids(vector_scored, effective_top_k=4)
+
+    assert ordered == [cap_a, cap_b, cap_c, cap_d]
+
+
+def test_merge_subquery_slot_capsule_ids_empty_vectors_no_op() -> None:
+    from app.intelligence.chat import merge_subquery_slot_capsule_ids
+
+    assert merge_subquery_slot_capsule_ids([], effective_top_k=5) == []
+
+
+@pytest.mark.asyncio
+async def test_retrieve_capsules_subquery_slots_when_flag_on() -> None:
+    from app.intelligence.chat import _run_retrieve_capsules
+
+    cap_main, cap_sub_a, cap_sub_b = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    row_main = _capsule_row(cap_main)
+    row_main.semantic_sim = 0.95
+    row_main.published_at = None
+    row_sub_a = _capsule_row(cap_sub_a)
+    row_sub_a.semantic_sim = 0.5
+    row_sub_a.published_at = None
+    row_sub_b = _capsule_row(cap_sub_b)
+    row_sub_b.semantic_sim = 0.4
+    row_sub_b.published_at = None
+
+    candidate_result_question = MagicMock()
+    candidate_result_question.all.return_value = [row_main]
+    candidate_result_sub_a = MagicMock()
+    candidate_result_sub_a.all.return_value = [row_sub_a]
+    candidate_result_sub_b = MagicMock()
+    candidate_result_sub_b.all.return_value = [row_sub_b]
+    empty_result = MagicMock()
+    empty_result.all.return_value = []
+    evidence_result = MagicMock()
+    evidence_result.all.return_value = []
+
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+    mock_session.scalar = AsyncMock(return_value=MagicMock())
+    mock_session.execute = AsyncMock(
+        side_effect=[
+            candidate_result_question,
+            candidate_result_sub_a,
+            candidate_result_sub_b,
+            empty_result,
+            evidence_result,
+        ]
+    )
+    sf = MagicMock()
+    sf.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    sf.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    embedder = _make_embedder()
+    state = {
+        "question": "Which happened first, A or B?",
+        "top_k": 5,
+        "query_intent": "general",
+        "question_shape": "temporal",
+        "sub_queries": ["event A", "event B"],
+        "pack": _make_pack(),
+    }
+
+    with patch("app.config.settings") as mock_settings:
+        mock_settings.retrieval_subquery_slots = True
+        result = await _run_retrieve_capsules(state, sf, embedder)
+
+    assert embedder.embed_one.call_count == 3
+    returned_ids = {b["capsule_id"] for b in result["context_blocks"]}
+    assert returned_ids == {cap_main, cap_sub_a, cap_sub_b}
+
+
+@pytest.mark.asyncio
+async def test_retrieve_capsules_flag_off_ignores_sub_queries() -> None:
+    from app.intelligence.chat import _run_retrieve_capsules
+
+    cap_only = uuid.uuid4()
+    sf = _make_session_factory(rows=[_capsule_row(cap_only)], candidate_calls=1)
+    embedder = _make_embedder()
+    state = {
+        "question": "Which happened first, A or B?",
+        "top_k": 5,
+        "query_intent": "general",
+        "question_shape": "temporal",
+        "sub_queries": ["event A", "event B"],
+        "pack": _make_pack(),
+    }
+
+    result = await _run_retrieve_capsules(state, sf, embedder)
+
+    assert embedder.embed_one.call_count == 1
+    assert result["context_blocks"][0]["capsule_id"] == cap_only
+
+
+@pytest.mark.asyncio
+async def test_chat_answer_schema_error_retries_once_and_succeeds() -> None:
+    from app.intelligence.chat import make_chat_graph, run_chat_with_context
+    from app.intelligence.llm_client import LLMSchemaError
+    from app.intelligence.prompts.chat_answer import SYSTEM_PROMPT
+
+    capsule_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    sf = _make_session_factory(rows=[_capsule_row(capsule_id, doc_id)])
+
+    intent_result = MagicMock()
+    intent_result.intent = "general"
+    intent_result.shape = "general"
+    intent_result.sub_queries = []
+    answer_result = MagicMock()
+    answer_result.notes = ""
+    answer_result.answer = "Recovered answer"
+    answer_result.citations = ["C1"]
+
+    client = AsyncMock()
+    client.complete_json = AsyncMock(
+        side_effect=[
+            (intent_result, 10),
+            LLMSchemaError("truncated notes"),
+            (answer_result, 65),
+        ]
+    )
+    embedder = _make_embedder()
+    pack = _make_pack(query_intents={"general": {}})
+
+    graph = make_chat_graph(sf, client, embedder)
+    with patch("app.intelligence.chat.load_pack", return_value=pack):
+        result = await run_chat_with_context(graph, "What is GPT-5?", "test-model", top_k=1)
+
+    assert result["answer"] == "Recovered answer"
+    assert result["tokens_used"] == 65
+    assert client.complete_json.call_count == 3
+    answer_calls = [
+        c for c in client.complete_json.call_args_list if c.kwargs.get("run_type") == "chat_answer"
+    ]
+    assert len(answer_calls) == 2
+    assert answer_calls[0].kwargs["system"] == SYSTEM_PROMPT
+    assert "3 one-line bullets" in answer_calls[1].kwargs["system"]
+    assert "'answer' and 'citations'" in answer_calls[1].kwargs["system"]
+
+
+@pytest.mark.asyncio
+async def test_chat_answer_schema_error_retry_then_degrades() -> None:
+    from app.intelligence.chat import make_chat_graph, run_chat_with_context
+    from app.intelligence.llm_client import LLMSchemaError
+
+    capsule_id = uuid.uuid4()
+    sf = _make_session_factory(rows=[_capsule_row(capsule_id)])
+    intent_result = MagicMock()
+    intent_result.intent = "general"
+    intent_result.shape = "general"
+    intent_result.sub_queries = []
+
+    client = AsyncMock()
+    client.complete_json = AsyncMock(
+        side_effect=[
+            (intent_result, 10),
+            LLMSchemaError("truncated notes"),
+            LLMSchemaError("still truncated"),
+        ]
+    )
+    embedder = _make_embedder()
+    pack = _make_pack(query_intents={"general": {}})
+
+    graph = make_chat_graph(sf, client, embedder)
+    with patch("app.intelligence.chat.load_pack", return_value=pack):
+        # A second schema failure after the one-shot retry must degrade to the error
+        # path (state["error"] set), not abort graph.ainvoke.
+        final = await run_chat_with_context(graph, "What is GPT-5?", "test-model", top_k=1)
+    assert "still truncated" in (final.get("error") or "")
+
+    answer_calls = [
+        c for c in client.complete_json.call_args_list if c.kwargs.get("run_type") == "chat_answer"
+    ]
+    assert len(answer_calls) == 2

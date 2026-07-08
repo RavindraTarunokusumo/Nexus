@@ -591,7 +591,7 @@ def make_extraction_graph(session_factory: async_sessionmaker, client: Any):  # 
                 return await _extract_one_span(
                     span,
                     client,
-                    state["model"],
+                    settings.extraction_model or state["model"],
                     session_factory,
                     run_id=run_id,  # type: ignore[arg-type]
                     document_id=state["document_id"],

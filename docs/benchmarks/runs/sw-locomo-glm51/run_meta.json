@@ -1,0 +1,30 @@
+{
+  "started_at": "2026-07-07T00:03:33.739184+00:00",
+  "finished_at": "2026-07-07T00:22:03.565251+00:00",
+  "git_rev": "d9e13fb",
+  "dataset": "/root/Nexus/.worktree/h9b-walls/evals/memory/locomo/locomo10.json",
+  "categories": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "limit": 6,
+  "offset": 0,
+  "question_limit": 8,
+  "k": 15,
+  "mode": "sentence-window",
+  "workers": 1,
+  "t1_model": "BAAI/bge-small-en-v1.5",
+  "t2_model": "glm-5.1",
+  "t3_model": "qwen3.7-max",
+  "judge_model": "qwen3.7-max",
+  "llm_base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+  "conversation_count": 6,
+  "question_count": 48,
+  "judge_errors": 0,
+  "question_errors": 0,
+  "domain": "conversation_v1",
+  "pack_id": "conversation_v1"
+}

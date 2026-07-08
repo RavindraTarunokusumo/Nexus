@@ -4,6 +4,7 @@ Uses a real testcontainers DB but a fake LLMClient so no real OpenRouter calls a
 """
 
 import uuid
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import select
@@ -26,7 +27,7 @@ class FakeLLMClient:
         self.calls: list[dict] = []
 
     async def complete_json(self, *, model, system, user, response_model, **kwargs):
-        self.calls.append({"user": user})
+        self.calls.append({"user": user, "model": model})
         resp = next(self._responses)
         if isinstance(resp, BaseException):
             raise resp
@@ -347,3 +348,18 @@ async def test_claim_has_v07_traceability_keys(session_factory: async_sessionmak
     assert ej["_function"] is not None
     assert isinstance(ej["_v0_7"], dict)
     assert ej["_v0_7"]["domain_object_type"] == "model_release"
+
+
+@pytest.mark.asyncio
+async def test_extraction_uses_extraction_model_override(session_factory: async_sessionmaker):
+    """Span extraction passes settings.extraction_model instead of graph state model."""
+    doc_id, span_ids = await _seed_doc_with_spans(session_factory, n_spans=1)
+    client = FakeLLMClient(responses=[_make_semantic_response(str(span_ids[0]), "GPT-5 released.")])
+    graph = make_extraction_graph(session_factory, client)
+
+    with patch("app.intelligence.extraction.settings.extraction_model", "qwen3.6-flash-2026-04-16"):
+        final = await graph.ainvoke(_initial_state(doc_id))
+
+    assert final.get("error") is None
+    assert len(client.calls) == 1
+    assert client.calls[0]["model"] == "qwen3.6-flash-2026-04-16"

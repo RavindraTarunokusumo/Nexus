@@ -18,13 +18,52 @@ class Settings(BaseSettings):
     #   T3: strong LLM via llm_base_url (synthesis / query)
     # Defaults are Qwen Cloud (DashScope) model ids; override per env.
     t1_model: str = "BAAI/bge-small-en-v1.5"
+    # MRL truncation for the T1 embedder (0 = off). Set to 384 for Qwen3-Embedding-*
+    # so its native 1024-dim output fits the vector(384) span column without migration.
+    t1_truncate_dim: int = 0
     t2_model: str = "qwen3.6-flash"
+    # Span/claim extraction only; empty falls back to T2. The 2026-04-16 flash
+    # snapshot was gated and rejected: 0.820->0.531 (docs/experiments 2026-07-06).
+    extraction_model: str = ""
+    # Model ids that reject enable_thinking=false; the flag is omitted for them.
+    thinking_locked_models: str = "qwen3.7-max-2026-05-17"
+    # Process-global request pacing for rate-capped endpoints (0 = off).
+    llm_max_rpm: int = 0
+    # Send response_format=json_object. Off for endpoints whose JSON mode is
+    # slow/flaky (e.g. NVIDIA integrate.api); prompts still demand JSON and the
+    # client strips markdown fences before validation.
+    llm_json_response_format: bool = True
     t2_model_force: str = ""
     t2_concurrency: int = 4
     t3_model: str = "qwen3.7-max"
 
     # Default domain pack loaded for /chat/answer and session turns.
     default_pack_id: str = "personal_ai_tech"
+
+    # Per-sub-query retrieval floor before shared rerank (B3); off until A/B gate passes.
+    retrieval_subquery_slots: bool = False
+
+    # Sentence-window retrieval (deterministic ingest, no extraction graph).
+    sentence_window_size: int = 2
+    sentence_window_top_k: int = 15
+    sentence_window_fetch_k: int = 60
+    # Recency vs semantic blend for sentence-window ranking. Low by default: raw
+    # sentences have no supersession edges, so a high recency weight buries old-but-
+    # relevant evidence (fatal for "which happened first" questions). Semantic
+    # dominates; the reader + ordering handle temporal.
+    sentence_window_recency_weight: float = 0.05
+    # Use the inference-permitting reader prompt (grounded synthesis, abstain less).
+    # For conversational corpora (LoCoMo); keep off for LongMemEval (rewards strict
+    # abstention on adversarial questions).
+    sentence_window_permit_inference: bool = False
+    # Hybrid retrieval: fuse lexical (Postgres full-text) with semantic ANN via RRF.
+    # Targets "needle" facts (specific dates/titles) that a small embedding buries.
+    sentence_window_hybrid: bool = False
+    # Decompose the question into sub-queries and union their candidate pools (multi-hop).
+    sentence_window_subqueries: bool = False
+    # Entity-anchored retrieval: local NER tags spans and adds a JSONB entity channel to RRF.
+    sentence_window_entity_anchoring: bool = False
+    sentence_window_ner_model: str = "urchade/gliner_small-v2.1"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

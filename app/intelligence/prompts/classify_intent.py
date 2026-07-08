@@ -8,11 +8,12 @@ from app.intelligence.router import QUESTION_SHAPES
 class IntentClassification(BaseModel):
     intent: str
     shape: str = "general"
+    sub_queries: list[str] = []
 
 
 SYSTEM_PROMPT = (
     "Classify the user's question into exactly one query intent from the provided list. "
-    "Return JSON with keys 'intent' and 'shape'. "
+    "Return JSON with keys 'intent', 'shape', and 'sub_queries'. "
     "The 'intent' value must be an intent name exactly as listed, or 'general' if none fits. "
     f"The 'shape' value must be one of: {', '.join(QUESTION_SHAPES)}. "
     "Shape definitions: "
@@ -23,7 +24,11 @@ SYSTEM_PROMPT = (
     "multi_doc — aggregation or comparison across sources; "
     "current_state — present-tense state query; "
     "conflict — verification or disputed claims; "
-    "general — everything else."
+    "general — everything else. "
+    "The 'sub_queries' value must be a list of short standalone search queries. "
+    "For temporal or multi_doc-shaped questions that compare or aggregate over distinct "
+    "events or entities, list each event or entity as its own sub-query (2–3 items). "
+    "For all other questions return an empty list []."
 )
 
 

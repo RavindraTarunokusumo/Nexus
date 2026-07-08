@@ -19,11 +19,16 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+# Import `app` from this script's own tree, not the venv's editable install —
+# otherwise a worktree run silently benchmarks the main checkout's code.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.config import settings
 from app.db.session import make_engine, make_session_factory
@@ -68,6 +73,18 @@ _STEP5 = (
 COT_SYSTEM_NOSTEP5 = COT_SYSTEM.replace(_STEP5, "")
 if COT_SYSTEM_NOSTEP5 == COT_SYSTEM:
     raise RuntimeError("step-5 text not found in production SYSTEM_PROMPT; update _STEP5 to match.")
+
+# E2 taxonomy follow-up: ~7 failures abstain with the gold answer present in context
+# (cov=1.0). This suffix forces a re-scan before abstaining; run against both the
+# step-5-intact and nostep5 systems to see which recovers them without regressions.
+_CONFIDENT_SUFFIX = (
+    "\nAbstention check: before giving the insufficient-evidence sentence, re-scan "
+    "every context block for a direct or paraphrased answer — including synonyms, "
+    "partial names, or differently-worded references to the same entity or event. "
+    "If any block contains one, answer it and cite that block. Abstain only when no "
+    "block contains relevant evidence.\n"
+)
+COT_SYSTEM_CONFIDENT = COT_SYSTEM + _CONFIDENT_SUFFIX
 
 
 def _build_baseline_prompt(
@@ -125,6 +142,7 @@ class Variant:
     max_blocks: int = 0  # 0 = all; else keep top-N by retrieval score (token trim)
     lean_prompt: bool = False  # strip per-block metadata noise (keeps all blocks)
     system: str | None = None  # None -> default (BASELINE_SYSTEM or COT_SYSTEM)
+    max_tokens: int = 0  # 0 = default (2000, or 6000 when thinking)
 
 
 VARIANTS: dict[str, Variant] = {
@@ -154,6 +172,18 @@ VARIANTS: dict[str, Variant] = {
         "cot_leanprompt_nostep5", cot=True, lean_prompt=True, system=COT_SYSTEM_NOSTEP5
     ),
     "t3_leanprompt": Variant("t3_leanprompt", model="t3", lean_prompt=True),
+    # E2 follow-up (h9b): answer-budget truncation fix + abstention-with-evidence dials.
+    "cot_leanprompt_4k": Variant("cot_leanprompt_4k", cot=True, lean_prompt=True, max_tokens=4000),
+    "cot_leanprompt_confident": Variant(
+        "cot_leanprompt_confident", cot=True, lean_prompt=True, system=COT_SYSTEM_CONFIDENT
+    ),
+    "cot_leanprompt_confident_4k": Variant(
+        "cot_leanprompt_confident_4k",
+        cot=True,
+        lean_prompt=True,
+        system=COT_SYSTEM_CONFIDENT,
+        max_tokens=4000,
+    ),
 }
 
 
@@ -208,7 +238,7 @@ async def _answer_one(
                     response_model=ChatAnswerOutput,
                     run_type="chat_answer",
                     thinking=variant.thinking,
-                    max_tokens=6000 if variant.thinking else 2000,
+                    max_tokens=variant.max_tokens or (6000 if variant.thinking else 2000),
                 )
                 hypothesis = result.answer or INSUFFICIENT_EVIDENCE_ANSWER
             except (LLMError, LLMNetworkError) as exc:

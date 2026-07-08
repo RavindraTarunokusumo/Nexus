@@ -11,12 +11,17 @@ import argparse
 import asyncio
 import json
 import subprocess
+import sys
 import time
 import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+# Import `app` from this script's own tree, not the venv's editable install —
+# otherwise a worktree run silently benchmarks the main checkout's code.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from pydantic import BaseModel
 from sqlalchemy import func, select, text
@@ -43,6 +48,7 @@ from app.intelligence.embedder import Embedder
 from app.intelligence.extraction import _resolve_t2_model, make_extraction_graph, run_with_context
 from app.intelligence.lifecycle import apply_lifecycle_transitions
 from app.intelligence.llm_client import LLMClient, LLMError, LLMNetworkError, LLMSchemaError
+from app.intelligence.sentence_window import answer_sentence_window, ingest_sentence_spans
 
 _DEFAULT_DATASET = Path("evals/memory/longmemeval/longmemeval_oracle.json")
 _DEFAULT_CATEGORIES = ["knowledge-update", "temporal-reasoning"]
@@ -132,8 +138,22 @@ def select_instances(
     categories: list[str],
     limit: int,
     offset: int,
+    per_category_limit: int = 0,
+    question_ids: list[str] | None = None,
 ) -> list[dict]:
     filtered = [inst for inst in instances if inst.get("question_type") in categories]
+    if question_ids:
+        wanted = set(question_ids)
+        return [inst for inst in filtered if inst.get("question_id") in wanted]
+    if per_category_limit > 0:
+        taken: dict[str, int] = {}
+        picked = []
+        for inst in filtered[offset:]:
+            cat = inst["question_type"]
+            if taken.get(cat, 0) < per_category_limit:
+                taken[cat] = taken.get(cat, 0) + 1
+                picked.append(inst)
+        return picked
     sliced = filtered[offset:]
     if limit > 0:
         sliced = sliced[:limit]
@@ -289,12 +309,11 @@ async def _truncate_memory_tables(session_factory: async_sessionmaker) -> None:
         await session.commit()
 
 
-async def _ingest_corpus(
+async def _persist_corpus_documents(
     corpus: list[dict[str, Any]],
     session_factory: async_sessionmaker,
-    embedder: Any,
     domain_pack_id: str,
-) -> tuple[int, int]:
+) -> tuple[int, int, list[tuple[uuid.UUID, dict[str, Any]]]]:
     async with session_factory() as session:
         source = await _get_or_create_manual_source(
             session, name=_SOURCE_NAME, domain_pack=domain_pack_id
@@ -304,7 +323,7 @@ async def _ingest_corpus(
 
     ingested = 0
     skipped = 0
-    new_doc_ids: list[uuid.UUID] = []
+    persisted_docs: list[tuple[uuid.UUID, dict[str, Any]]] = []
     for doc in corpus:
         async with session_factory() as session:
             persisted = await _persist_document(
@@ -321,12 +340,43 @@ async def _ingest_corpus(
                 continue
             await session.commit()
             await session.refresh(persisted)
-            new_doc_ids.append(persisted.id)
+            persisted_docs.append((persisted.id, doc))
             ingested += 1
+    return ingested, skipped, persisted_docs
 
-    for doc_id in new_doc_ids:
+
+async def _ingest_sentence_window_corpus(
+    corpus: list[dict[str, Any]],
+    session_factory: async_sessionmaker,
+    embedder: Any,
+    domain_pack_id: str,
+) -> tuple[int, int, int]:
+    _ingested, skipped, persisted_docs = await _persist_corpus_documents(
+        corpus, session_factory, domain_pack_id
+    )
+    sentence_span_count = 0
+    for doc_id, doc in persisted_docs:
+        sentence_span_count += await ingest_sentence_spans(
+            session_factory,
+            embedder,
+            doc_id,
+            doc["text"],
+            speaker=doc.get("speaker"),
+        )
+    return len(persisted_docs), skipped, sentence_span_count
+
+
+async def _ingest_corpus(
+    corpus: list[dict[str, Any]],
+    session_factory: async_sessionmaker,
+    embedder: Any,
+    domain_pack_id: str,
+) -> tuple[int, int]:
+    ingested, skipped, persisted_docs = await _persist_corpus_documents(
+        corpus, session_factory, domain_pack_id
+    )
+    for doc_id, _doc in persisted_docs:
         await _chunk_and_embed(doc_id, session_factory, embedder)
-
     return ingested, skipped
 
 
@@ -416,6 +466,14 @@ async def _judge_answer(
     return None, 0
 
 
+def _resolve_k(mode: str, k: int | None) -> int:
+    if k is not None:
+        return k
+    if mode == "sentence-window":
+        return settings.sentence_window_top_k
+    return 5
+
+
 def _accuracy(rows: list[dict[str, Any]]) -> float | None:
     labels = [row["autoeval_label"] for row in rows if row.get("autoeval_label") is not None]
     if not labels:
@@ -501,6 +559,7 @@ async def _run_single_instance(
     resolved_domain: str,
     t2_model: str,
     k: int,
+    mode: str,
     append_partial: Callable[[dict[str, Any]], Any],
 ) -> tuple[dict[str, Any], int, int]:
     """Run the full per-instance pipeline. Returns (row, judge_errors, instance_errors)."""
@@ -509,23 +568,32 @@ async def _run_single_instance(
         corpus = _instance_to_corpus(instance)
         corpus_urls = [normalize_url(doc["url"]) for doc in corpus]
 
-        await _ingest_corpus(corpus, session_factory, embedder, pack_id)
-        await _extract_documents(corpus, session_factory, client, t2_model=t2_model)
-        await classify_cross_document_relations(
-            session_factory,
-            client,
-            domain=resolved_domain,
-            pack=pack_obj,
-            model=t2_model,
-        )
-        async with session_factory() as session:
-            await apply_lifecycle_transitions(session, domain=resolved_domain, pack=pack_obj)
-        async with session_factory() as session:
-            await consolidate_domain(session, domain=resolved_domain, pack=pack_obj)
+        sentence_span_count = 0
+        if mode == "sentence-window":
+            doc_count, _skipped, sentence_span_count = await _ingest_sentence_window_corpus(
+                corpus, session_factory, embedder, pack_id
+            )
+            capsule_count = 0
+            relation_count = 0
+            zero_capsule_docs = []
+        else:
+            await _ingest_corpus(corpus, session_factory, embedder, pack_id)
+            await _extract_documents(corpus, session_factory, client, t2_model=t2_model)
+            await classify_cross_document_relations(
+                session_factory,
+                client,
+                domain=resolved_domain,
+                pack=pack_obj,
+                model=t2_model,
+            )
+            async with session_factory() as session:
+                await apply_lifecycle_transitions(session, domain=resolved_domain, pack=pack_obj)
+            async with session_factory() as session:
+                await consolidate_domain(session, domain=resolved_domain, pack=pack_obj)
 
-        doc_count, capsule_count, relation_count, zero_capsule_docs = await _instance_stats(
-            session_factory, corpus_urls
-        )
+            doc_count, capsule_count, relation_count, zero_capsule_docs = await _instance_stats(
+                session_factory, corpus_urls
+            )
 
         instance_as_of = _parse_longmemeval_date(instance.get("question_date"))
         if instance_as_of is None:
@@ -535,14 +603,28 @@ async def _run_single_instance(
             )
 
         start = time.monotonic()
-        final = await run_chat_with_context(
-            chat_graph,
-            instance["question"],
-            t2_model,
-            top_k=k,
-            pack=pack_obj,
-            as_of=instance_as_of,
-        )
+        if mode == "sentence-window":
+            final = await answer_sentence_window(
+                session_factory,
+                client,
+                embedder,
+                instance["question"],
+                t2_model,
+                fetch_k=settings.sentence_window_fetch_k,
+                window=settings.sentence_window_size,
+                k=k,
+                as_of=instance_as_of,
+                pack=pack_obj,
+            )
+        else:
+            final = await run_chat_with_context(
+                chat_graph,
+                instance["question"],
+                t2_model,
+                top_k=k,
+                pack=pack_obj,
+                as_of=instance_as_of,
+            )
         latency_s = time.monotonic() - start
 
         hypothesis = final.get("answer") or INSUFFICIENT_EVIDENCE_ANSWER
@@ -574,6 +656,7 @@ async def _run_single_instance(
             "capsule_count": capsule_count,
             "relation_count": relation_count,
             "zero_capsule_docs": zero_capsule_docs,
+            "sentence_span_count": sentence_span_count,
         }
         if _DUMP_CONTEXT:
             row["as_of"] = instance_as_of.isoformat() if instance_as_of else None
@@ -607,6 +690,7 @@ async def _run_worker(
     resolved_domain: str,
     t2_model: str,
     k: int,
+    mode: str,
     partial_lock: asyncio.Lock,
     partial_path: Path,
     engines: list[Any],
@@ -642,6 +726,7 @@ async def _run_worker(
             resolved_domain=resolved_domain,
             t2_model=t2_model,
             k=k,
+            mode=mode,
             append_partial=append_partial,
         )
         indexed_rows.append((dataset_index, row))
@@ -656,11 +741,14 @@ async def run_longmemeval(
     categories: list[str] | None = None,
     limit: int = 20,
     offset: int = 0,
-    k: int = 5,
+    k: int | None = None,
     out: Path | None = None,
     pack: str | None = None,
     workers: int = 1,
     db_url_template: str = "",
+    per_category_limit: int = 0,
+    question_ids: list[str] | None = None,
+    mode: str = "semantic",
 ) -> dict[str, Any]:
     started_at = datetime.now(timezone.utc)
     resolved_categories = categories or list(_DEFAULT_CATEGORIES)
@@ -674,6 +762,8 @@ async def run_longmemeval(
         categories=resolved_categories,
         limit=limit,
         offset=offset,
+        per_category_limit=per_category_limit,
+        question_ids=question_ids,
     )
 
     if workers > 1 and "{n}" not in db_url_template:
@@ -684,6 +774,7 @@ async def run_longmemeval(
     pack_obj = load_pack(pack_id)
     resolved_domain = pack_obj.metadata.domain
     t2_model = _resolve_t2_model(pack_obj, settings.t2_model)
+    resolved_k = _resolve_k(mode, k)
 
     judge_errors = 0
     instance_errors = 0
@@ -719,7 +810,8 @@ async def run_longmemeval(
                     pack_obj=pack_obj,
                     resolved_domain=resolved_domain,
                     t2_model=t2_model,
-                    k=k,
+                    k=resolved_k,
+                    mode=mode,
                     append_partial=append_partial,
                 )
                 indexed_rows.append((dataset_index, row))
@@ -737,7 +829,8 @@ async def run_longmemeval(
                         pack_obj=pack_obj,
                         resolved_domain=resolved_domain,
                         t2_model=t2_model,
-                        k=k,
+                        k=resolved_k,
+                        mode=mode,
                         partial_lock=partial_lock,
                         partial_path=partial_path,
                         engines=engines,
@@ -766,7 +859,10 @@ async def run_longmemeval(
         "categories": resolved_categories,
         "limit": limit,
         "offset": offset,
-        "k": k,
+        "per_category_limit": per_category_limit,
+        "question_ids": question_ids or [],
+        "k": resolved_k,
+        "mode": mode,
         "workers": workers,
         "t1_model": settings.t1_model,
         "t2_model": t2_model,
@@ -803,7 +899,30 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--limit", type=int, default=20, help="Max instances (0 = no limit).")
     parser.add_argument("--offset", type=int, default=0)
-    parser.add_argument("--k", type=int, default=5)
+    parser.add_argument(
+        "--per-category-limit",
+        type=int,
+        default=0,
+        help="First N instances per category (overrides --limit when > 0).",
+    )
+    parser.add_argument(
+        "--question-ids",
+        type=str,
+        default="",
+        help="Comma-separated question_ids to run (overrides all other selection).",
+    )
+    parser.add_argument(
+        "--k",
+        type=int,
+        default=None,
+        help="Retrieval top-k (semantic default 5; sentence-window default from settings).",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("semantic", "sentence-window"),
+        default="semantic",
+        help="Ingest+answer path: semantic pipeline (default) or sentence-window retrieval.",
+    )
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument(
         "--pack",
@@ -847,6 +966,9 @@ def main(argv: list[str] | None = None) -> None:
             pack=args.pack,
             workers=args.workers,
             db_url_template=args.db_url_template,
+            per_category_limit=args.per_category_limit,
+            question_ids=[q.strip() for q in args.question_ids.split(",") if q.strip()] or None,
+            mode=args.mode,
         )
     )
     print(f"Wrote LongMemEval results to {result['out_dir']}")
