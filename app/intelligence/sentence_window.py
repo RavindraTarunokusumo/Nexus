@@ -443,6 +443,7 @@ async def answer_sentence_window(
     k: int,
     as_of: datetime | None,
     pack: Any,
+    scope: str | None = None,
 ) -> dict[str, Any]:
     del pack  # sentence-window path does not use pack retrieval policy in the MVP
     tokens = 0
@@ -463,6 +464,7 @@ async def answer_sentence_window(
             as_of=as_of,
             queries=queries,
             hybrid=settings.sentence_window_hybrid,
+            scope=scope,
         )
 
     if not blocks:
