@@ -65,6 +65,7 @@ class Document(Base):
     extraction_completed_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
+    scope: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     source: Mapped["Source"] = relationship("Source", back_populates="documents")
     spans: Mapped[list["Span"]] = relationship("Span", back_populates="document")

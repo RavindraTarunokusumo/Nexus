@@ -147,27 +147,27 @@ async def _fetch_ann_hits(
     session: AsyncSession,
     query_vec: list[float],
     fetch_k: int,
+    scope: str | None = None,
 ) -> list[Any]:
     distance = Span.embedding.cosine_distance(query_vec)
-    rows = (
-        await session.execute(
-            select(
-                Span.id,
-                Span.document_id,
-                Span.span_index,
-                Span.text,
-                (1 - distance).label("semantic_sim"),
-                Document.title.label("title"),
-                Document.url.label("url"),
-                Document.published_at.label("published_at"),
-                Document.fetched_at.label("fetched_at"),
-            )
-            .join(Document, Span.document_id == Document.id)
-            .where(Span.embedding.isnot(None))
-            .order_by(distance)
-            .limit(fetch_k)
+    stmt = (
+        select(
+            Span.id,
+            Span.document_id,
+            Span.span_index,
+            Span.text,
+            (1 - distance).label("semantic_sim"),
+            Document.title.label("title"),
+            Document.url.label("url"),
+            Document.published_at.label("published_at"),
+            Document.fetched_at.label("fetched_at"),
         )
-    ).all()
+        .join(Document, Span.document_id == Document.id)
+        .where(Span.embedding.isnot(None))
+    )
+    if scope is not None:
+        stmt = stmt.where(Document.scope == scope)
+    rows = (await session.execute(stmt.order_by(distance).limit(fetch_k))).all()
     return list(rows)
 
 
@@ -187,26 +187,44 @@ async def _fetch_lexical_hits(
     session: AsyncSession,
     question: str,
     fetch_k: int,
+    scope: str | None = None,
 ) -> list[Any]:
     tsq = _lexical_tsquery(question)
     if not tsq:
         return []
+    params: dict[str, Any] = {"tsq": tsq, "k": fetch_k}
     # ponytail: on-the-fly to_tsvector (LoCoMo corpora are ~hundreds of spans); add a
     # GIN index on to_tsvector('english', text) if this ever runs on large corpora.
-    stmt = text(
-        """
-        SELECT s.id, s.document_id, s.span_index, s.text,
-               ts_rank(to_tsvector('english', s.text), to_tsquery('english', :tsq)) AS semantic_sim,
-               d.title AS title, d.url AS url, d.published_at AS published_at, d.fetched_at AS fetched_at
-        FROM spans s JOIN documents d ON s.document_id = d.id
-        WHERE s.embedding IS NOT NULL
-          AND to_tsvector('english', s.text) @@ to_tsquery('english', :tsq)
-        ORDER BY semantic_sim DESC
-        LIMIT :k
-        """
-    )
+    if scope is not None:
+        params["scope"] = scope
+        stmt = text(
+            """
+            SELECT s.id, s.document_id, s.span_index, s.text,
+                   ts_rank(to_tsvector('english', s.text), to_tsquery('english', :tsq)) AS semantic_sim,
+                   d.title AS title, d.url AS url, d.published_at AS published_at, d.fetched_at AS fetched_at
+            FROM spans s JOIN documents d ON s.document_id = d.id
+            WHERE s.embedding IS NOT NULL
+              AND to_tsvector('english', s.text) @@ to_tsquery('english', :tsq)
+              AND d.scope = :scope
+            ORDER BY semantic_sim DESC
+            LIMIT :k
+            """
+        )
+    else:
+        stmt = text(
+            """
+            SELECT s.id, s.document_id, s.span_index, s.text,
+                   ts_rank(to_tsvector('english', s.text), to_tsquery('english', :tsq)) AS semantic_sim,
+                   d.title AS title, d.url AS url, d.published_at AS published_at, d.fetched_at AS fetched_at
+            FROM spans s JOIN documents d ON s.document_id = d.id
+            WHERE s.embedding IS NOT NULL
+              AND to_tsvector('english', s.text) @@ to_tsquery('english', :tsq)
+            ORDER BY semantic_sim DESC
+            LIMIT :k
+            """
+        )
     try:
-        rows = (await session.execute(stmt, {"tsq": tsq, "k": fetch_k})).all()
+        rows = (await session.execute(stmt, params)).all()
     except Exception:  # noqa: BLE001 - malformed tsquery falls back to semantic-only
         return []
     return list(rows)
@@ -216,28 +234,51 @@ async def _fetch_entity_hits(
     session: AsyncSession,
     entities: list[str],
     fetch_k: int,
+    scope: str | None = None,
 ) -> list[Any]:
     if not entities:
         return []
-    stmt = text(
-        """
-        SELECT s.id, s.document_id, s.span_index, s.text,
-               (
-                 SELECT count(*)::int
-                 FROM jsonb_array_elements_text(s.metadata_json->'entities') ent
-                 WHERE ent = ANY(:ents)
-               ) AS match_count,
-               d.title AS title, d.url AS url,
-               d.published_at AS published_at, d.fetched_at AS fetched_at
-        FROM spans s JOIN documents d ON s.document_id = d.id
-        WHERE s.embedding IS NOT NULL
-          AND s.metadata_json->'entities' ?| :ents
-        ORDER BY match_count DESC, s.span_index
-        LIMIT :k
-        """
-    )
+    params: dict[str, Any] = {"ents": entities, "k": fetch_k}
+    if scope is not None:
+        params["scope"] = scope
+        stmt = text(
+            """
+            SELECT s.id, s.document_id, s.span_index, s.text,
+                   (
+                     SELECT count(*)::int
+                     FROM jsonb_array_elements_text(s.metadata_json->'entities') ent
+                     WHERE ent = ANY(:ents)
+                   ) AS match_count,
+                   d.title AS title, d.url AS url,
+                   d.published_at AS published_at, d.fetched_at AS fetched_at
+            FROM spans s JOIN documents d ON s.document_id = d.id
+            WHERE s.embedding IS NOT NULL
+              AND s.metadata_json->'entities' ?| :ents
+              AND d.scope = :scope
+            ORDER BY match_count DESC, s.span_index
+            LIMIT :k
+            """
+        )
+    else:
+        stmt = text(
+            """
+            SELECT s.id, s.document_id, s.span_index, s.text,
+                   (
+                     SELECT count(*)::int
+                     FROM jsonb_array_elements_text(s.metadata_json->'entities') ent
+                     WHERE ent = ANY(:ents)
+                   ) AS match_count,
+                   d.title AS title, d.url AS url,
+                   d.published_at AS published_at, d.fetched_at AS fetched_at
+            FROM spans s JOIN documents d ON s.document_id = d.id
+            WHERE s.embedding IS NOT NULL
+              AND s.metadata_json->'entities' ?| :ents
+            ORDER BY match_count DESC, s.span_index
+            LIMIT :k
+            """
+        )
     try:
-        rows = (await session.execute(stmt, {"ents": entities, "k": fetch_k})).all()
+        rows = (await session.execute(stmt, params)).all()
     except Exception:  # noqa: BLE001 - malformed entity query falls back to other channels
         return []
     return list(rows)
@@ -352,6 +393,7 @@ async def retrieve_windows(
     as_of: datetime | None,
     queries: list[str] | None = None,
     hybrid: bool = False,
+    scope: str | None = None,
 ) -> list[dict[str, Any]]:
     del as_of  # reserved for prompt assembly in answer_sentence_window
     sentinel = await session.scalar(select(Span).where(Span.embedding.isnot(None)).limit(1))
@@ -365,20 +407,24 @@ async def retrieve_windows(
         # appearing in several lists is rewarded, surfacing cross-query/cross-modal hits.
         ranked_lists: list[list[Any]] = []
         for q in all_queries:
-            ranked_lists.append(await _fetch_ann_hits(session, embedder.embed_one(q), fetch_k))
+            ranked_lists.append(
+                await _fetch_ann_hits(session, embedder.embed_one(q), fetch_k, scope)
+            )
             if hybrid:
-                lexical = await _fetch_lexical_hits(session, q, fetch_k)
+                lexical = await _fetch_lexical_hits(session, q, fetch_k, scope)
                 if lexical:
                     ranked_lists.append(lexical)
         if settings.sentence_window_entity_anchoring:
             question_entities = extract_entities([question])[0]
-            ranked_lists.append(await _fetch_entity_hits(session, question_entities, fetch_k))
+            ranked_lists.append(
+                await _fetch_entity_hits(session, question_entities, fetch_k, scope)
+            )
         fused = _rrf_fuse(ranked_lists, k)
         if not fused:
             return []
         return await _build_blocks(session, fused, [0.0] * len(fused), window)
 
-    hits = await _fetch_ann_hits(session, embedder.embed_one(question), fetch_k)
+    hits = await _fetch_ann_hits(session, embedder.embed_one(question), fetch_k, scope)
     if not hits:
         return []
     selected = rank_hit_windows(hits, k=k)
