@@ -11,6 +11,28 @@ Use this file for:
 
 ---
 
+## Session: h9b-walls sentence-window (2026-07-08)
+
+### Only `run_in_background: true` bash tasks get a completion notification — `nohup ... &` runs are invisible to the harness
+
+Multi-hour benchmark runs launched with plain `nohup python ... &` never sent a `<task-notification>`; I had to keep polling by hand. The same command launched via the Bash tool's `run_in_background: true` *did* fire a notification on exit. For any long-running external process, launch it as a proper background task (or, if it must be `nohup`, schedule a `ScheduleWakeup`/until-loop to check back) — don't assume you'll be told when a hand-detached process finishes.
+
+### Blocking wait-loops hit the 10-minute Bash cap (Exit 143) every time — stop polling in the foreground
+
+`for i in $(seq ...); do pgrep ...; sleep 15; done` waiting on a multi-hour run reliably timed out at 10 min with Exit 143. Chaining `sleep N; cat file` is also blocked ("use Monitor with an until-loop"). The working pattern for "wait then read once" is a single `until <condition>; do sleep N; done` that finishes well under 10 min, or `run_in_background: true` for anything longer. Don't foreground-wait on something that takes hours.
+
+### A mistyped scratchpad path makes a `grok -p` delegation fail *silently* (exit 1, model never runs)
+
+Redirecting `grok -p ... > /tmp/.../<typo'd-session-uuid>/scratchpad/out.json` failed because the parent dir didn't exist — bash exited 1 and Grok never launched, but the background task still "completed." Use the exact scratchpad path from the system prompt (copy it, don't retype the UUID), and after launching a redirected delegation, confirm the output file is non-empty before assuming the subagent ran.
+
+### Local CPU model footprint caps benchmark `--workers` parallelism — two heavy embedders OOM'd (Exit 137)
+
+GLiNER (NER) and Qwen3-Embedding-0.6B each load ~2.4 GB per process; running two benchmark processes in parallel on a 7.8 GB box both throttled throughput (~2× slower via CPU contention) and OOM-killed a model load (Exit 137) when memory was already tight. When a benchmark ingests with a local transformer, size worker/parallel-process count against `available_mem / model_footprint`, not CPU cores — or run the heavy-embedder benchmarks sequentially.
+
+### `git stash push <specific files>` + rerun is the clean way to prove a test/lint failure is pre-existing
+
+To show that N suite failures were baseline (not introduced by the branch), `git stash push app/foo.py tests/bar.py` (tracked edits only, leaving new untracked files in place since they aren't imported by the failing tests), rerun the failing subset, then `git stash pop`. Reproduced the same failures on the stashed tree → provably pre-existing, per Workflow Rule 6. Faster and safer than checking out clean `main` in a separate worktree.
+
 ## Session: observability (2026-05-22)
 
 ### `gitnexus_detect_changes` only sees uncommitted changes
