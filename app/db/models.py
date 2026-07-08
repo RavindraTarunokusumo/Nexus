@@ -65,6 +65,7 @@ class Document(Base):
     extraction_completed_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
+    scope: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     source: Mapped["Source"] = relationship("Source", back_populates="documents")
     spans: Mapped[list["Span"]] = relationship("Span", back_populates="document")
@@ -101,20 +102,25 @@ class Claim(Base):
     __tablename__ = "claims"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    document_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=True
+    )
+    topic_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("watch_topics.id", ondelete="SET NULL"), nullable=True
     )
     claim_text: Mapped[str] = mapped_column(Text, nullable=False)
-    claim_type: Mapped[str] = mapped_column(Text, nullable=False)
+    claim_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     entities_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     topics_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    source_authority: Mapped[float | None] = mapped_column(Float, nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="active")
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, default=_utcnow
     )
 
     document: Mapped["Document"] = relationship("Document", back_populates="claims")
+    topic: Mapped["WatchTopic | None"] = relationship("WatchTopic", back_populates="claims")
     evidence_links: Mapped[list["ClaimEvidence"]] = relationship(
         "ClaimEvidence", back_populates="claim"
     )
@@ -479,6 +485,141 @@ class SemanticRelation(Base):
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
     )
+
+
+# ---------------------------------------------------------------------------
+# Perpetual Analyst — analytical memory (migration 0009).
+# ---------------------------------------------------------------------------
+
+
+class WatchTopic(Base):
+    __tablename__ = "watch_topics"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    slug: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    domain: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_utcnow
+    )
+
+    claims: Mapped[list["Claim"]] = relationship("Claim", back_populates="topic")
+
+
+class SourceProfile(Base):
+    __tablename__ = "source_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    topic_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("watch_topics.id", ondelete="CASCADE"), nullable=False
+    )
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
+    )
+    name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    incentive_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reliability: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_utcnow
+    )
+
+
+class Event(Base):
+    __tablename__ = "events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    topic_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("watch_topics.id", ondelete="CASCADE"), nullable=False
+    )
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
+    )
+    event_time: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    entities_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    claim_ids: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_utcnow
+    )
+
+
+class NarrativeState(Base):
+    __tablename__ = "narrative_states"
+    __table_args__ = (
+        UniqueConstraint("topic_id", "version", name="uq_narrative_states_topic_version"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    topic_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("watch_topics.id", ondelete="CASCADE"), nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    change_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prev_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("narrative_states.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    supporting_claim_ids: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_utcnow
+    )
+
+
+class Hypothesis(Base):
+    __tablename__ = "hypotheses"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    topic_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("watch_topics.id", ondelete="CASCADE"), nullable=False
+    )
+    statement: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="active")
+    supporting_claim_ids: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    contradicting_claim_ids: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    invalidation_criteria: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+
+
+class Prediction(Base):
+    __tablename__ = "predictions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    topic_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("watch_topics.id", ondelete="CASCADE"), nullable=False
+    )
+    hypothesis_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("hypotheses.id", ondelete="SET NULL"), nullable=True
+    )
+    statement: Mapped[str] = mapped_column(Text, nullable=False)
+    probability: Mapped[float | None] = mapped_column(Float, nullable=True)
+    horizon_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    resolve_by: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    resolution_criteria: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
+    outcome_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_utcnow
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+
+
+class UserPreference(Base):
+    __tablename__ = "user_preferences"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    topic_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("watch_topics.id", ondelete="CASCADE"), nullable=False
+    )
+    interests_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    framing_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class DecisionArtefact(Base):
